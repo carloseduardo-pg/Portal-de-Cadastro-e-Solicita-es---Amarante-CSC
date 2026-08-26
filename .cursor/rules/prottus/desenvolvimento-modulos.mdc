@@ -1,0 +1,30 @@
+---
+description: Playbook Prottus de desenvolvimento de módulos (processo universal; apps via catálogo Scriptcase-first)
+alwaysApply: true
+---
+
+# Prottus — Desenvolvimento de Módulos (Playbook)
+
+Ciclo **universal** de entrega de módulo de negócio (área do sistema).  
+Aplicações que compõem o módulo: `.cursor/rules/prottus/desenvolvimento-aplicacoes.mdc` + `docs/prottus/aplicacoes/`.  
+Ferramentas, pastas e comandos: `docs/projeto/especificacoes.md` + `.cursor/rules/projeto/`.
+
+## Ciclo por módulo / entidade
+
+1. **Descoberta → dados**: extrair listagem, formulários, status e regras (prints, DOP ou `docs/projeto/modulos/`); preparar dados iniciais conforme o meio de persistência do projeto.
+2. **Persistência**: modelar entidades; multi-select via tabela/relação de junção (nunca CSV no campo principal); respeitar FKs/ordem de seed do projeto.
+3. **Camada de aplicação / API**: contratos de entrada/saída; CRUD (ou apps Scriptcase equivalentes); códigos de sucesso/erro claros (ex.: 404/409 quando REST); mapear linhas/DTOs conforme a stack.
+4. **Interface**: escolher **tipo e variante** em `docs/prottus/aplicacoes/`; construir conforme `docs/projeto/padrao-aplicacoes.md` + DS do cliente (tema Scriptcase quando couber). Em gestão típica: consulta (`grid_`) + formulário (`frm_`) + entrada no menu.
+5. **Promoção**: rota/navegação ou menu Scriptcase + entrada no hub do módulo.
+6. **Docs**: specs em `docs/projeto/aplicacoes/` e `docs/projeto/modulos/`; `STATUS_PROTOTIPO.md`; sessão em `.cursor/agents/cursor-{usuario}.md`; índice de exports se a stack exigir.
+7. **Validação**: checagens em `especificacoes.md` (build, gerar/executar Scriptcase, testes, migrate/reset); conferência funcional.
+
+## Convenções fixas (empresa — qualquer stack)
+
+- **Multi-select**: relação/tabela de junção (nunca CSV no campo principal).
+- **Campos obrigatórios**: marcação visual + validação antes de salvar; listar o que falta.
+- **Status ativo/inativo**: flag booleana no registro principal; controle no criar **e** no editar.
+- Todo campo da listagem deve existir no cadastro novo.
+- Marca: `docs/projeto/design-system.md` + padrão `docs/prottus/design-system.md`.
+- Apps: `docs/projeto/padrao-aplicacoes.md` + catálogo `docs/prottus/aplicacoes/`.
+- Não inventar stack: seguir `docs/projeto/especificacoes.md`.

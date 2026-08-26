@@ -1,0 +1,71 @@
+---
+description: Regras do projeto Amarante CSC — Portal de Cadastro & Solicitação (stack Prottus, domínio EN, regras invioláveis)
+alwaysApply: true
+---
+
+# Projeto Amarante [CSC] — Regras específicas
+
+Complementa `.cursor/rules/prottus/`.  
+Este repo é o **Portal de Cadastro & Solicitação** da Amarante CSC (stack Prottus web).
+
+## Contexto
+- Sistema: Portal de Cadastro & Solicitação
+- Cliente: Amarante CSC (rede hoteleira — MCZ, MGI, JPT, SALG, MV4)
+- Legado substituído: Semplice (cadastro de itens)
+- Fiscal: alimenta V360 (não substitui)
+- Desenvolvedora: Prottus
+- Logos: `imagens/Imagens Empresas/logo_completo.png`, `logo_simples.png`, `logo_prottus.png`
+
+## REGRAS INVIOLÁVEIS
+
+| ID | Regra |
+|----|-------|
+| **ITM-01** | Todo dado de item gravado em CAIXA ALTA (trigger no banco, não só UI) |
+| **ITM-09** | NCM nunca gravado sem confirmação humana explícita (`ncm_confirmed_by`) |
+| **ITM-11** | Lote = uma única família por solicitação (`requests.family_id`) |
+| **FIS-04** | Fornecedor externo vê exclusivamente dados do próprio CNPJ |
+| **FIS-17** | Fluxo fiscal no V360 — portal alimenta, não substitui |
+
+**Nunca inventar regra de negócio.** Onde Semplice e Relatório Geral divergem, vale o Relatório Geral / prompt explícito.
+
+## Documentação (ler nesta ordem)
+- Contexto: `docs/projeto/contexto.md`
+- Specs: `docs/projeto/especificacoes.md`
+- Requisitos: `docs/projeto/requisitos/requisito.md`
+- Módulos: `docs/projeto/modulos/`
+- Documentação de campo: `docs/projeto/documentacao-base/`
+- Segurança: `docs/projeto/seguranca.md` (**obrigatório**)
+- Escalabilidade: `docs/projeto/escalabilidade.md`
+- Design System: `docs/projeto/design-system.md`
+- Prints referência: `imagens/Imagens Semplice/`
+- Prompts execução: `PROMPTS Prototipo Portal Amarante Cursor.md`
+- **NÃO alterar** `docs/prottus/` nem `.cursor/rules/prottus/`
+
+## Stack
+- Mono-repo: React+Vite+TS · NestJS+TS · Prisma · PostgreSQL local (**sem Docker**)
+- Auth: JWT access+refresh em cookie **httpOnly** (nunca localStorage) — **não reimplementar**
+- `JwtAuthGuard` global; exceções só `@Public()`
+- Hardening: Helmet, Throttler, ValidationPipe, CORS, prefixo `/api`
+- Busca similaridade: extensão `pg_trgm` + índice GIN em `products.description_short`
+
+## Domínio
+- Código/DB em **inglês**: `hotels`, `products`, `requests`, `request_items`, `families`, `suppliers`, etc.
+- UI e docs de negócio em **português**
+- Produto: 1 registro + N hotéis via `product_hotels` (não 1 linha por hotel)
+- Hierarquia: Grupo(1) → SubGrupo(3) → Família(6) — derivável do código
+
+## Marca Amarante
+- Primário `#094111` · Secundário `#7E975B` · Acento `#F8AB2B`
+- Sidebar **branca**; topbar verde escuro; amarelo = acento/alerta, não ação primária
+- Prottus no rodapé ("Desenvolvido por")
+- Tipografia: Source Sans 3 · UI sem emojis
+
+## Protótipo — ordem de execução
+P0 → P1 → P2 → P3 → P4 → P5…P12 (ver `PROMPTS Prototipo Portal Amarante Cursor.md`)
+
+## Decisões abertas (TODO no código, não decidir sozinho)
+- Fluxo "USAR ESTE ITEM"
+- Auth fornecedor externo
+- Descrição serviço → centro de custo
+- Sienge (integração não mapeada)
+- Meta acerto NCM

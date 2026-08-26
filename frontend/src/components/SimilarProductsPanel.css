@@ -1,0 +1,99 @@
+.similar-products-panel {
+  margin: 16px 0 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.similar-products-panel .data-table-wrapper {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.similar-products-panel .data-table {
+  width: 100%;
+  table-layout: auto;
+}
+
+.similar-products-panel .data-table th,
+.similar-products-panel .data-table td {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.similar-products-panel .data-table th:nth-child(2),
+.similar-products-panel .data-table td:nth-child(2) {
+  min-width: 8rem;
+}
+
+.similar-products-panel .data-table th:nth-child(4),
+.similar-products-panel .data-table td:nth-child(4) {
+  min-width: 6rem;
+}
+
+@media (min-width: 768px) {
+  .similar-products-panel .data-table-wrapper {
+    overflow-x: visible;
+  }
+}
+
+.similar-products-panel--blocking {
+  border-color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.similar-products-panel--advisory {
+  border-color: color-mix(in srgb, var(--brand-accent) 55%, var(--border-color));
+  background: color-mix(in srgb, var(--brand-accent) 8%, var(--surface));
+}
+
+.similar-products-advisory-msg {
+  margin: 0 0 14px;
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.similar-products-advisory-msg strong {
+  color: var(--brand-ink);
+}
+
+.similar-products-panel-title {
+  margin: 0 0 8px;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.similar-products-block-msg {
+  margin: 0 0 14px;
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.similar-products-block-msg strong {
+  color: var(--gold-800);
+}
+
+.similar-products-panel--selectable {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 5%, var(--surface));
+}
+
+.similar-products-loading,
+.similar-products-clear {
+  margin: 12px 0 0;
+  font-size: var(--font-size-small);
+  color: var(--text-muted);
+}
+
+.similar-products-clear {
+  color: var(--brand-primary);
+  font-weight: 600;
+}

@@ -1,0 +1,76 @@
+.hotel-badges-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hotel-badges-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+}
+
+.hotel-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hotel-legend-name {
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.hotel-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hotel-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 3px 10px;
+  border: 1.5px solid;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.hotel-badge--legend {
+  opacity: 0.92;
+  font-size: 10px;
+  min-width: 36px;
+  padding: 2px 8px;
+}
+
+.hotel-badge--inline {
+  min-width: auto;
+  flex-shrink: 0;
+}
+
+.hotel-badges-empty {
+  color: var(--text-muted);
+}
+
+.similar-products-legend {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.similar-products-legend-label {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}

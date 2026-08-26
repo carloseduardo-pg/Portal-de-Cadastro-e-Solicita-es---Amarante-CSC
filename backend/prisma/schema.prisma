@@ -1,0 +1,455 @@
+// Amarante CSC — Portal de Cadastro & Solicitação
+// Code/persistence in English; UI labels in Portuguese.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RequestType {
+  INCLUSAO
+  ALTERACAO
+}
+
+enum RequestState {
+  RASCUNHO
+  FORMULARIO
+  SOLICITANTE
+  APROVADOR
+  COMPLIANCE
+  ENCERRADO
+  APROVADO
+  REPROVADO
+  RETORNO_SOLICITANTE
+  ERRO_INTEGRACAO
+  EXPIRADA
+}
+
+enum ProductSource {
+  NATIONAL
+  FOREIGN
+}
+
+enum SupplierOriginBase {
+  SEMPLICE
+  CM
+}
+
+enum SupplierRequestState {
+  RASCUNHO
+  PENDENTE
+  APROVADOR
+  APROVADO
+  REPROVADO
+  EXPIRADA
+}
+
+enum NotificationType {
+  SLA_VENCENDO
+  DEVOLVIDA
+  APROVADA
+  ERRO_INTEGRACAO
+  GERAL
+}
+
+/** Perfis simplificados do portal (caixa de entrada por etapa). */
+enum UserRole {
+  ADMIN
+  SOLICITANTE
+  APROVADOR
+  COMPLIANCE
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(SOLICITANTE)
+  hotelId      String?  @map("hotel_id") @db.Uuid
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  hotel              Hotel?           @relation(fields: [hotelId], references: [id])
+  requests           Request[]        @relation("RequestRequester")
+  requestStages      RequestStage[]
+  supplierRequests   SupplierRequest[]
+  notifications      Notification[]
+  ncmConfirmations   Product[]        @relation("NcmConfirmedBy")
+
+  @@map("users")
+}
+
+model Hotel {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique @db.VarChar(10)
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  users         User[]
+  warehouses    Warehouse[]
+  costCenters   CostCenter[]
+  productHotels ProductHotel[]
+  requests      Request[]
+  requestHotels RequestHotel[]
+
+  @@map("hotels")
+}
+
+model Warehouse {
+  id        String   @id @default(uuid()) @db.Uuid
+  hotelId   String   @map("hotel_id") @db.Uuid
+  code      String
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  hotel Hotel @relation(fields: [hotelId], references: [id])
+
+  @@unique([hotelId, code])
+  @@map("warehouses")
+}
+
+model Group {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique @db.VarChar(1)
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  subgroups Subgroup[]
+
+  @@map("groups")
+}
+
+model Subgroup {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique @db.VarChar(3)
+  groupId   String   @map("group_id") @db.Uuid
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  group    Group    @relation(fields: [groupId], references: [id])
+  families Family[]
+
+  @@map("subgroups")
+}
+
+model Family {
+  id         String   @id @default(uuid()) @db.Uuid
+  code       String   @unique @db.VarChar(6)
+  subgroupId String   @map("subgroup_id") @db.Uuid
+  name       String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  subgroup           Subgroup            @relation(fields: [subgroupId], references: [id])
+  products           Product[]
+  productAttributes  ProductAttribute[]
+  requests           Request[]
+
+  @@map("families")
+}
+
+model MeasureUnit {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  products     Product[]
+  requestItems RequestItem[]
+
+  @@map("measure_units")
+}
+
+model CostCenter {
+  id        String   @id @default(uuid()) @db.Uuid
+  hotelId   String   @map("hotel_id") @db.Uuid
+  code      String
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  hotel         Hotel          @relation(fields: [hotelId], references: [id])
+  productHotels ProductHotel[]
+  requestItems  RequestItem[]
+
+  @@unique([hotelId, code])
+  @@map("cost_centers")
+}
+
+model Product {
+  id               String         @id @default(uuid()) @db.Uuid
+  descriptionShort String         @map("description_short")
+  descriptionLong  String?        @map("description_long")
+  familyId         String         @map("family_id") @db.Uuid
+  measureUnitId    String         @map("measure_unit_id") @db.Uuid
+  source           ProductSource  @default(NATIONAL)
+  fixedAsset       Boolean        @default(false) @map("fixed_asset")
+  unifiedCode      String?        @unique @map("unified_code")
+  legacyCode       String?        @map("legacy_code")
+  sapCode          String?        @map("sap_code")
+  ncmCode          String?        @map("ncm_code")
+  ncmConfirmedById String?        @map("ncm_confirmed_by") @db.Uuid
+  ncmConfirmedAt   DateTime?      @map("ncm_confirmed_at") @db.Timestamptz
+  serviceType      String?        @map("service_type")
+  serviceTypeCode  String?        @map("service_type_code")
+  law116           String?        @map("law_116")
+  productLink      String?        @map("product_link")
+  notes            String?
+  itemValue        Decimal?       @map("item_value") @db.Decimal(14, 2)
+  purchaseQtyTotal Decimal?       @map("purchase_qty_total") @db.Decimal(14, 3)
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  family         Family          @relation(fields: [familyId], references: [id])
+  measureUnit    MeasureUnit     @relation(fields: [measureUnitId], references: [id])
+  ncmConfirmedBy User?           @relation("NcmConfirmedBy", fields: [ncmConfirmedById], references: [id])
+  hotels         ProductHotel[]
+  attributeValues ProductAttributeValue[]
+  requestItems   RequestItem[]
+
+  @@index([descriptionShort])
+  @@map("products")
+}
+
+model ProductHotel {
+  productId    String  @map("product_id") @db.Uuid
+  hotelId      String  @map("hotel_id") @db.Uuid
+  costCenterId String? @map("cost_center_id") @db.Uuid
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  hotel      Hotel       @relation(fields: [hotelId], references: [id])
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id])
+
+  @@id([productId, hotelId])
+  @@map("product_hotels")
+}
+
+model ProductAttribute {
+  id        String   @id @default(uuid()) @db.Uuid
+  familyId  String   @map("family_id") @db.Uuid
+  name      String
+  required  Boolean  @default(false)
+  examples  String[] @default([])
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  family Family                  @relation(fields: [familyId], references: [id])
+  values ProductAttributeValue[]
+
+  @@map("product_attributes")
+}
+
+model ProductAttributeValue {
+  id                 String @id @default(uuid()) @db.Uuid
+  productId          String @map("product_id") @db.Uuid
+  productAttributeId String @map("product_attribute_id") @db.Uuid
+  value              String
+
+  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attribute ProductAttribute @relation(fields: [productAttributeId], references: [id])
+
+  @@unique([productId, productAttributeId])
+  @@map("product_attribute_values")
+}
+
+model Request {
+  id           String       @id @default(uuid()) @db.Uuid
+  requesterId  String       @map("requester_id") @db.Uuid
+  hotelId      String       @map("hotel_id") @db.Uuid
+  familyId     String       @map("family_id") @db.Uuid
+  type         RequestType  @default(INCLUSAO)
+  state        RequestState @default(RASCUNHO)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  submittedAt  DateTime?    @map("submitted_at") @db.Timestamptz
+  expiresAt    DateTime?    @map("expires_at") @db.Timestamptz
+  closedAt     DateTime?    @map("closed_at") @db.Timestamptz
+  observation        String?      @map("observation")
+  requestDescription String?      @map("request_description")
+
+  requester User           @relation("RequestRequester", fields: [requesterId], references: [id])
+  hotel     Hotel          @relation(fields: [hotelId], references: [id])
+  family    Family         @relation(fields: [familyId], references: [id])
+  items     RequestItem[]
+  stages    RequestStage[]
+  hotels    RequestHotel[]
+
+  @@index([state])
+  @@index([hotelId])
+  @@map("requests")
+}
+
+model RequestHotel {
+  requestId String @map("request_id") @db.Uuid
+  hotelId   String @map("hotel_id") @db.Uuid
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  hotel   Hotel   @relation(fields: [hotelId], references: [id])
+
+  @@id([requestId, hotelId])
+  @@map("request_hotels")
+}
+
+model RequestItem {
+  id               String        @id @default(uuid()) @db.Uuid
+  requestId        String        @map("request_id") @db.Uuid
+  productId        String?       @map("product_id") @db.Uuid
+  descriptionShort String        @map("description_short")
+  descriptionLong  String?       @map("description_long")
+  measureUnitId    String?       @map("measure_unit_id") @db.Uuid
+  costCenterId     String?       @map("cost_center_id") @db.Uuid
+  source           ProductSource @default(NATIONAL)
+  itemValue        Decimal?      @map("item_value") @db.Decimal(14, 2)
+  purchaseQtyTotal Decimal?      @map("purchase_qty_total") @db.Decimal(14, 3)
+  unifiedCode      String?       @map("unified_code")
+  legacyCode       String?       @map("legacy_code")
+  law116           String?       @map("law_116")
+  productLink      String?       @map("product_link")
+  itemObservation  String?       @map("item_observation")
+  ncmCode          String?       @map("ncm_code")
+  ncmConfirmed     Boolean       @default(false) @map("ncm_confirmed")
+  sortOrder        Int           @default(0) @map("sort_order")
+
+  request         Request          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  product         Product?         @relation(fields: [productId], references: [id])
+  measureUnit     MeasureUnit?     @relation(fields: [measureUnitId], references: [id])
+  costCenter      CostCenter?      @relation(fields: [costCenterId], references: [id])
+  ncmSuggestions  NcmSuggestion[]
+
+  @@index([requestId])
+  @@map("request_items")
+}
+
+model RequestStage {
+  id         String    @id @default(uuid()) @db.Uuid
+  requestId  String    @map("request_id") @db.Uuid
+  stage      String
+  userId     String?   @map("user_id") @db.Uuid
+  startedAt  DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz
+  isLate     Boolean   @default(false) @map("is_late")
+  message    String?
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([requestId])
+  @@map("request_stages")
+}
+
+model NcmSuggestion {
+  id              String  @id @default(uuid()) @db.Uuid
+  requestItemId   String  @map("request_item_id") @db.Uuid
+  ncm             String
+  score           Decimal @db.Decimal(5, 4)
+  sourceProductId String? @map("source_product_id") @db.Uuid
+  usageCount      Int     @default(0) @map("usage_count")
+  rank            Int     @default(0)
+
+  requestItem RequestItem @relation(fields: [requestItemId], references: [id], onDelete: Cascade)
+
+  @@index([requestItemId])
+  @@map("ncm_suggestions")
+}
+
+model Supplier {
+  id                   String             @id @default(uuid()) @db.Uuid
+  document             String             @unique
+  corporateName        String             @map("corporate_name")
+  tradeName            String?            @map("trade_name")
+  cnae                 String?
+  stateRegistration    String?            @map("state_registration")
+  cityRegistration     String?            @map("city_registration")
+  taxRegime            String?            @map("tax_regime")
+  addressStreet        String?            @map("address_street")
+  addressNumber        String?            @map("address_number")
+  addressCity          String?            @map("address_city")
+  addressState         String?            @map("address_state") @db.VarChar(2)
+  originBase           SupplierOriginBase @default(SEMPLICE) @map("origin_base")
+  registrationComplete Boolean            @default(false) @map("registration_complete")
+  active               Boolean            @default(true)
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  requests SupplierRequest[]
+
+  @@map("suppliers")
+}
+
+model SupplierRequest {
+  id          String               @id @default(uuid()) @db.Uuid
+  requesterId String               @map("requester_id") @db.Uuid
+  supplierId  String?              @map("supplier_id") @db.Uuid
+  document    String
+  state       SupplierRequestState @default(RASCUNHO)
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  submittedAt DateTime?            @map("submitted_at") @db.Timestamptz
+  expiresAt   DateTime?            @map("expires_at") @db.Timestamptz
+
+  requester User      @relation(fields: [requesterId], references: [id])
+  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([state])
+  @@map("supplier_requests")
+}
+
+model BusinessCalendar {
+  id            String   @id @default(uuid()) @db.Uuid
+  date          DateTime @unique @db.Date
+  isBusinessDay Boolean  @default(true) @map("is_business_day")
+  holidayName   String?  @map("holiday_name")
+
+  @@map("business_calendar")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType @default(GERAL)
+  title     String
+  body      String
+  linkUrl   String?          @map("link_url")
+  readAt    DateTime?        @map("read_at") @db.Timestamptz
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+/// DML audit — filled only by triggers (never by the API).
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  tableName  String   @map("tabela")
+  recordId   String?  @map("registro_id")
+  operation  String   @map("operacao")
+  dataBefore Json?    @map("dados_antes")
+  dataAfter  Json?    @map("dados_depois")
+  dbUser     String   @default(dbgenerated("CURRENT_USER")) @map("usuario_db")
+  appUser    String?  @map("app_usuario")
+  createdAt  DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  @@index([tableName, createdAt(sort: Desc)], map: "audit_log_tabela_criado_idx")
+  @@index([recordId], map: "audit_log_registro_idx")
+  @@map("audit_log")
+}

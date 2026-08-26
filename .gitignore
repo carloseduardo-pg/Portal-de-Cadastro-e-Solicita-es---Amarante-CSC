@@ -1,0 +1,66 @@
+# Portal Amarante CSC (React + NestJS + Prisma + PostgreSQL)
+
+# Dependências e build
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.vite/
+.pnpm-store/
+.npm/
+__pycache__/
+.venv/
+venv/
+*.pyc
+
+frontend/dist/
+backend/dist/
+backend/build/
+
+# Ambiente e segredos
+.env
+backend/.env
+frontend/.env
+database/.env
+database/.env.local
+*.pem
+*.key
+secrets/
+credentials.json
+**/service-account*.json
+
+# Banco — dumps e temporários
+database/dumps/*
+!database/dumps/.gitkeep
+database/tmp/*
+!database/tmp/.gitkeep
+*.sql.gz
+*.sql.bak
+*.dump
+
+# Logs / testes / SO / IDE
+logs/
+*.log
+coverage/
+.nyc_output/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+
+*.tmp
+*.swp
+*~
+*.local
+.cache/
+uploads/
+tmp/
+
+# Cursor
+.cursor/*.local.md
+.cursor/agents/*.local.md
+.cursor/cache/
+.cursor/rules/**/*.local.mdc
+
+*.tgz

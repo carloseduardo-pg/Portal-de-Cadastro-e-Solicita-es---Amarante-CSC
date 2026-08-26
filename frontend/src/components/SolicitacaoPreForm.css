@@ -1,0 +1,79 @@
+.solicitacao-pre-form {
+  margin-bottom: 24px;
+  background: var(--surface);
+  border: 2px solid var(--brand-primary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.solicitacao-pre-form-header {
+  padding: 16px 22px;
+  background: linear-gradient(90deg, var(--brand-primary) 0%, var(--brand-primary-hover) 100%);
+  color: #fff;
+}
+
+.solicitacao-pre-form-header h2 {
+  margin: 0 0 6px;
+  font-size: var(--font-size-body);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.solicitacao-pre-form-header p {
+  margin: 0;
+  font-size: var(--font-size-small);
+  line-height: 1.45;
+  opacity: 0.95;
+}
+
+.solicitacao-pre-form-body {
+  padding: 22px 24px 24px;
+}
+
+.pre-form-pdm-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px 20px;
+  margin-top: 8px;
+  align-items: start;
+}
+
+.pre-form-pdm-span-4 {
+  grid-column: span 4;
+}
+
+.pre-form-pdm-span-2 {
+  grid-column: span 2;
+}
+
+.pre-form-family-select {
+  margin-top: 8px;
+  max-width: 640px;
+}
+
+.pre-form-family-select select {
+  width: 100%;
+}
+
+.pre-form-family-selected {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  background: var(--sidebar-active-bg);
+  border-radius: var(--radius-xs);
+  line-height: 1.45;
+}
+
+.pre-form-family-selected strong {
+  color: var(--brand-primary);
+}
+
+@media (max-width: 960px) {
+  .pre-form-pdm-span-4,
+  .pre-form-pdm-span-2 {
+    grid-column: span 12;
+  }
+}

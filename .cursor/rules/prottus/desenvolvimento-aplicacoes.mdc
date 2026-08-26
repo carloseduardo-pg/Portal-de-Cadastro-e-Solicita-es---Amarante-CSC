@@ -1,0 +1,38 @@
+---
+description: Playbook Prottus de desenvolvimento de aplicações Scriptcase-first (catálogo + padrão do projeto)
+alwaysApply: true
+---
+
+# Prottus — Desenvolvimento de Aplicações (Scriptcase-first)
+
+Antes de criar **qualquer** aplicação:
+
+1. Escolher família e **variante** em `docs/prottus/aplicacoes/`.
+2. Ler `docs/projeto/padrao-aplicacoes.md` (tema, defaults, nomenclatura, exports).
+3. Ler `docs/projeto/design-system.md` (cores, tipografia, logo).
+4. Confirmar plataforma/conexão em `docs/projeto/especificacoes.md`.
+
+Não inventar layout fora do catálogo. Stack detalhada: `especificacoes.md` + `.cursor/rules/projeto/`.
+
+## Ciclo por aplicação
+
+1. **Tipo**: formulário, consulta, gráfico, dashboard, menu, calendário, blank ou requisito transversal a11y/i18n.
+2. **Variante**: tabela do arquivo da família (ex.: mestre-detalhe, pivot, grid editável).
+3. **Spec**: criar `docs/projeto/aplicacoes/NN-tipo-nome.md` a partir de `_TEMPLATE.md`.
+4. **Construção**: aplicar tema e defaults do projeto; prefixos (`frm_`, `grid_`, `graf_`, `dash_`, `menu_`, `cal_`, `blank_`).
+5. **Ligações**: menu, consulta↔form, drill, parâmetros — documentados na spec.
+6. **Promoção**: entrada no menu/hub; atualizar módulo em `docs/projeto/modulos/` se couber.
+7. **Validação**: DoD da família + Gate de qualidade Prottus; teste manual no Scriptcase (ou equivalente).
+
+## Convenções fixas
+
+- Multi-select: N:N / tabela de junção (nunca CSV no campo principal).
+- Obrigatórios: marcação + validação antes de salvar; listar o que falta.
+- Status ATIVO/INATIVO no criar **e** no editar quando a entidade tiver status.
+- Zero emojis; títulos UPPERCASE; tokens/tema do projeto.
+- Desvio pontual: seção **Desvios** na spec da app — não alterar `docs/prottus/aplicacoes/`.
+- Blank só com justificativa (por que não Form/Grid/Gráfico gerado).
+
+## Equivalência (não-Scriptcase)
+
+Mapear à família mais próxima do catálogo e manter o contrato Prottus; implementação conforme `especificacoes.md`.
