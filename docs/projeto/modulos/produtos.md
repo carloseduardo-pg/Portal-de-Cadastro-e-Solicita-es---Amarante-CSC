@@ -36,14 +36,19 @@ Substitui o Semplice. Prioridade máxima do projeto.
 
 ## Estados da solicitação
 
-Pipeline principal: `FORMULARIO` → `SOLICITANTE` → `APROVADOR` → `COMPLIANCE` → `ENCERRADO`
+Pipeline principal (Produtos): `FORMULARIO` → `SOLICITANTE` ↔ `APROVADOR` (devolução) → `ENCERRADO`
 
-Também: `RASCUNHO` · `APROVADO` (legado) · `REPROVADO` · `RETORNO_SOLICITANTE` · `ERRO_INTEGRACAO` · `EXPIRADA`
+**Compliance não faz parte do fluxo de Produtos** — etapa reservada ao módulo Fornecedores.
 
-- Caixa de entrada = etapa `SOLICITANTE` (não envia direto ao aprovador)
+Também: `RASCUNHO` · `RETORNO_SOLICITANTE` · `REPROVADO` · `ERRO_INTEGRACAO` · `EXPIRADA`
+
+Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQUEIO_TOTAL`
+
+- Match 100% na base bloqueia inclusão (UI + API)
+- Devolução ao solicitante reinicia SLA (`POST /api/requests/:id/return-to-requester`)
+- Aprovador pode editar campos na etapa Aprovador; edições registradas na timeline
+- Caixa de entrada = etapas operacionais (Solicitante / Aprovador)
 - Ao concluir cada etapa: comentário obrigatório em `request_stages.message`
-- Timeline: log de todas as etapas no detalhe da solicitação
-- `COMPLIANCE` previsto; aprovação atual encerra direto (`ENCERRADO`)
 
 ## API
 
@@ -56,7 +61,7 @@ Também: `RASCUNHO` · `APROVADO` (legado) · `REPROVADO` · `RETORNO_SOLICITANT
 | `GET /api/requests/:id` | Detalhe |
 | `POST /api/requests` | Criar rascunho ou enviar solicitação |
 | `PATCH /api/requests/:id` | Atualizar rascunho |
-| `POST /api/requests/:id/submit` | Enviar rascunho para aprovação |
+| `POST /api/requests/:id/return-to-requester` | Devolver ao solicitante (reset SLA) |
 | `PATCH /api/requests/items/:itemId/ncm` | Confirmação NCM (ITM-09) |
 | `GET /api/catalog/hotels` · `families` · `groups` | Formulário / filtros |
 

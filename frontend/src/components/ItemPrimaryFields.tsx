@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { FormField } from './FormField';
+import { SearchableSelect } from './SearchableSelect';
 import type { CostCenter, MeasureUnit } from '../lib/types';
 import './PdmClassificationFields.css';
 
@@ -45,6 +47,38 @@ export function ItemPrimaryFields({
   onChange,
   onClearError,
 }: Props) {
+  const costCenterOptions = useMemo(
+    () =>
+      [...costCenters]
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
+            a.code.localeCompare(b.code),
+        )
+        .map((cc) => ({
+          id: cc.id,
+          label: `${cc.hotel?.code ? `${cc.hotel.code} · ` : ''}${cc.code} — ${cc.name}`,
+          searchText: `${cc.hotel?.code ?? ''} ${cc.code} ${cc.name}`,
+        })),
+    [costCenters],
+  );
+
+  const measureUnitOptions = useMemo(
+    () =>
+      [...measureUnits]
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
+            a.code.localeCompare(b.code),
+        )
+        .map((mu) => ({
+          id: mu.id,
+          label: `${mu.code} — ${mu.name}`,
+          searchText: `${mu.code} ${mu.name}`,
+        })),
+    [measureUnits],
+  );
+
   return (
     <div className="pdm-classification-grid item-primary-fields">
       <FormField
@@ -76,23 +110,25 @@ export function ItemPrimaryFields({
         variant="semplice"
         className="pdm-span-4"
       >
-        <select
-          value={value.costCenterId}
-          disabled={readOnly}
-          onChange={(e) => {
-            if (readOnly) return;
-            onChange?.({ costCenterId: e.target.value });
-            onClearError?.('costCenterId');
-          }}
-        >
-          <option value="">Selecione…</option>
-          {costCenters.map((cc) => (
-            <option key={cc.id} value={cc.id}>
-              {cc.hotel?.code ? `${cc.hotel.code} · ` : ''}
-              {cc.code} — {cc.name}
+        {readOnly ? (
+          <select value={value.costCenterId} disabled>
+            <option value={value.costCenterId}>
+              {costCenterOptions.find((o) => o.id === value.costCenterId)?.label ?? '—'}
             </option>
-          ))}
-        </select>
+          </select>
+        ) : (
+          <SearchableSelect
+            label=""
+            options={costCenterOptions}
+            value={value.costCenterId}
+            onChange={(id) => {
+              onChange?.({ costCenterId: id });
+              onClearError?.('costCenterId');
+            }}
+            placeholder="Digite hotel, código ou nome do centro…"
+            emptyLabel="Selecione…"
+          />
+        )}
       </FormField>
 
       <FormField
@@ -103,22 +139,25 @@ export function ItemPrimaryFields({
         variant="semplice"
         className="pdm-span-4"
       >
-        <select
-          value={value.measureUnitId}
-          disabled={readOnly}
-          onChange={(e) => {
-            if (readOnly) return;
-            onChange?.({ measureUnitId: e.target.value });
-            onClearError?.('measureUnitId');
-          }}
-        >
-          <option value="">Selecione…</option>
-          {measureUnits.map((mu) => (
-            <option key={mu.id} value={mu.id}>
-              {mu.code} — {mu.name}
+        {readOnly ? (
+          <select value={value.measureUnitId} disabled>
+            <option value={value.measureUnitId}>
+              {measureUnitOptions.find((o) => o.id === value.measureUnitId)?.label ?? '—'}
             </option>
-          ))}
-        </select>
+          </select>
+        ) : (
+          <SearchableSelect
+            label=""
+            options={measureUnitOptions}
+            value={value.measureUnitId}
+            onChange={(id) => {
+              onChange?.({ measureUnitId: id });
+              onClearError?.('measureUnitId');
+            }}
+            placeholder="Digite código ou nome da unidade…"
+            emptyLabel="Selecione…"
+          />
+        )}
       </FormField>
 
       {similarPanel ? (

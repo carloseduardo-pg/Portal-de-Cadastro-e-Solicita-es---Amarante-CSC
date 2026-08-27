@@ -71,9 +71,20 @@ export class RequestItemInputDto {
   @IsString()
   productLink?: string;
 
+  /** URLs adicionais do produto (N:N via request_item_links). */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  productLinks?: string[];
+
   @IsOptional()
   @IsString()
   itemObservation?: string;
+
+  /** Comentário opcional ao salvar edição (timeline). */
+  @IsOptional()
+  @IsString()
+  editNote?: string;
 
   @IsOptional()
   @Type(() => Number)
@@ -177,4 +188,9 @@ export class UpdateRequestDto {
   @IsOptional()
   @IsString()
   requestDescription?: string;
+
+  /** Comentário ao salvar edição (registro na timeline). */
+  @IsOptional()
+  @IsString()
+  editNote?: string;
 }

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../../components/DataTable';
 import { HotelCodeBadges } from '../../components/HotelCodeBadges';
 import { PaginationBar } from '../../components/PaginationBar';
+import { SearchableSelect } from '../../components/SearchableSelect';
 import { catalogApi, productsApi } from '../../lib/resources';
 import type { Family, Hotel, ProductBase } from '../../lib/types';
 import './produtos.css';
@@ -22,6 +23,22 @@ export function BasePage() {
   const [duplicatePairs, setDuplicatePairs] = useState(0);
   const [loading, setLoading] = useState(false);
   const pageSize = 20;
+
+  const familyOptions = useMemo(
+    () =>
+      [...families]
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
+            a.code.localeCompare(b.code),
+        )
+        .map((f) => ({
+          id: f.id,
+          label: `${f.code} — ${f.name}`,
+          searchText: `${f.code} ${f.name}`,
+        })),
+    [families],
+  );
 
   useEffect(() => {
     void catalogApi.hotels().then(setHotels);
@@ -89,15 +106,16 @@ export function BasePage() {
             <option value="all">Todos</option>
           </select>
         </label>
-        <label className="base-filter-field">
-          <span>Família</span>
-          <select value={familyId} onChange={(e) => setFamilyId(e.target.value)}>
-            <option value="">Todas</option>
-            {families.map((f) => (
-              <option key={f.id} value={f.id}>{f.code} — {f.name}</option>
-            ))}
-          </select>
-        </label>
+        <div className="base-filter-field">
+          <SearchableSelect
+            label="Família"
+            options={familyOptions}
+            value={familyId}
+            onChange={setFamilyId}
+            placeholder="Digite código ou nome da família…"
+            emptyLabel="Todas"
+          />
+        </div>
         {loading ? <span className="base-filter-hint">Atualizando…</span> : null}
       </div>
 
@@ -120,6 +138,7 @@ export function BasePage() {
             </span>
           )},
           { key: 'code', header: 'Código Unificado', render: (r) => r.unifiedCode ?? '—' },
+          { key: 'sap', header: 'Código SAP', render: (r) => r.sapCode ?? '—' },
           {
             key: 'desc',
             header: 'Descrição',

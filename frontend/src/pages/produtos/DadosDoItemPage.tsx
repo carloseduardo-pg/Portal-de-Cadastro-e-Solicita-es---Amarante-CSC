@@ -15,6 +15,8 @@ import { RequestDescriptionBlock } from '../../components/RequestDescriptionBloc
 import { SolicitacaoPreForm } from '../../components/SolicitacaoPreForm';
 import { useSimilarProducts } from '../../hooks/useSimilarProducts';
 import { requiredText } from '../../lib/formValidation';
+import { hasExactProductMatch } from '../../lib/productMatch';
+import { isExistingProductRequestType } from '../../lib/requestLabels';
 import { toFormUppercase } from '../../lib/formText';
 import { findFamilyById, classificationFromFamily } from '../../lib/pdmFolders';
 import { catalogApi, productsApi, requestsApi } from '../../lib/resources';
@@ -36,7 +38,11 @@ import '../../components/SolicitacaoPreForm.css';
 import '../../components/RequestDescriptionBlock.css';
 import '../../components/ItemCompletionSection.css';
 
-const DRAFT_EXPIRY_DAYS = 15;
+type RequestType =
+  | 'INCLUSAO'
+  | 'ALTERACAO'
+  | 'BLOQUEIO_PARCIAL'
+  | 'BLOQUEIO_TOTAL';
 
 type DadosFieldErrors = ItemClassificationErrors & {
   familyId?: string;
@@ -65,6 +71,7 @@ type ItemDraft = {
   legacyCode: string;
   law116: string;
   productLink: string;
+  productLinks: string[];
   itemObservation: string;
   attachments: ItemAttachmentDraft[];
 };
@@ -76,7 +83,7 @@ type NavState = {
   hotelId?: string;
   hotelIds?: string[];
   requestId?: string;
-  type?: 'INCLUSAO' | 'ALTERACAO';
+  type?: RequestType;
 };
 
 function emptyItem(descriptionShort = ''): ItemDraft {
@@ -94,6 +101,7 @@ function emptyItem(descriptionShort = ''): ItemDraft {
     legacyCode: '',
     law116: '',
     productLink: '',
+    productLinks: [],
     itemObservation: '',
     attachments: [],
   };
@@ -113,6 +121,7 @@ function itemHasData(it: ItemDraft) {
       it.legacyCode.trim() ||
       it.law116.trim() ||
       it.productLink.trim() ||
+      it.productLinks.some((l) => l.trim()) ||
       it.itemObservation.trim() ||
       it.attachments.length,
   );
@@ -128,7 +137,7 @@ export function DadosDoItemPage() {
   const nav = (location.state ?? {}) as NavState;
 
   const [requestId, setRequestId] = useState<string | undefined>(nav.requestId);
-  const [requestType, setRequestType] = useState<'INCLUSAO' | 'ALTERACAO'>(nav.type ?? 'INCLUSAO');
+  const [requestType, setRequestType] = useState<RequestType>(nav.type ?? 'INCLUSAO');
   const [hotelIds, setHotelIds] = useState<string[]>(
     nav.hotelIds?.length ? nav.hotelIds : nav.hotelId ? [nav.hotelId] : [],
   );
@@ -160,7 +169,9 @@ export function DadosDoItemPage() {
   const preFormComplete = Boolean(familyId && hotelIds.length);
 
   const familyLocked =
-    items.some(itemHasData) || items.length > 1 || requestType === 'ALTERACAO';
+    items.some(itemHasData) ||
+    items.length > 1 ||
+    isExistingProductRequestType(requestType);
 
   const isInclusionItem = requestType === 'INCLUSAO' && !item.productId;
   const similarCheckEnabled =
@@ -243,7 +254,7 @@ export function DadosDoItemPage() {
     if (nav.requestId) {
       void requestsApi.get(nav.requestId).then((req) => {
         setRequestId(req.id);
-        setRequestType(req.type as 'INCLUSAO' | 'ALTERACAO');
+        setRequestType(req.type as RequestType);
         const ids = req.hotels?.map((rh) => rh.hotel.id) ?? (req.hotel?.id ? [req.hotel.id] : []);
         setHotelIds(ids);
         setFamilyId(req.family?.id ?? '');
@@ -265,7 +276,8 @@ export function DadosDoItemPage() {
                 unifiedCode: it.unifiedCode ?? '',
                 legacyCode: it.legacyCode ?? '',
                 law116: it.law116 ?? '',
-                productLink: it.productLink ?? '',
+                productLink: it.productLink ?? it.links?.[0]?.url ?? '',
+                productLinks: it.links?.map((l) => l.url) ?? (it.productLink ? [it.productLink] : []),
                 itemObservation: it.itemObservation ?? '',
                 attachments: [],
               }))
@@ -276,7 +288,8 @@ export function DadosDoItemPage() {
     }
 
     if (nav.existingProductId) {
-      setRequestType('ALTERACAO');
+      const navType = nav.type ?? 'ALTERACAO';
+      setRequestType(navType);
       void productsApi.get(nav.existingProductId).then(async (p) => {
         const famList = families.length ? families : (await catalogApi.families({ pageSize: 500 })).data;
         if (!families.length) setFamilies(famList);
@@ -302,6 +315,7 @@ export function DadosDoItemPage() {
             legacyCode: '',
             law116: '',
             productLink: '',
+            productLinks: [],
             itemObservation: '',
             attachments: [],
           },
@@ -351,6 +365,12 @@ export function DadosDoItemPage() {
       patch.descriptionLong = toFormUppercase(patch.descriptionLong);
       clearFieldError('descriptionLong');
     }
+    if (patch.productLinks !== undefined) {
+      patch.productLink = patch.productLinks[0] ?? '';
+    }
+    if (patch.productLink !== undefined && patch.productLinks === undefined) {
+      patch.productLinks = patch.productLink ? [patch.productLink] : [];
+    }
     patchCurrent(patch);
   }
 
@@ -358,15 +378,15 @@ export function DadosDoItemPage() {
     e.target.value = toFormUppercase(e.target.value);
   }
 
-  async function findDuplicateInBase(description: string): Promise<boolean> {
+  async function findExactDuplicateInBase(description: string): Promise<boolean> {
     if (description.trim().length < 3) return false;
-    const r = await productsApi.search({ q: description, pageSize: 1 });
-    return r.data.length > 0;
+    const r = await productsApi.search({ q: description, pageSize: 20 });
+    return hasExactProductMatch(r.data, description);
   }
 
   function addItem() {
-    if (requestType === 'ALTERACAO') {
-      setError('Solicitação de alteração admite apenas um item vinculado ao produto da base.');
+    if (isExistingProductRequestType(requestType)) {
+      setError('Este tipo de solicitação admite apenas um item vinculado ao produto da base.');
       return;
     }
     if (!familyId) {
@@ -413,7 +433,7 @@ export function DadosDoItemPage() {
   function validateForm(submit: boolean): DadosFieldErrors {
     const errors: DadosFieldErrors = {};
 
-    if (requestType === 'INCLUSAO' || requestType === 'ALTERACAO') {
+    if (requestType === 'INCLUSAO' || isExistingProductRequestType(requestType)) {
       const descErr = requiredText(
         requestDescription,
         'Informe a descrição do produto que deseja solicitar.',
@@ -422,15 +442,17 @@ export function DadosDoItemPage() {
 
       const obsErr = requiredText(
         observation,
-        requestType === 'ALTERACAO'
-          ? 'Descreva o que precisa ser atualizado neste produto.'
+        isExistingProductRequestType(requestType)
+          ? requestType === 'ALTERACAO'
+            ? 'Descreva o que precisa ser atualizado neste produto.'
+            : 'Descreva o motivo do bloqueio solicitado.'
           : 'Descreva o motivo da inclusão ou atualização deste produto.',
       );
       if (obsErr) errors.observation = obsErr;
     }
 
-    if (requestType === 'ALTERACAO' && items.length > 1) {
-      errors.descriptionShort = 'Solicitação de alteração deve ter exatamente um item.';
+    if (isExistingProductRequestType(requestType) && items.length > 1) {
+      errors.descriptionShort = 'Este tipo de solicitação deve ter exatamente um item.';
     }
 
     if (!hotelIds.length) {
@@ -493,7 +515,8 @@ export function DadosDoItemPage() {
         unifiedCode: it.unifiedCode.trim() || undefined,
         legacyCode: it.legacyCode.trim() || undefined,
         law116: it.law116.trim() || undefined,
-        productLink: it.productLink.trim() || undefined,
+        productLink: it.productLink.trim() || it.productLinks[0]?.trim() || undefined,
+        productLinks: it.productLinks.map((l) => l.trim()).filter(Boolean),
         itemObservation: it.itemObservation.trim() || undefined,
         sortOrder: idx,
       })),
@@ -511,17 +534,17 @@ export function DadosDoItemPage() {
     }
     setFieldErrors({});
 
-    if (requestType === 'INCLUSAO' && !observation.trim()) {
+    if (requestType === 'INCLUSAO') {
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         if (it.productId) continue;
-        if (await findDuplicateInBase(it.descriptionShort)) {
+        if (await findExactDuplicateInBase(it.descriptionShort)) {
           if (i !== currentItem) setCurrentItem(i);
           setFieldErrors({
             duplicate:
-              'Já existem itens parecidos na base unificada (SAP). Ajuste a descrição deste item.',
+              'Produto já existe na base unificada (match 100%). Use Alteração ou Bloqueio.',
             descriptionShort:
-              'Descrição conflita com item já cadastrado na base unificada.',
+              'Descrição idêntica a item já cadastrado na base unificada.',
           });
           setError(null);
           setSendDialogOpen(false);
@@ -625,8 +648,8 @@ export function DadosDoItemPage() {
             onSelect={setCurrentItem}
             onAdd={addItem}
             onRemove={setRemoveIndex}
-            allowAdd={requestType !== 'ALTERACAO'}
-            allowRemove={requestType !== 'ALTERACAO'}
+            allowAdd={!isExistingProductRequestType(requestType)}
+            allowRemove={!isExistingProductRequestType(requestType)}
           />
 
           <ConfirmDialog
@@ -749,6 +772,11 @@ export function DadosDoItemPage() {
                   <ItemCompletionSection
                     value={{
                       productLink: item.productLink,
+                      productLinks: item.productLinks.length
+                        ? item.productLinks
+                        : item.productLink
+                          ? [item.productLink]
+                          : [],
                       descriptionLong: item.descriptionLong,
                       itemObservation: item.itemObservation,
                       attachments: item.attachments,

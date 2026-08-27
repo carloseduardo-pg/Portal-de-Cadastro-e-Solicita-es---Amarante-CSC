@@ -177,6 +177,15 @@ export class RequestsController {
     return this.requests.approve(id, req.user?.id ?? '', body.items ?? [], body.message);
   }
 
+  @Post(':id/return-to-requester')
+  returnToRequester(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { message?: string },
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    return this.requests.returnToRequester(id, req.user?.id ?? '', body.message ?? '');
+  }
+
   @Post(':id/send-to-approver')
   sendToApprover(
     @Param('id', ParseUUIDPipe) id: string,

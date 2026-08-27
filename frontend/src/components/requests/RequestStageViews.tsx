@@ -78,20 +78,17 @@ export function groupRequestsByPriority(rows: Request[]) {
 export const INBOX_STAGE_COLUMNS: StageColumn[] = [
   { state: 'SOLICITANTE', label: 'Solicitante', color: '#F8AB2B' },
   { state: 'APROVADOR', label: 'Aprovador', color: '#7E975B' },
-  { state: 'COMPLIANCE', label: 'Compliance', color: '#0F766E' },
 ];
 
-/** Colunas visíveis na caixa conforme perfil. */
+/** Colunas visíveis na caixa conforme perfil (Produtos — sem Compliance). */
 export function inboxColumnsForRole(role?: string, inboxStages?: string[]) {
   const allowed = inboxStages?.length
-    ? inboxStages
+    ? inboxStages.filter((s) => s !== 'COMPLIANCE')
     : role === 'ADMIN'
       ? INBOX_STAGE_COLUMNS.map((c) => c.state)
       : role === 'APROVADOR'
         ? ['APROVADOR']
-        : role === 'COMPLIANCE'
-          ? ['COMPLIANCE']
-          : ['SOLICITANTE'];
+        : ['SOLICITANTE', 'RETORNO_SOLICITANTE'];
   return INBOX_STAGE_COLUMNS.filter((c) => allowed.includes(c.state));
 }
 

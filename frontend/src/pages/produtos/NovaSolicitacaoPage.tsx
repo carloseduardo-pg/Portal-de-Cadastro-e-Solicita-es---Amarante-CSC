@@ -5,13 +5,19 @@ import { PageStageHeader } from '../../components/PageStageHeader';
 import { SimilarProductsPanel } from '../../components/SimilarProductsPanel';
 import { useSimilarProducts } from '../../hooks/useSimilarProducts';
 import { minLengthText, requiredText } from '../../lib/formValidation';
+import { hasExactProductMatch } from '../../lib/productMatch';
+import { isExistingProductRequestType } from '../../lib/requestLabels';
 import { toFormUppercase } from '../../lib/formText';
 import type { ProductSearchResult } from '../../lib/types';
 import './produtos.css';
 import '../../components/SimilarProductsPanel.css';
 import '../../components/FormField.css';
 
-type RequestTypeChoice = 'INCLUSAO' | 'ALTERACAO';
+type RequestTypeChoice =
+  | 'INCLUSAO'
+  | 'ALTERACAO'
+  | 'BLOQUEIO_PARCIAL'
+  | 'BLOQUEIO_TOTAL';
 
 type SearchFieldErrors = {
   type?: string;
@@ -22,8 +28,6 @@ type SearchFieldErrors = {
 
 /**
  * Tela 1 — Tipo da solicitação + verificação na base unificada (P5).
- * Inclusão: fluxo de cadastro novo (multi-item no formulário).
- * Alteração: seleciona 1 produto existente (1 item / 1 atualização).
  */
 export function NovaSolicitacaoPage() {
   const navigate = useNavigate();
@@ -34,7 +38,7 @@ export function NovaSolicitacaoPage() {
   const [fieldErrors, setFieldErrors] = useState<SearchFieldErrors>({});
 
   const searchEnabled = Boolean(requestType);
-  const isAlteracao = requestType === 'ALTERACAO';
+  const needsExistingProduct = requestType ? isExistingProductRequestType(requestType) : false;
   const isInclusao = requestType === 'INCLUSAO';
 
   const { results, loading, searched, hasSimilar } = useSimilarProducts({
@@ -42,15 +46,14 @@ export function NovaSolicitacaoPage() {
     enabled: searchEnabled,
   });
 
+  const exactMatch = isInclusao && hasExactProductMatch(results, query);
+
   function handleTypeChange(next: RequestTypeChoice) {
     setRequestType(next);
     setSelectedProduct(null);
-    setFieldErrors((prev) => ({
-      ...prev,
-      type: undefined,
-      selectedProduct: undefined,
-      query: undefined,
-    }));
+    setQuery('');
+    setObservation('');
+    setFieldErrors({});
   }
 
   function validateContinue(): SearchFieldErrors {
@@ -64,22 +67,29 @@ export function NovaSolicitacaoPage() {
     const queryError = minLengthText(
       query,
       3,
-      isAlteracao
+      needsExistingProduct
         ? 'Busque o produto existente com ao menos 3 caracteres.'
         : 'Informe ao menos 3 caracteres para identificar o produto.',
     );
     if (queryError) errors.query = queryError;
 
-    if (isAlteracao && !selectedProduct) {
+    if (isInclusao && exactMatch) {
+      errors.query =
+        'Produto já existe na base unificada. Use Alteração ou Bloqueio para atualizar um item existente.';
+    }
+
+    if (needsExistingProduct && !selectedProduct) {
       errors.selectedProduct =
-        'Selecione na lista o produto da base que deseja atualizar.';
+        'Selecione na lista o produto da base vinculado a esta solicitação.';
     }
 
     const observationError = requiredText(
       observation,
-      isAlteracao
-        ? 'Descreva o que precisa ser atualizado neste produto.'
-        : hasSimilar
+      needsExistingProduct
+        ? requestType === 'ALTERACAO'
+          ? 'Descreva o que precisa ser atualizado neste produto.'
+          : 'Descreva o motivo do bloqueio solicitado.'
+        : hasSimilar && !exactMatch
           ? 'Justifique na observação por que este produto precisa ser cadastrado mesmo com itens parecidos na base.'
           : 'Descreva o motivo da inclusão deste produto.',
     );
@@ -93,14 +103,14 @@ export function NovaSolicitacaoPage() {
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
-    if (isAlteracao && selectedProduct) {
+    if (needsExistingProduct && selectedProduct) {
       navigate('/produtos/dados-do-item', {
         state: {
           searchQuery: selectedProduct.descriptionShort,
           observation: observation.trim(),
           existingProductId: selectedProduct.id,
           hotelIds: [],
-          type: 'ALTERACAO' as const,
+          type: requestType,
         },
       });
       return;
@@ -116,6 +126,29 @@ export function NovaSolicitacaoPage() {
     });
   }
 
+  const typeOptions: { value: RequestTypeChoice; title: string; hint: string }[] = [
+    {
+      value: 'INCLUSAO',
+      title: 'Inclusão',
+      hint: 'Cadastro de item(ns) que ainda não existem na base unificada.',
+    },
+    {
+      value: 'ALTERACAO',
+      title: 'Alteração',
+      hint: 'Atualização de um produto já cadastrado (1 produto por solicitação).',
+    },
+    {
+      value: 'BLOQUEIO_PARCIAL',
+      title: 'Bloqueio parcial',
+      hint: 'Bloqueio parcial de um produto existente na base (1 produto por solicitação).',
+    },
+    {
+      value: 'BLOQUEIO_TOTAL',
+      title: 'Bloqueio total',
+      hint: 'Bloqueio total de um produto existente na base (1 produto por solicitação).',
+    },
+  ];
+
   return (
     <section>
       <PageStageHeader title="Detalhes da Solicitação" stage="Busca" />
@@ -126,61 +159,51 @@ export function NovaSolicitacaoPage() {
         error={fieldErrors.type}
         hint="Defina o tipo antes da busca — isso muda o fluxo da solicitação."
       >
-        <div className="request-type-choice" role="radiogroup" aria-label="Tipo da solicitação">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={requestType === 'INCLUSAO'}
-            className={`request-type-option${isInclusao ? ' request-type-option--active' : ''}`}
-            onClick={() => handleTypeChange('INCLUSAO')}
-          >
-            <strong>Inclusão</strong>
-            <span>Cadastro de item(ns) que ainda não existem na base unificada.</span>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={requestType === 'ALTERACAO'}
-            className={`request-type-option${isAlteracao ? ' request-type-option--active' : ''}`}
-            onClick={() => handleTypeChange('ALTERACAO')}
-          >
-            <strong>Alteração</strong>
-            <span>Atualização de um produto já cadastrado (1 produto por solicitação).</span>
-          </button>
+        <div className="request-type-choice request-type-choice--grid" role="radiogroup" aria-label="Tipo da solicitação">
+          {typeOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="radio"
+              aria-checked={requestType === opt.value}
+              className={`request-type-option${requestType === opt.value ? ' request-type-option--active' : ''}`}
+              onClick={() => handleTypeChange(opt.value)}
+            >
+              <strong>{opt.title}</strong>
+              <span>{opt.hint}</span>
+            </button>
+          ))}
         </div>
       </FormField>
 
       {!requestType ? (
         <p className="info-banner">
-          Selecione <strong>Inclusão</strong> ou <strong>Alteração</strong> para liberar a busca e
-          continuar.
+          Selecione o tipo da solicitação para liberar a busca e continuar.
         </p>
       ) : (
         <>
           <p className="info-banner">
-            {isAlteracao ? (
+            {needsExistingProduct ? (
               <>
-                Busque na <strong>base unificada</strong> e <strong>selecione o produto</strong> que
-                deseja atualizar. A solicitação ficará vinculada a esse item desde o início (um único
-                item).
+                Busque na <strong>base unificada</strong> e <strong>selecione o produto</strong>{' '}
+                vinculado. A solicitação ficará associada a esse item (um único item).
               </>
             ) : (
               <>
-                Digite a descrição pretendida e verifique itens parecidos já cadastrados. Se for
-                realmente um produto novo, justifique na observação e siga para o formulário
-                (vários itens no mesmo lote, se necessário).
+                Digite a descrição pretendida e verifique itens parecidos já cadastrados. Match 100%
+                bloqueia inclusão — use Alteração ou Bloqueio para produtos existentes.
               </>
             )}
           </p>
 
           <div className="nova-solicitacao-fields-row">
             <FormField
-              label={isAlteracao ? 'Buscar produto na base' : 'O que você precisa cadastrar?'}
+              label={needsExistingProduct ? 'Buscar produto na base' : 'O que você precisa cadastrar?'}
               htmlFor="search-query"
               required
               error={fieldErrors.query}
               hint={
-                isAlteracao
+                needsExistingProduct
                   ? 'A partir de 3 caracteres, lista produtos da base. Clique em uma linha para selecionar.'
                   : 'Texto em caixa alta. A partir de 3 caracteres, busca ao vivo em toda a base unificada.'
               }
@@ -201,7 +224,7 @@ export function NovaSolicitacaoPage() {
                   }
                 }}
                 placeholder={
-                  isAlteracao
+                  needsExistingProduct
                     ? 'EX.: AGUA MINERAL, CÓDIGO UNIFICADO...'
                     : 'EX.: AGUA MINERAL, CAMISA MASC ALMO...'
                 }
@@ -216,17 +239,22 @@ export function NovaSolicitacaoPage() {
                 required
                 error={fieldErrors.observation}
                 hint={
-                  isAlteracao
-                    ? 'Explique o que deve ser alterado (descrição, NCM, unidades, etc.).'
-                    : hasSimilar
-                      ? 'Obrigatório quando há itens parecidos: explique por que este produto é diferente ou precisa de novo cadastro.'
-                      : 'Descreva o motivo da inclusão desse produto.'
+                  needsExistingProduct
+                    ? requestType === 'ALTERACAO'
+                      ? 'Explique o que deve ser alterado (descrição, NCM, unidades, etc.).'
+                      : 'Explique o motivo e o escopo do bloqueio solicitado.'
+                    : exactMatch
+                      ? 'Não é possível continuar — produto idêntico já existe na base.'
+                      : hasSimilar
+                        ? 'Obrigatório quando há itens parecidos: explique por que este produto é diferente.'
+                        : 'Descreva o motivo da inclusão deste produto.'
                 }
               >
                 <textarea
                   id="search-observation"
                   rows={3}
                   value={observation}
+                  disabled={exactMatch}
                   onChange={(e) => {
                     setObservation(e.target.value);
                     if (fieldErrors.observation) {
@@ -234,11 +262,11 @@ export function NovaSolicitacaoPage() {
                     }
                   }}
                   placeholder={
-                    isAlteracao
-                      ? 'Ex.: corrigir descrição longa; incluir unidade MGI; atualizar NCM...'
+                    needsExistingProduct
+                      ? 'Ex.: corrigir descrição; bloquear compras na unidade MCZ...'
                       : hasSimilar
-                        ? 'Ex.: embalagem/volume diferente do que consta na base; fornecedor exclusivo da unidade...'
-                        : 'Ex.: novo fornecedor para unidade MCZ; substituição de embalagem...'
+                        ? 'Ex.: embalagem/volume diferente do que consta na base...'
+                        : 'Ex.: novo fornecedor para unidade MCZ...'
                   }
                 />
               </FormField>
@@ -247,7 +275,7 @@ export function NovaSolicitacaoPage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={loading}
+                  disabled={loading || exactMatch}
                   onClick={continuarParaFormulario}
                 >
                   Continuar para o formulário
@@ -256,7 +284,14 @@ export function NovaSolicitacaoPage() {
             </div>
           </div>
 
-          {isAlteracao && selectedProduct ? (
+          {exactMatch ? (
+            <p className="form-field-error" role="alert">
+              Produto já existe na base unificada (match 100%). Não é possível incluir — selecione
+              Alteração ou Bloqueio parcial/total.
+            </p>
+          ) : null}
+
+          {needsExistingProduct && selectedProduct ? (
             <p className="info-banner form-success">
               Produto selecionado:{' '}
               <strong>
@@ -273,11 +308,10 @@ export function NovaSolicitacaoPage() {
             </p>
           ) : null}
 
-          {isInclusao && hasSimilar ? (
+          {isInclusao && hasSimilar && !exactMatch ? (
             <p className="info-banner similar-observation-hint">
-              Foram encontrados itens parecidos na base unificada (SAP). Revise a lista abaixo. Se o
-              produto é realmente novo ou distinto, <strong>justifique na observação</strong> e
-              continue — a justificativa ficará registrada na solicitação.
+              Foram encontrados itens parecidos na base. Revise a lista. Se o produto é realmente
+              novo, <strong>justifique na observação</strong> e continue.
             </p>
           ) : null}
 
@@ -286,11 +320,11 @@ export function NovaSolicitacaoPage() {
             loading={loading}
             searched={searched}
             query={query}
-            advisory={isInclusao && hasSimilar}
-            selectable={isAlteracao}
+            advisory={isInclusao && hasSimilar && !exactMatch}
+            selectable={needsExistingProduct}
             selectedId={selectedProduct?.id}
             onSelect={
-              isAlteracao
+              needsExistingProduct
                 ? (row) => {
                     setSelectedProduct(row);
                     setFieldErrors((prev) => ({ ...prev, selectedProduct: undefined }));

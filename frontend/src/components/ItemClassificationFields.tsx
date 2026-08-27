@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { FormField } from './FormField';
+import { SearchableSelect } from './SearchableSelect';
 import { filterGroupsForFamily, filterSubgroupsForGroup } from '../lib/pdmCascade';
 import type { CatalogGroup, CatalogSubgroup, Family } from '../lib/types';
 import './PdmClassificationFields.css';
@@ -48,14 +49,44 @@ export function ItemClassificationFields({
   onClearError,
 }: Props) {
   const visibleGroups = useMemo(() => {
-    if (familyContext?.groupId) return filterGroupsForFamily(groups, familyContext);
-    return groups;
+    const list = familyContext?.groupId
+      ? filterGroupsForFamily(groups, familyContext)
+      : groups;
+    return [...list].sort(
+      (a, b) =>
+        a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
+        a.code.localeCompare(b.code),
+    );
   }, [groups, familyContext]);
 
   const visibleSubgroups = useMemo(() => {
     if (!value.groupId) return [];
-    return filterSubgroupsForGroup(subgroups, value.groupId);
+    return [...filterSubgroupsForGroup(subgroups, value.groupId)].sort(
+      (a, b) =>
+        a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
+        a.code.localeCompare(b.code),
+    );
   }, [subgroups, value.groupId]);
+
+  const groupOptions = useMemo(
+    () =>
+      visibleGroups.map((g) => ({
+        id: g.id,
+        label: `${g.code} — ${g.name}`,
+        searchText: `${g.code} ${g.name}`,
+      })),
+    [visibleGroups],
+  );
+
+  const subgroupOptions = useMemo(
+    () =>
+      visibleSubgroups.map((sg) => ({
+        id: sg.id,
+        label: `${sg.code} — ${sg.name}`,
+        searchText: `${sg.code} ${sg.name}`,
+      })),
+    [visibleSubgroups],
+  );
 
   function handleGroupChange(groupId: string) {
     if (readOnly) return;
@@ -111,18 +142,22 @@ export function ItemClassificationFields({
         variant="semplice"
         className="pdm-span-4"
       >
-        <select
-          value={value.groupId}
-          disabled={readOnly}
-          onChange={(e) => handleGroupChange(e.target.value)}
-        >
-          <option value="">Selecione o grupo…</option>
-          {visibleGroups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.code} — {g.name}
+        {readOnly ? (
+          <select value={value.groupId} disabled>
+            <option value={value.groupId}>
+              {groupOptions.find((o) => o.id === value.groupId)?.label ?? '—'}
             </option>
-          ))}
-        </select>
+          </select>
+        ) : (
+          <SearchableSelect
+            label=""
+            options={groupOptions}
+            value={value.groupId}
+            onChange={handleGroupChange}
+            placeholder="Digite código ou nome do grupo…"
+            emptyLabel="Selecione o grupo…"
+          />
+        )}
       </FormField>
 
       <FormField
@@ -133,20 +168,25 @@ export function ItemClassificationFields({
         variant="semplice"
         className="pdm-span-4"
       >
-        <select
-          value={value.subgroupId}
-          onChange={(e) => handleSubgroupChange(e.target.value)}
-          disabled={readOnly || !value.groupId}
-        >
-          <option value="">
-            {value.groupId ? 'Selecione o subgrupo…' : 'Selecione o grupo primeiro'}
-          </option>
-          {visibleSubgroups.map((sg) => (
-            <option key={sg.id} value={sg.id}>
-              {sg.code} — {sg.name}
+        {readOnly ? (
+          <select value={value.subgroupId} disabled>
+            <option value={value.subgroupId}>
+              {subgroupOptions.find((o) => o.id === value.subgroupId)?.label ?? '—'}
             </option>
-          ))}
-        </select>
+          </select>
+        ) : (
+          <SearchableSelect
+            label=""
+            options={subgroupOptions}
+            value={value.subgroupId}
+            onChange={handleSubgroupChange}
+            disabled={!value.groupId}
+            placeholder={
+              value.groupId ? 'Digite código ou nome do subgrupo…' : 'Selecione o grupo primeiro'
+            }
+            emptyLabel={value.groupId ? 'Selecione o subgrupo…' : 'Selecione o grupo primeiro'}
+          />
+        )}
       </FormField>
     </>
   );

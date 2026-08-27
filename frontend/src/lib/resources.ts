@@ -161,7 +161,7 @@ export const requestsApi = {
   create: (body: {
     hotelIds: string[];
     familyId: string;
-    type?: 'INCLUSAO' | 'ALTERACAO';
+    type?: 'INCLUSAO' | 'ALTERACAO' | 'BLOQUEIO_PARCIAL' | 'BLOQUEIO_TOTAL';
     items: {
       productId?: string;
       descriptionShort: string;
@@ -175,6 +175,7 @@ export const requestsApi = {
       legacyCode?: string;
       law116?: string;
       productLink?: string;
+      productLinks?: string[];
       itemObservation?: string;
       sortOrder?: number;
     }[];
@@ -192,7 +193,7 @@ export const requestsApi = {
     body: {
       hotelIds?: string[];
       familyId?: string;
-      type?: 'INCLUSAO' | 'ALTERACAO';
+      type?: 'INCLUSAO' | 'ALTERACAO' | 'BLOQUEIO_PARCIAL' | 'BLOQUEIO_TOTAL';
       items?: {
         productId?: string;
         descriptionShort: string;
@@ -206,6 +207,7 @@ export const requestsApi = {
         legacyCode?: string;
         law116?: string;
         productLink?: string;
+        productLinks?: string[];
         itemObservation?: string;
         sortOrder?: number;
       }[];
@@ -213,6 +215,7 @@ export const requestsApi = {
       targetStage?: 'SOLICITANTE' | 'APROVADOR';
       observation?: string;
       requestDescription?: string;
+      editNote?: string;
     },
   ) =>
     apiFetch<Request>(`/requests/${id}`, {
@@ -225,6 +228,11 @@ export const requestsApi = {
     }),
   sendToApprover: (id: string, message: string) =>
     apiFetch<Request>(`/requests/${id}/send-to-approver`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
+  returnToRequester: (id: string, message: string) =>
+    apiFetch<Request>(`/requests/${id}/return-to-requester`, {
       method: 'POST',
       body: JSON.stringify({ message }),
     }),

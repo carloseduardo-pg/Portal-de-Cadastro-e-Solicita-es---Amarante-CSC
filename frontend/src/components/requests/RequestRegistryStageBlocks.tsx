@@ -1,5 +1,5 @@
 /** Blocos de etapa principal na tela Solicitações (lista analítica). */
-export type RegistryStageTab = 'solicitante' | 'aprovador' | 'compliance' | 'encerrado';
+export type RegistryStageTab = 'solicitante' | 'aprovador' | 'encerrado';
 
 export type RegistryStageSummary = Record<RegistryStageTab, number>;
 
@@ -24,12 +24,6 @@ export const REGISTRY_STAGE_BLOCKS: BlockDef[] = [
     hint: 'Aguardando aprovação',
   },
   {
-    id: 'compliance',
-    label: 'Compliance',
-    color: '#0F766E',
-    hint: 'Aguardando compliance',
-  },
-  {
     id: 'encerrado',
     label: 'Encerrado',
     color: '#094111',
@@ -44,7 +38,7 @@ type RequestRegistryStageBlocksProps = {
   ariaLabel?: string;
 };
 
-/** KPIs clicáveis por etapa principal do fluxo. */
+/** KPIs clicáveis por etapa principal do fluxo (Produtos — sem Compliance). */
 export function RequestRegistryStageBlocks({
   tab,
   summary,

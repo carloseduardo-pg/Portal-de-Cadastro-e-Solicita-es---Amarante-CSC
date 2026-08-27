@@ -44,7 +44,7 @@ const OPERATOR_STAGE_OPTIONS = [
   { value: 'RASCUNHO', label: 'Rascunho' },
   { value: 'SOLICITANTE', label: 'Solicitante' },
   { value: 'APROVADOR', label: 'Aprovador' },
-  { value: 'COMPLIANCE', label: 'Compliance' },
+  { value: 'RETORNO_SOLICITANTE', label: 'Retorno solicitante' },
   { value: 'ENCERRADO', label: 'Encerramento' },
 ];
 
@@ -143,6 +143,8 @@ export function RequestRegistrySearch({
             <option value="">Todos</option>
             <option value="INCLUSAO">Inclusão</option>
             <option value="ALTERACAO">Alteração</option>
+            <option value="BLOQUEIO_PARCIAL">Bloqueio parcial</option>
+            <option value="BLOQUEIO_TOTAL">Bloqueio total</option>
           </select>
         </label>
 

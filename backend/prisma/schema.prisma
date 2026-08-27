@@ -13,6 +13,15 @@ datasource db {
 enum RequestType {
   INCLUSAO
   ALTERACAO
+  BLOQUEIO_PARCIAL
+  BLOQUEIO_TOTAL
+}
+
+/** Bloqueio aplicado na base após aprovação de solicitação de bloqueio. */
+enum ProductBlockState {
+  NONE
+  PARTIAL
+  TOTAL
 }
 
 enum RequestState {
@@ -215,9 +224,10 @@ model Product {
   notes            String?
   itemValue        Decimal?       @map("item_value") @db.Decimal(14, 2)
   purchaseQtyTotal Decimal?       @map("purchase_qty_total") @db.Decimal(14, 3)
-  active           Boolean        @default(true)
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  active           Boolean           @default(true)
+  blockState       ProductBlockState @default(NONE) @map("block_state")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz
 
   family         Family          @relation(fields: [familyId], references: [id])
   measureUnit    MeasureUnit     @relation(fields: [measureUnitId], references: [id])
@@ -225,9 +235,22 @@ model Product {
   hotels         ProductHotel[]
   attributeValues ProductAttributeValue[]
   requestItems   RequestItem[]
+  links          ProductLink[]
 
   @@index([descriptionShort])
   @@map("products")
+}
+
+model ProductLink {
+  id        String  @id @default(uuid()) @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  url       String
+  sortOrder Int     @default(0) @map("sort_order")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_links")
 }
 
 model ProductHotel {
@@ -334,9 +357,22 @@ model RequestItem {
   measureUnit     MeasureUnit?     @relation(fields: [measureUnitId], references: [id])
   costCenter      CostCenter?      @relation(fields: [costCenterId], references: [id])
   ncmSuggestions  NcmSuggestion[]
+  links           RequestItemLink[]
 
   @@index([requestId])
   @@map("request_items")
+}
+
+model RequestItemLink {
+  id            String @id @default(uuid()) @db.Uuid
+  requestItemId String @map("request_item_id") @db.Uuid
+  url           String
+  sortOrder     Int    @default(0) @map("sort_order")
+
+  requestItem RequestItem @relation(fields: [requestItemId], references: [id], onDelete: Cascade)
+
+  @@index([requestItemId])
+  @@map("request_item_links")
 }
 
 model RequestStage {

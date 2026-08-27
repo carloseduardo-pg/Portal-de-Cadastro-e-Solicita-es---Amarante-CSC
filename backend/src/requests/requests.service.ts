@@ -4,15 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ProductSource, RequestState, RequestType, UserRole } from '@prisma/client';
+import { Prisma, ProductBlockState, ProductSource, RequestState, RequestType, UserRole } from '@prisma/client';
 import { pageResult, skipTake, type PageParams } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateRequestDto, UpdateRequestDto } from './dto/create-request.dto';
+import { isBlockRequestType, isExistingProductRequestType } from './request-type.helpers';
 
 const ACTIONABLE_STATES: RequestState[] = [
   RequestState.SOLICITANTE,
   RequestState.APROVADOR,
-  RequestState.COMPLIANCE,
   RequestState.RETORNO_SOLICITANTE,
 ];
 
@@ -26,20 +26,19 @@ const EDITABLE_STATES: RequestState[] = [
   RequestState.RASCUNHO,
   RequestState.SOLICITANTE,
   RequestState.RETORNO_SOLICITANTE,
+  RequestState.APROVADOR,
 ];
 
-/** Etapas visíveis na caixa de entrada conforme o perfil. */
+/** Etapas visíveis na caixa de entrada conforme o perfil (Produtos — sem Compliance). */
 function inboxStatesForRole(role: UserRole): RequestState[] {
   switch (role) {
     case UserRole.ADMIN:
-      return [RequestState.SOLICITANTE, RequestState.APROVADOR, RequestState.COMPLIANCE];
+      return [RequestState.SOLICITANTE, RequestState.APROVADOR];
     case UserRole.APROVADOR:
       return [RequestState.APROVADOR];
-    case UserRole.COMPLIANCE:
-      return [RequestState.COMPLIANCE];
     case UserRole.SOLICITANTE:
     default:
-      return [RequestState.SOLICITANTE];
+      return [RequestState.SOLICITANTE, RequestState.RETORNO_SOLICITANTE];
   }
 }
 
@@ -77,8 +76,6 @@ function resolveRegistryBucketFilter(bucket?: string): RequestState[] | undefine
       return SOLICITANTE_BUCKET_STATES;
     case 'aprovador':
       return [RequestState.APROVADOR];
-    case 'compliance':
-      return [RequestState.COMPLIANCE];
     case 'encerrado':
       return ENCERRADO_BUCKET_STATES;
     default:
@@ -139,7 +136,6 @@ function openStageBefore(before: Date): Prisma.RequestWhereInput {
 export type RegistryStageSummary = {
   solicitante: number;
   aprovador: number;
-  compliance: number;
   encerrado: number;
 };
 
@@ -275,13 +271,12 @@ export class RequestsService {
 
   /** Contagens por etapa principal (blocos da tela Solicitações). */
   async registryStageSummary(): Promise<RegistryStageSummary> {
-    const [solicitante, aprovador, compliance, encerrado] = await Promise.all([
+    const [solicitante, aprovador, encerrado] = await Promise.all([
       this.prisma.request.count({ where: { state: { in: SOLICITANTE_BUCKET_STATES } } }),
       this.prisma.request.count({ where: { state: RequestState.APROVADOR } }),
-      this.prisma.request.count({ where: { state: RequestState.COMPLIANCE } }),
       this.prisma.request.count({ where: { state: { in: ENCERRADO_BUCKET_STATES } } }),
     ]);
-    return { solicitante, aprovador, compliance, encerrado };
+    return { solicitante, aprovador, encerrado };
   }
 
   /** @deprecated alias — use findRegistry */
@@ -658,23 +653,63 @@ export class RequestsService {
     });
   }
 
+  private extractItemLinks(item: {
+    productLink?: string | null;
+    productLinks?: string[] | null;
+  }): string[] {
+    const fromArray = (item.productLinks ?? [])
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const single = item.productLink?.trim();
+    if (single && !fromArray.includes(single)) fromArray.unshift(single);
+    return fromArray;
+  }
+
   private normalizeItemInput(items: CreateRequestDto['items']) {
-    return items.map((item, idx) => ({
-      descriptionShort: item.descriptionShort.trim().toUpperCase(),
-      descriptionLong: item.descriptionLong?.trim().toUpperCase() ?? null,
-      productId: item.productId ?? null,
-      measureUnitId: item.measureUnitId ?? null,
-      costCenterId: item.costCenterId ?? null,
-      source: item.source ?? ProductSource.NATIONAL,
-      itemValue: item.itemValue != null ? item.itemValue : null,
-      purchaseQtyTotal: item.purchaseQtyTotal != null ? item.purchaseQtyTotal : null,
-      unifiedCode: item.unifiedCode?.trim() || null,
-      legacyCode: item.legacyCode?.trim().toUpperCase() || null,
-      law116: item.law116?.trim() || null,
-      productLink: item.productLink?.trim() || null,
-      itemObservation: item.itemObservation?.trim() || null,
-      sortOrder: item.sortOrder ?? idx,
-    }));
+    return items.map((item, idx) => {
+      const links = this.extractItemLinks(item);
+      return {
+        descriptionShort: item.descriptionShort.trim().toUpperCase(),
+        descriptionLong: item.descriptionLong?.trim().toUpperCase() ?? null,
+        productId: item.productId ?? null,
+        measureUnitId: item.measureUnitId ?? null,
+        costCenterId: item.costCenterId ?? null,
+        source: item.source ?? ProductSource.NATIONAL,
+        itemValue: item.itemValue != null ? item.itemValue : null,
+        purchaseQtyTotal: item.purchaseQtyTotal != null ? item.purchaseQtyTotal : null,
+        unifiedCode: item.unifiedCode?.trim() || null,
+        legacyCode: item.legacyCode?.trim().toUpperCase() || null,
+        law116: item.law116?.trim() || null,
+        productLink: links[0] ?? null,
+        itemLinks: links,
+        itemObservation: item.itemObservation?.trim() || null,
+        sortOrder: item.sortOrder ?? idx,
+      };
+    });
+  }
+
+  private async assertNoExactDuplicateInBase(descriptionShort: string) {
+    const normalized = descriptionShort.trim().toUpperCase();
+    const exact = await this.prisma.product.findFirst({
+      where: { active: true, descriptionShort: normalized },
+    });
+    if (exact) {
+      throw new BadRequestException(
+        'Produto com descrição idêntica já existe na base unificada. Não é possível solicitar inclusão duplicada.',
+      );
+    }
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT p.id
+      FROM products p
+      WHERE p.active = true
+        AND similarity(p.description_short, ${normalized}) >= 0.999
+      LIMIT 1
+    `;
+    if (rows.length) {
+      throw new BadRequestException(
+        'Match de 100% com produto existente na base unificada. Não é possível continuar com a inclusão.',
+      );
+    }
   }
 
   private async assertNoSimilarProductInBase(descriptionShort: string) {
@@ -703,8 +738,16 @@ export class RequestsService {
       if (!item.descriptionShort) {
         throw new BadRequestException('Descrição curta é obrigatória em todos os itens.');
       }
-      if (type === RequestType.INCLUSAO && !item.productId && !observation?.trim()) {
-        await this.assertNoSimilarProductInBase(item.descriptionShort);
+      if (type === RequestType.INCLUSAO && !item.productId) {
+        await this.assertNoExactDuplicateInBase(item.descriptionShort);
+        if (!observation?.trim()) {
+          await this.assertNoSimilarProductInBase(item.descriptionShort);
+        }
+      }
+      if (isExistingProductRequestType(type) && !item.productId) {
+        throw new BadRequestException(
+          'Selecione o produto existente na base para alteração ou bloqueio.',
+        );
       }
       if (submit) {
         if (!item.descriptionLong) {
@@ -763,9 +806,12 @@ export class RequestsService {
   }
 
   private assertObservation(observation: string | undefined | null, type: RequestType) {
-    if (type === RequestType.INCLUSAO && !observation?.trim()) {
+    if (
+      (type === RequestType.INCLUSAO || isExistingProductRequestType(type)) &&
+      !observation?.trim()
+    ) {
       throw new BadRequestException(
-        'Observação é obrigatória: descreva o motivo da inclusão ou atualização do produto.',
+        'Observação é obrigatória: descreva o motivo da solicitação.',
       );
     }
   }
@@ -801,7 +847,14 @@ export class RequestsService {
         state,
         submittedAt: now,
         expiresAt: null,
-        items: { create: items },
+        items: {
+          create: items.map(({ itemLinks, ...item }) => ({
+            ...item,
+            links: itemLinks.length
+              ? { create: itemLinks.map((url, sortOrder) => ({ url, sortOrder })) }
+              : undefined,
+          })),
+        },
         hotels: { create: hotelIds.map((hotelId) => ({ hotelId })) },
         stages: {
           create:
@@ -849,18 +902,28 @@ export class RequestsService {
     const existing = await this.prisma.request.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Solicitação não encontrada');
     const role = await this.resolveUserRole(userId);
+    const requesterEditable = new Set<RequestState>([
+      RequestState.RASCUNHO,
+      RequestState.SOLICITANTE,
+      RequestState.RETORNO_SOLICITANTE,
+    ]);
     const canEdit =
-      role === UserRole.ADMIN || existing.requesterId === userId;
+      role === UserRole.ADMIN ||
+      (existing.requesterId === userId && requesterEditable.has(existing.state)) ||
+      (role === UserRole.APROVADOR && existing.state === RequestState.APROVADOR);
     if (!canEdit) {
-      throw new ForbiddenException('Somente o solicitante ou admin pode editar esta solicitação.');
+      throw new ForbiddenException('Sem permissão para editar esta solicitação.');
     }
     if (!EDITABLE_STATES.includes(existing.state)) {
       throw new BadRequestException(
-        'Só é possível editar solicitações na etapa Solicitante (ou devolvidas).',
+        'Só é possível editar solicitações nas etapas editáveis do fluxo.',
       );
     }
 
-    const target = this.resolveTargetStage(dto);
+    const isApproverEdit =
+      existing.state === RequestState.APROVADOR &&
+      (role === UserRole.APROVADOR || role === UserRole.ADMIN);
+    const target = isApproverEdit ? 'APROVADOR' : this.resolveTargetStage(dto);
     const strict = target === 'APROVADOR';
     const items = dto.items ? this.normalizeItemInput(dto.items) : undefined;
     const hotelIds = dto.hotelIds?.length || dto.hotelId
@@ -889,9 +952,14 @@ export class RequestsService {
     }
 
     const now = new Date();
-    const nextState =
-      target === 'APROVADOR' ? RequestState.APROVADOR : RequestState.SOLICITANTE;
+    const nextState = isApproverEdit
+      ? RequestState.APROVADOR
+      : target === 'APROVADOR'
+        ? RequestState.APROVADOR
+        : RequestState.SOLICITANTE;
+    const editNote = dto.editNote?.trim();
     const stageMessage =
+      editNote ||
       (dto.observation !== undefined ? dto.observation : existing.observation)?.trim() ||
       (target === 'APROVADOR'
         ? 'Rascunho enviado direto ao aprovador'
@@ -899,10 +967,21 @@ export class RequestsService {
 
     await this.prisma.$transaction(async (tx) => {
       if (items) {
-        await tx.requestItem.deleteMany({ where: { requestId: id } });
-        await tx.requestItem.createMany({
-          data: items.map((item) => ({ ...item, requestId: id })),
+        await tx.requestItemLink.deleteMany({
+          where: { requestItem: { requestId: id } },
         });
+        await tx.requestItem.deleteMany({ where: { requestId: id } });
+        for (const { itemLinks, ...item } of items) {
+          await tx.requestItem.create({
+            data: {
+              ...item,
+              requestId: id,
+              links: itemLinks.length
+                ? { create: itemLinks.map((url, sortOrder) => ({ url, sortOrder })) }
+                : undefined,
+            },
+          });
+        }
       }
 
       if (dto.hotelIds?.length || dto.hotelId) {
@@ -930,7 +1009,7 @@ export class RequestsService {
         },
       });
 
-      if (target === 'APROVADOR') {
+      if (target === 'APROVADOR' && !isApproverEdit) {
         await tx.requestStage.updateMany({
           where: { requestId: id, finishedAt: null },
           data: {
@@ -948,7 +1027,30 @@ export class RequestsService {
             message: null,
           },
         });
-      } else if (existing.state !== RequestState.SOLICITANTE) {
+      } else if (
+        items ||
+        dto.observation !== undefined ||
+        dto.requestDescription !== undefined ||
+        editNote
+      ) {
+        await tx.requestStage.updateMany({
+          where: { requestId: id, finishedAt: null },
+          data: {
+            finishedAt: now,
+            message: stageMessage,
+            userId,
+          },
+        });
+        await tx.requestStage.create({
+          data: {
+            requestId: id,
+            stage: nextState,
+            userId,
+            startedAt: now,
+            message: null,
+          },
+        });
+      } else if (existing.state !== RequestState.SOLICITANTE && !isApproverEdit) {
         await tx.requestStage.updateMany({
           where: { requestId: id, finishedAt: null },
           data: {
@@ -1047,6 +1149,53 @@ export class RequestsService {
   }
 
   /**
+   * Aprovador devolve solicitação ao solicitante — reinicia timer SLA na caixa.
+   */
+  async returnToRequester(requestId: string, userId: string, message: string) {
+    const trimmed = message?.trim();
+    if (!trimmed) {
+      throw new BadRequestException(
+        'Informe um comentário ao devolver a solicitação ao solicitante.',
+      );
+    }
+
+    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    if (!request) throw new NotFoundException('Solicitação não encontrada');
+    if (request.state !== RequestState.APROVADOR) {
+      throw new BadRequestException(
+        'Só é possível devolver solicitações na etapa Aprovador.',
+      );
+    }
+    const role = await this.resolveUserRole(userId);
+    if (role !== UserRole.ADMIN && role !== UserRole.APROVADOR) {
+      throw new ForbiddenException('Sem permissão para devolver esta solicitação.');
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.requestStage.updateMany({
+        where: { requestId, finishedAt: null },
+        data: { finishedAt: now, userId, message: trimmed },
+      });
+      await tx.request.update({
+        where: { id: requestId },
+        data: { state: RequestState.RETORNO_SOLICITANTE },
+      });
+      await tx.requestStage.create({
+        data: {
+          requestId,
+          stage: RequestState.RETORNO_SOLICITANTE,
+          userId,
+          startedAt: now,
+          message: null,
+        },
+      });
+    });
+
+    return this.findOne(requestId);
+  }
+
+  /**
    * Solicitante revisa a caixa e envia ao aprovador — exige comentário de conclusão da etapa.
    */
   async sendToApprover(requestId: string, userId: string, message: string) {
@@ -1059,9 +1208,9 @@ export class RequestsService {
 
     const request = await this.prisma.request.findUnique({ where: { id: requestId } });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
-    if (request.state !== RequestState.SOLICITANTE) {
+    if (request.state !== RequestState.SOLICITANTE && request.state !== RequestState.RETORNO_SOLICITANTE) {
       throw new BadRequestException(
-        'Só é possível enviar ao aprovador solicitações na etapa Solicitante.',
+        'Só é possível enviar ao aprovador solicitações na etapa Solicitante ou Retorno solicitante.',
       );
     }
     const role = await this.resolveUserRole(userId);
@@ -1135,6 +1284,7 @@ export class RequestsService {
           orderBy: { sortOrder: 'asc' },
           include: {
             ...this.requestItemInclude(),
+            links: { orderBy: { sortOrder: 'asc' } },
             ncmSuggestions: { orderBy: { rank: 'asc' } },
           },
         },
@@ -1190,13 +1340,20 @@ export class RequestsService {
     const ncmByItem = new Map<string, string>();
     for (const item of request.items) {
       const pair = itemNcms.find((x) => x.itemId === item.id);
-      const ncm = pair?.ncm?.trim() || item.ncmCode?.trim();
-      if (!ncm) {
+      let ncm = pair?.ncm?.trim() || item.ncmCode?.trim();
+      if (!ncm && item.productId) {
+        const product = await this.prisma.product.findUnique({
+          where: { id: item.productId },
+          select: { ncmCode: true },
+        });
+        ncm = product?.ncmCode?.trim() ?? '';
+      }
+      if (!ncm && !isBlockRequestType(request.type)) {
         throw new BadRequestException(
           'ITM-09: confirme o NCM de todos os itens antes de finalizar.',
         );
       }
-      ncmByItem.set(item.id, ncm);
+      if (ncm) ncmByItem.set(item.id, ncm);
     }
 
     const now = new Date();
@@ -1207,7 +1364,6 @@ export class RequestsService {
         where: { requestId, finishedAt: null },
         data: { finishedAt: now, userId, message: trimmed },
       });
-      // TODO: etapa COMPLIANCE — quando existir, avançar para COMPLIANCE em vez de ENCERRADO.
       await tx.requestStage.create({
         data: {
           requestId,
@@ -1268,6 +1424,31 @@ export class RequestsService {
       : [request.hotelId];
 
     for (const item of request.items) {
+      if (isBlockRequestType(request.type)) {
+        if (!item.productId) {
+          throw new BadRequestException(
+            `Bloqueio "${item.descriptionShort}": vincule o produto existente na base.`,
+          );
+        }
+        const blockState =
+          request.type === RequestType.BLOQUEIO_TOTAL
+            ? ProductBlockState.TOTAL
+            : ProductBlockState.PARTIAL;
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            blockState,
+            active: blockState === ProductBlockState.TOTAL ? false : true,
+            notes: item.itemObservation?.trim() || null,
+          },
+        });
+        await tx.requestItem.update({
+          where: { id: item.id },
+          data: { productId: item.productId },
+        });
+        continue;
+      }
+
       if (!item.measureUnitId) {
         throw new BadRequestException(
           `Item "${item.descriptionShort}": unidade de medida obrigatória para cadastro na base.`,
@@ -1279,10 +1460,10 @@ export class RequestsService {
         );
       }
 
-      const ncm = ncmByItem.get(item.id)!;
+      const ncm = ncmByItem.get(item.id) ?? '';
       const productFields = {
         descriptionShort: item.descriptionShort.trim().toUpperCase(),
-        descriptionLong: item.descriptionLong.trim().toUpperCase(),
+        descriptionLong: item.descriptionLong!.trim().toUpperCase(),
         familyId: request.familyId,
         measureUnitId: item.measureUnitId,
         source: item.source,
@@ -1292,10 +1473,11 @@ export class RequestsService {
         notes: item.itemObservation?.trim() || null,
         itemValue: item.itemValue,
         purchaseQtyTotal: item.purchaseQtyTotal,
-        ncmCode: ncm,
-        ncmConfirmedById: userId,
-        ncmConfirmedAt: now,
+        ncmCode: ncm || null,
+        ncmConfirmedById: ncm ? userId : null,
+        ncmConfirmedAt: ncm ? now : null,
         active: true,
+        blockState: ProductBlockState.NONE,
       };
 
       let productId: string;
@@ -1313,9 +1495,9 @@ export class RequestsService {
         });
         productId = item.productId;
       } else {
-        if (request.type === RequestType.ALTERACAO) {
+        if (isExistingProductRequestType(request.type)) {
           throw new BadRequestException(
-            `Alteração "${item.descriptionShort}": vincule o produto existente na base.`,
+            `Solicitação "${item.descriptionShort}": vincule o produto existente na base.`,
           );
         }
         const unifiedCode = await this.resolveUnifiedCodeForNewProduct(tx, item, request.familyId);
@@ -1323,6 +1505,21 @@ export class RequestsService {
           data: { ...productFields, unifiedCode },
         });
         productId = created.id;
+      }
+
+      await tx.productLink.deleteMany({ where: { productId } });
+      const itemLinks = await tx.requestItemLink.findMany({
+        where: { requestItemId: item.id },
+        orderBy: { sortOrder: 'asc' },
+      });
+      if (itemLinks.length) {
+        await tx.productLink.createMany({
+          data: itemLinks.map((link, sortOrder) => ({
+            productId,
+            url: link.url,
+            sortOrder,
+          })),
+        });
       }
 
       await tx.productHotel.deleteMany({ where: { productId } });
@@ -1339,7 +1536,7 @@ export class RequestsService {
 
       await tx.requestItem.update({
         where: { id: item.id },
-        data: { productId, ncmCode: ncm, ncmConfirmed: true },
+        data: { productId, ncmCode: ncm || null, ncmConfirmed: Boolean(ncm) },
       });
     }
   }

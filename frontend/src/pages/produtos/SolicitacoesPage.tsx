@@ -21,12 +21,7 @@ import '../../components/HotelCodeBadges.css';
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 
-const REGISTRY_TABS: RegistryStageTab[] = [
-  'solicitante',
-  'aprovador',
-  'compliance',
-  'encerrado',
-];
+const REGISTRY_TABS: RegistryStageTab[] = ['solicitante', 'aprovador', 'encerrado'];
 
 function parseStageTab(value: string | null): RegistryStageTab | '' {
   if (value && REGISTRY_TABS.includes(value as RegistryStageTab)) {
@@ -151,6 +146,8 @@ export function SolicitacoesPage() {
           <option value="">Tipo (todos)</option>
           <option value="INCLUSAO">Inclusão</option>
           <option value="ALTERACAO">Alteração</option>
+          <option value="BLOQUEIO_PARCIAL">Bloqueio parcial</option>
+          <option value="BLOQUEIO_TOTAL">Bloqueio total</option>
         </select>
         <select
           aria-label="Quantidade de itens"

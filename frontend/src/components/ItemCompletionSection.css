@@ -29,6 +29,16 @@
   padding: 16px;
 }
 
+.item-link-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.item-link-row input {
+  flex: 1;
+}
+
 .item-completion-upload-row {
   display: flex;
   flex-wrap: wrap;

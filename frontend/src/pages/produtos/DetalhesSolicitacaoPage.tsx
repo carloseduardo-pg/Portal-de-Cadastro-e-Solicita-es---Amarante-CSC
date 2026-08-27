@@ -6,11 +6,17 @@ import { ItemCompletionSection } from '../../components/ItemCompletionSection';
 import { ItemFolderStrip } from '../../components/ItemFolderStrip';
 import { PageStageHeader } from '../../components/PageStageHeader';
 import { RequestDescriptionBlock } from '../../components/RequestDescriptionBlock';
+import { RequestItemCompareTable } from '../../components/requests/RequestItemCompareTable';
 import { RequestTimeline } from '../../components/RequestTimeline';
 import { SolicitacaoPreForm } from '../../components/SolicitacaoPreForm';
 import { findFamilyById, classificationFromFamily } from '../../lib/pdmFolders';
-import { requestStateLabel } from '../../lib/requestLabels';
-import { catalogApi, requestsApi } from '../../lib/resources';
+import {
+  isExistingProductRequestType,
+  requestStateLabel,
+  requestTypeLabel,
+} from '../../lib/requestLabels';
+import { toFormUppercase } from '../../lib/formText';
+import { catalogApi, productsApi, requestsApi } from '../../lib/resources';
 import type {
   CatalogGroup,
   CatalogSubgroup,
@@ -18,6 +24,7 @@ import type {
   Family,
   Hotel,
   MeasureUnit,
+  ProductBase,
   Request,
   RequestItem,
 } from '../../lib/types';
@@ -29,9 +36,11 @@ import '../../components/SolicitacaoPreForm.css';
 import '../../components/RequestDescriptionBlock.css';
 import '../../components/ItemCompletionSection.css';
 import '../../components/RequestTimeline.css';
+import '../../components/requests/RequestItemCompareTable.css';
 
 type ViewItem = {
   id: string;
+  productId?: string | null;
   groupId: string;
   subgroupId: string;
   descriptionShort: string;
@@ -45,6 +54,7 @@ type ViewItem = {
   legacyCode: string;
   law116: string;
   productLink: string;
+  productLinks: string[];
   itemObservation: string;
   ncmSuggestions: RequestItem['ncmSuggestions'];
   ncmCode: string | null;
@@ -56,7 +66,7 @@ function stageLabel(state: string) {
 }
 
 /**
- * Detalhe da solicitação — layout do formulário (leitura) + ações por etapa + timeline.
+ * Detalhe da solicitação — formulário + ações por etapa + timeline.
  */
 export function DetalhesSolicitacaoPage() {
   const { id } = useParams<{ id: string }>();
@@ -76,7 +86,10 @@ export function DetalhesSolicitacaoPage() {
   const [selectedNcm, setSelectedNcm] = useState<Record<string, string>>({});
   const [customNcm, setCustomNcm] = useState<Record<string, string>>({});
   const [stageComment, setStageComment] = useState('');
+  const [editNote, setEditNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [baseProduct, setBaseProduct] = useState<ProductBase | null>(null);
+  const [baseLoading, setBaseLoading] = useState(false);
 
   useEffect(() => {
     void Promise.all([
@@ -134,6 +147,7 @@ export function DetalhesSolicitacaoPage() {
     setItems(
       request.items.map((it) => ({
         id: it.id,
+        productId: it.productId,
         groupId: gId,
         subgroupId: sgId,
         descriptionShort: it.descriptionShort,
@@ -146,7 +160,8 @@ export function DetalhesSolicitacaoPage() {
         unifiedCode: it.unifiedCode ?? '',
         legacyCode: it.legacyCode ?? '',
         law116: it.law116 ?? '',
-        productLink: it.productLink ?? '',
+        productLink: it.productLink ?? it.links?.[0]?.url ?? '',
+        productLinks: it.links?.map((l) => l.url) ?? (it.productLink ? [it.productLink] : []),
         itemObservation: it.itemObservation ?? '',
         ncmSuggestions: it.ncmSuggestions,
         ncmCode: it.ncmCode,
@@ -171,6 +186,7 @@ export function DetalhesSolicitacaoPage() {
   }, [hotelIds]);
 
   const item = items[currentItem] ?? items[0];
+  const requestItem = request?.items[currentItem] ?? request?.items[0];
   const selectedFamily = findFamilyById(families, request?.family?.id ?? '');
   const familyId = request?.family?.id ?? '';
 
@@ -190,8 +206,71 @@ export function DetalhesSolicitacaoPage() {
     request?.state === 'SOLICITANTE' ||
     request?.state === 'RETORNO_SOLICITANTE';
   const isSolicitante = request?.state === 'SOLICITANTE';
+  const isReturnToRequester = request?.state === 'RETORNO_SOLICITANTE';
   const isApprover = request?.state === 'APROVADOR';
-  const canConcludeStage = isSolicitante || isApprover;
+  const canSendToApprover = isSolicitante || isReturnToRequester;
+  const canConcludeStage = canSendToApprover || isApprover;
+  const approverEditable = isApprover;
+
+  useEffect(() => {
+    const productId = requestItem?.productId;
+    if (!productId || !isApprover) {
+      setBaseProduct(null);
+      return;
+    }
+    setBaseLoading(true);
+    void productsApi
+      .get(productId)
+      .then(setBaseProduct)
+      .catch(() => setBaseProduct(null))
+      .finally(() => setBaseLoading(false));
+  }, [requestItem?.productId, isApprover]);
+
+  function patchCurrentItem(patch: Partial<ViewItem>) {
+    setItems((prev) =>
+      prev.map((it, idx) => (idx === currentItem ? { ...it, ...patch } : it)),
+    );
+  }
+
+  async function reloadRequest() {
+    if (!id) return;
+    const r = await requestsApi.get(id);
+    setRequest(r);
+  }
+
+  async function saveApproverChanges() {
+    if (!request) return;
+    setBusy(true);
+    try {
+      await requestsApi.update(request.id, {
+        editNote: editNote.trim() || 'Aprovador alterou campos da solicitação.',
+        items: items.map((it, idx) => ({
+          productId: it.productId ?? undefined,
+          descriptionShort: it.descriptionShort,
+          descriptionLong: it.descriptionLong || undefined,
+          measureUnitId: it.measureUnitId || undefined,
+          costCenterId: it.costCenterId || undefined,
+          source: it.source,
+          itemValue: it.itemValue ? Number(it.itemValue) : undefined,
+          purchaseQtyTotal: it.purchaseQtyTotal ? Number(it.purchaseQtyTotal) : undefined,
+          unifiedCode: it.unifiedCode.trim() || undefined,
+          legacyCode: it.legacyCode.trim() || undefined,
+          law116: it.law116.trim() || undefined,
+          productLink: it.productLink.trim() || it.productLinks[0]?.trim() || undefined,
+          productLinks: it.productLinks.map((l) => l.trim()).filter(Boolean),
+          itemObservation: it.itemObservation.trim() || undefined,
+          sortOrder: idx,
+        })),
+      });
+      setEditNote('');
+      await reloadRequest();
+      alert('Alterações salvas e registradas na timeline.');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Falha ao salvar alterações.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function sendToApprover() {
     if (!request) return;
@@ -206,6 +285,24 @@ export function DetalhesSolicitacaoPage() {
       navigate('/produtos/caixa-de-entrada');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Falha ao enviar ao aprovador.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function returnToRequester() {
+    if (!request) return;
+    if (!stageComment.trim()) {
+      alert('Informe um comentário ao devolver a solicitação ao solicitante.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await requestsApi.returnToRequester(request.id, stageComment.trim());
+      alert('Solicitação devolvida ao solicitante. O prazo SLA foi reiniciado.');
+      navigate('/produtos/caixa-de-entrada');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Falha ao devolver solicitação.');
     } finally {
       setBusy(false);
     }
@@ -252,6 +349,11 @@ export function DetalhesSolicitacaoPage() {
     return <p>Carregando…</p>;
   }
 
+  const showCompare =
+    isApprover &&
+    isExistingProductRequestType(request.type) &&
+    Boolean(requestItem?.productId);
+
   return (
     <section className="dados-item-page detalhes-solicitacao-page">
       <PageStageHeader
@@ -260,7 +362,7 @@ export function DetalhesSolicitacaoPage() {
       />
 
       <p className="derived-field detalhes-meta">
-        {request.type === 'ALTERACAO' ? 'Alteração' : 'Inclusão'}
+        {requestTypeLabel(request.type)}
         {request.family ? ` · ${request.family.code} — ${request.family.name}` : ''}
         {` · ${request.items.length} item(ns)`}
         {request.requester?.name ? ` · ${request.requester.name}` : ''}
@@ -317,6 +419,14 @@ export function DetalhesSolicitacaoPage() {
         addLockedLabel="Visualização — use as pastas para navegar entre itens"
       />
 
+      {showCompare && requestItem ? (
+        <RequestItemCompareTable
+          baseProduct={baseProduct}
+          item={requestItem}
+          loading={baseLoading}
+        />
+      ) : null}
+
       <article className="solicitacao-form-card">
         <header className="solicitacao-form-card-header">
           <h2>Formulário de solicitação de produto</h2>
@@ -329,7 +439,7 @@ export function DetalhesSolicitacaoPage() {
           <div className="pdm-classification">
             <p className="form-section-title">Classificação do item</p>
             <ItemPrimaryFields
-              readOnly
+              readOnly={!approverEditable}
               value={{
                 descriptionShort: item.descriptionShort,
                 costCenterId: item.costCenterId,
@@ -342,13 +452,26 @@ export function DetalhesSolicitacaoPage() {
               }}
               costCenters={costCenters}
               measureUnits={measureUnits}
+              onChange={
+                approverEditable
+                  ? (patch) => {
+                      if (patch.descriptionShort !== undefined) {
+                        patch.descriptionShort = toFormUppercase(patch.descriptionShort);
+                      }
+                      if (patch.legacyCode !== undefined) {
+                        patch.legacyCode = toFormUppercase(patch.legacyCode);
+                      }
+                      patchCurrentItem(patch);
+                    }
+                  : undefined
+              }
             />
 
             <hr className="pdm-classification-divider" />
 
             <ItemClassificationFields
               hideTitle
-              readOnly
+              readOnly={!approverEditable}
               familyContext={selectedFamily}
               value={{
                 groupId: item.groupId,
@@ -357,17 +480,37 @@ export function DetalhesSolicitacaoPage() {
               }}
               groups={groups}
               subgroups={subgroups}
+              onChange={approverEditable ? (patch) => patchCurrentItem(patch) : undefined}
             />
           </div>
 
           <ItemCompletionSection
-            readOnly
+            readOnly={!approverEditable}
             value={{
               productLink: item.productLink,
+              productLinks: item.productLinks.length
+                ? item.productLinks
+                : item.productLink
+                  ? [item.productLink]
+                  : [],
               descriptionLong: item.descriptionLong,
               itemObservation: item.itemObservation,
               attachments: [],
             }}
+            onChange={
+              approverEditable
+                ? (patch) => {
+                    const next: Partial<ViewItem> = { ...patch };
+                    if (patch.descriptionLong !== undefined) {
+                      next.descriptionLong = toFormUppercase(patch.descriptionLong);
+                    }
+                    if (patch.productLinks !== undefined) {
+                      next.productLink = patch.productLinks[0] ?? '';
+                    }
+                    patchCurrentItem(next);
+                  }
+                : undefined
+            }
           />
 
           {isApprover ? (
@@ -434,6 +577,28 @@ export function DetalhesSolicitacaoPage() {
         </div>
       </article>
 
+      {approverEditable ? (
+        <div className="stage-conclude-block">
+          <label className="form-field">
+            <span>Nota da edição (timeline)</span>
+            <textarea
+              rows={2}
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="Opcional — descreva o que foi alterado (registrado na timeline ao salvar)"
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn-outline"
+            disabled={busy}
+            onClick={() => void saveApproverChanges()}
+          >
+            Salvar alterações do aprovador
+          </button>
+        </div>
+      ) : null}
+
       {canConcludeStage ? (
         <div className="stage-conclude-block">
           <label className="form-field">
@@ -460,7 +625,7 @@ export function DetalhesSolicitacaoPage() {
             Continuar edição
           </button>
         ) : null}
-        {isSolicitante ? (
+        {canSendToApprover ? (
           <button
             type="button"
             className="btn btn-primary"
@@ -472,7 +637,12 @@ export function DetalhesSolicitacaoPage() {
         ) : null}
         {isApprover ? (
           <>
-            <button type="button" className="btn btn-outline" disabled>
+            <button
+              type="button"
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => void returnToRequester()}
+            >
               Devolver ao solicitante
             </button>
             <button type="button" className="btn btn-outline" disabled>
@@ -488,7 +658,7 @@ export function DetalhesSolicitacaoPage() {
             </button>
           </>
         ) : null}
-        {!isDraft && !isSolicitante && !isApprover ? (
+        {!isDraft && !canSendToApprover && !isApprover ? (
           <button
             type="button"
             className="btn btn-outline"

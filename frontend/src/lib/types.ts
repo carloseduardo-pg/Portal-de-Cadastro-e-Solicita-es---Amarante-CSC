@@ -35,6 +35,7 @@ export type ProductSearchResult = {
 export type ProductBase = {
   id: string;
   unifiedCode: string | null;
+  sapCode?: string | null;
   descriptionShort: string;
   descriptionLong: string | null;
   ncmCode: string | null;
@@ -96,6 +97,7 @@ export type RequestItem = {
   legacyCode?: string | null;
   law116?: string | null;
   productLink?: string | null;
+  links?: { id: string; url: string; sortOrder: number }[];
   itemObservation?: string | null;
   measureUnit?: { id: string; code: string; name: string };
   costCenter?: { id: string; code: string; name: string };
@@ -180,7 +182,6 @@ export type DashboardProductsSummary = {
 export type RegistryStageSummary = {
   solicitante: number;
   aprovador: number;
-  compliance: number;
   encerrado: number;
 };
 

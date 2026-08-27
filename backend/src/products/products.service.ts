@@ -133,6 +133,8 @@ export class ProductsService {
         { descriptionShort: { contains: q, mode: 'insensitive' } },
         { descriptionLong: { contains: q, mode: 'insensitive' } },
         { unifiedCode: { contains: q, mode: 'insensitive' } },
+        { sapCode: { contains: q, mode: 'insensitive' } },
+        { legacyCode: { contains: q, mode: 'insensitive' } },
         { ncmCode: { contains: q, mode: 'insensitive' } },
       ];
     }

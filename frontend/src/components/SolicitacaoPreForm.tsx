@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { SearchableSelect } from './SearchableSelect';
 import { ConfirmDialog } from './ConfirmDialog';
 import { FormField } from './FormField';
 import { HotelMultiSelect } from './HotelMultiSelect';
@@ -44,8 +45,22 @@ export function SolicitacaoPreForm({
   const [pendingFamilyId, setPendingFamilyId] = useState<string | null>(null);
 
   const sortedFamilies = useMemo(
-    () => [...families].sort((a, b) => a.code.localeCompare(b.code)),
+    () =>
+      [...families].sort((a, b) =>
+        a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
+        a.code.localeCompare(b.code),
+      ),
     [families],
+  );
+
+  const familyOptions = useMemo(
+    () =>
+      sortedFamilies.map((f) => ({
+        id: f.id,
+        label: familyLabel(f),
+        searchText: `${f.code} ${f.name}`,
+      })),
+    [sortedFamilies],
   );
 
   const selectedFamily = families.find((f) => f.id === familyId);
@@ -108,18 +123,20 @@ export function SolicitacaoPreForm({
           hint={readOnly ? undefined : `${sortedFamilies.length} família(s) no catálogo.`}
           className="pre-form-family-select"
         >
-          <select
-            value={familyId}
-            disabled={readOnly}
-            onChange={(e) => requestFamilyChange(e.target.value)}
-          >
-            <option value="">Selecione a família…</option>
-            {sortedFamilies.map((f) => (
-              <option key={f.id} value={f.id}>
-                {familyLabel(f)}
-              </option>
-            ))}
-          </select>
+          {readOnly ? (
+            <select value={familyId} disabled>
+              <option value={familyId}>{selectedFamily ? familyLabel(selectedFamily) : '—'}</option>
+            </select>
+          ) : (
+            <SearchableSelect
+              label=""
+              options={familyOptions}
+              value={familyId}
+              onChange={requestFamilyChange}
+              placeholder="Digite código ou nome da família…"
+              emptyLabel="Selecione a família…"
+            />
+          )}
         </FormField>
 
         {selectedFamily ? (

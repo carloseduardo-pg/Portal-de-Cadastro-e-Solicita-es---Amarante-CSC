@@ -13,6 +13,7 @@ export type ItemAttachmentDraft = {
 
 export type ItemCompletionValue = {
   productLink: string;
+  productLinks: string[];
   descriptionLong: string;
   itemObservation: string;
   attachments: ItemAttachmentDraft[];
@@ -184,21 +185,59 @@ export function ItemCompletionSection({
 
       <section className="item-completion-block">
         <header className="item-completion-block-header">
-          <h3>Link do produto</h3>
+          <h3>Links do produto</h3>
         </header>
         <div className="item-completion-block-body">
-          <FormField
-            label="Link do produto"
-            hint={readOnly ? undefined : 'Informe o link do produto.'}
-          >
-            <input
-              type="url"
-              value={value.productLink}
-              readOnly={readOnly}
-              onChange={(e) => onChange?.({ productLink: e.target.value })}
-              placeholder="https://"
-            />
-          </FormField>
+          {(value.productLinks.length ? value.productLinks : ['']).map((link, index) => (
+            <FormField
+              key={index}
+              label={index === 0 ? 'Link do produto' : `Link adicional ${index + 1}`}
+              hint={readOnly ? undefined : 'Informe URLs do produto (site, catálogo, etc.).'}
+            >
+              <div className="item-link-row">
+                <input
+                  type="url"
+                  value={link}
+                  readOnly={readOnly}
+                  onChange={(e) => {
+                    const next = [...(value.productLinks.length ? value.productLinks : [''])];
+                    next[index] = e.target.value;
+                    onChange?.({
+                      productLinks: next.filter(Boolean),
+                      productLink: next[0] ?? '',
+                    });
+                  }}
+                  placeholder="https://"
+                />
+                {!readOnly && index > 0 ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      const next = value.productLinks.filter((_, i) => i !== index);
+                      onChange?.({ productLinks: next, productLink: next[0] ?? '' });
+                    }}
+                  >
+                    Remover
+                  </button>
+                ) : null}
+              </div>
+            </FormField>
+          ))}
+          {!readOnly ? (
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() =>
+                onChange?.({
+                  productLinks: [...value.productLinks, ''],
+                  productLink: value.productLink,
+                })
+              }
+            >
+              Adicionar outro link
+            </button>
+          ) : null}
         </div>
       </section>
 

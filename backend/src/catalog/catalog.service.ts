@@ -31,7 +31,7 @@ export class CatalogService {
           subgroup: { include: { group: true } },
           _count: { select: { productAttributes: true } },
         },
-        orderBy: { code: 'asc' },
+        orderBy: [{ name: 'asc' }, { code: 'asc' }],
         skip,
         take,
       }),
@@ -65,7 +65,7 @@ export class CatalogService {
     const { skip, take } = skipTake(params);
     const [total, data] = await this.prisma.$transaction([
       this.prisma.group.count(),
-      this.prisma.group.findMany({ orderBy: { code: 'asc' }, skip, take }),
+      this.prisma.group.findMany({ orderBy: [{ name: 'asc' }, { code: 'asc' }], skip, take }),
     ]);
     return pageResult(data, total, params);
   }
@@ -78,7 +78,7 @@ export class CatalogService {
       this.prisma.subgroup.findMany({
         where,
         include: { group: true },
-        orderBy: { code: 'asc' },
+        orderBy: [{ name: 'asc' }, { code: 'asc' }],
         skip,
         take,
       }),
@@ -90,7 +90,7 @@ export class CatalogService {
     const { skip, take } = skipTake(params);
     const [total, data] = await this.prisma.$transaction([
       this.prisma.measureUnit.count(),
-      this.prisma.measureUnit.findMany({ where: { active: true }, orderBy: { code: 'asc' }, skip, take }),
+      this.prisma.measureUnit.findMany({ where: { active: true }, orderBy: [{ name: 'asc' }, { code: 'asc' }], skip, take }),
     ]);
     return pageResult(data, total, params);
   }
@@ -103,7 +103,7 @@ export class CatalogService {
         : { active: true, ...(hotelId ? { hotelId } : {}) };
     return this.prisma.costCenter.findMany({
       where,
-      orderBy: [{ hotel: { code: 'asc' } }, { code: 'asc' }],
+      orderBy: [{ hotel: { name: 'asc' } }, { name: 'asc' }, { code: 'asc' }],
       include: { hotel: { select: { id: true, code: true, name: true } } },
     });
   }
@@ -114,7 +114,7 @@ export class CatalogService {
       this.prisma.warehouse.count(),
       this.prisma.warehouse.findMany({
         include: { hotel: true },
-        orderBy: { code: 'asc' },
+        orderBy: [{ name: 'asc' }, { code: 'asc' }],
         skip,
         take,
       }),

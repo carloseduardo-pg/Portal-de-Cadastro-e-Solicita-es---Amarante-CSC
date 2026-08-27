@@ -19,7 +19,6 @@ export const REGISTRY_STAGE_FILTER_OPTIONS = [
   { value: '', label: 'Etapa (todas)' },
   { value: 'SOLICITANTE', label: 'Solicitante' },
   { value: 'APROVADOR', label: 'Aprovador' },
-  { value: 'COMPLIANCE', label: 'Compliance' },
   { value: 'RETORNO_SOLICITANTE', label: 'Retorno solicitante' },
   { value: 'ENCERRADA', label: 'Encerrada (todas)' },
   { value: 'ENCERRADA_APROVADA', label: 'Encerrada — Aprovada' },
@@ -33,9 +32,24 @@ export const REGISTRY_STAGE_FILTER_OPTIONS = [
 export const REQUEST_MAIN_STAGE_LABELS: Record<string, string> = {
   solicitante: 'Solicitante',
   aprovador: 'Aprovador',
-  compliance: 'Compliance',
   encerrado: 'Encerrado',
 };
+
+export const REQUEST_TYPE_LABELS: Record<string, string> = {
+  INCLUSAO: 'Inclusão',
+  ALTERACAO: 'Alteração',
+  BLOQUEIO_PARCIAL: 'Bloqueio parcial',
+  BLOQUEIO_TOTAL: 'Bloqueio total',
+};
+
+/** Solicitação exige produto existente na base. */
+export function isExistingProductRequestType(type: string) {
+  return type === 'ALTERACAO' || type === 'BLOQUEIO_PARCIAL' || type === 'BLOQUEIO_TOTAL';
+}
+
+export function requestTypeLabel(type: string) {
+  return REQUEST_TYPE_LABELS[type] ?? type;
+}
 
 const SOLICITANTE_STATES = new Set([
   'RASCUNHO',
@@ -55,7 +69,6 @@ const ENCERRADO_STATES = new Set([
 export function requestMainStageKey(state: string): keyof typeof REQUEST_MAIN_STAGE_LABELS | null {
   if (SOLICITANTE_STATES.has(state)) return 'solicitante';
   if (state === 'APROVADOR') return 'aprovador';
-  if (state === 'COMPLIANCE') return 'compliance';
   if (ENCERRADO_STATES.has(state)) return 'encerrado';
   return null;
 }
