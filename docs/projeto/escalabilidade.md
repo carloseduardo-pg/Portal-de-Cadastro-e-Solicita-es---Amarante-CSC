@@ -11,7 +11,7 @@ Práticas de escala do protótipo. Stack: [`especificacoes.md`](especificacoes.m
 | Paginação | `common/pagination.ts` — `{ data, meta: { page, limit, total } }` |
 | Listagens | `take`/`skip` Prisma; evitar `findMany` sem limite |
 | Rate limit | Throttler NestJS |
-| Índices | GIN `pg_trgm` em `products.description_short` (busca PDM) |
+| Índices | GIN `pg_trgm` + btree em `products.description_short` (busca e duplicata exata) |
 
 ---
 

@@ -24,6 +24,11 @@ export class RequestItemInputDto {
   @IsUUID()
   productId?: string;
 
+  /** Folha SAP (grupo de itens) — obrigatório no envio de inclusão. */
+  @IsOptional()
+  @IsUUID()
+  groupId?: string;
+
   @IsString()
   @IsNotEmpty()
   descriptionShort!: string;

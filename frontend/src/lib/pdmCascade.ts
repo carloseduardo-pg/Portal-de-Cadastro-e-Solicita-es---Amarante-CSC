@@ -12,26 +12,14 @@ export function filterGroupsForSubgroup(groups: CatalogGroup[], subgroupId: stri
   return groups.filter((g) => g.subgroupId === subgroupId);
 }
 
-/** @deprecated Preferir filterSubgroupsForFamily — mantido para chamadas legadas. */
-export function filterSubgroupsForGroup(subgroups: CatalogSubgroup[], _groupId: string) {
-  return subgroups;
-}
-
-/** @deprecated Preferir filterGroupsForSubgroup. */
-export function filterGroupsForFamily(groups: CatalogGroup[], family: Family | undefined) {
-  if (!family?.id) return [];
-  return groups.filter((g) => g.familyId === family.id);
-}
-
-/** @deprecated Códigos 6 dígitos Semplice — SAP usa texto. */
-export function resolveFamilyByCode(families: Family[], code: string) {
-  const normalized = code.replace(/\D/g, '');
-  if (normalized.length !== 6) return null;
-  return families.find((f) => f.code === normalized) ?? null;
-}
-
 /** Rótulo hierárquico Família › Subgrupo › Grupo. */
-export function pdmTrailLabel(family: Family | undefined) {
-  if (!family) return '';
-  return `${family.code} — ${family.name}`;
+export function hierarchyTrailLabel(parts: {
+  family?: Pick<Family, 'code' | 'name'> | null;
+  subgroup?: Pick<CatalogSubgroup, 'code' | 'name'> | null;
+  group?: Pick<CatalogGroup, 'code' | 'name'> | null;
+}) {
+  return [parts.family, parts.subgroup, parts.group]
+    .filter(Boolean)
+    .map((p) => `${p!.code} — ${p!.name}`)
+    .join(' › ');
 }

@@ -528,6 +528,7 @@ export function DadosDoItemPage() {
       targetStage,
       items: items.map((it, idx) => ({
         productId: it.productId,
+        groupId: it.groupId || undefined,
         descriptionShort: it.descriptionShort,
         descriptionLong: it.descriptionLong || undefined,
         measureUnitId: it.measureUnitId || undefined,

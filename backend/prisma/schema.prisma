@@ -144,7 +144,6 @@ model Family {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   subgroups         Subgroup[]
-  products          Product[]
   productAttributes ProductAttribute[]
   requests          Request[]
 
@@ -178,6 +177,7 @@ model Group {
 
   subgroup Subgroup  @relation(fields: [subgroupId], references: [id])
   products Product[]
+  requestItems RequestItem[]
 
   @@unique([subgroupId, name])
   @@map("groups")
@@ -218,9 +218,8 @@ model Product {
   id               String         @id @default(uuid()) @db.Uuid
   descriptionShort String         @map("description_short")
   descriptionLong  String?        @map("description_long")
-  familyId         String         @map("family_id") @db.Uuid
-  /** Folha SAP (grupo de itens). Opcional em legado pré-SAP. */
-  groupId          String?        @map("group_id") @db.Uuid
+  /** Folha SAP (grupo de itens). Família/subgrupo derivam por FK. */
+  groupId          String         @map("group_id") @db.Uuid
   /** Nulo para ativo fixo e UM "Manual" da base SAP. */
   measureUnitId    String?        @map("measure_unit_id") @db.Uuid
   source           ProductSource  @default(NATIONAL)
@@ -243,8 +242,7 @@ model Product {
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz
 
-  family          Family           @relation(fields: [familyId], references: [id])
-  group           Group?           @relation(fields: [groupId], references: [id])
+  group           Group            @relation(fields: [groupId], references: [id])
   measureUnit     MeasureUnit?     @relation(fields: [measureUnitId], references: [id])
   ncmConfirmedBy  User?            @relation("NcmConfirmedBy", fields: [ncmConfirmedById], references: [id])
   hotels          ProductHotel[]
@@ -354,6 +352,8 @@ model RequestItem {
   id               String        @id @default(uuid()) @db.Uuid
   requestId        String        @map("request_id") @db.Uuid
   productId        String?       @map("product_id") @db.Uuid
+  /** Folha SAP do item; deve pertencer à família do lote (ITM-11). */
+  groupId          String?       @map("group_id") @db.Uuid
   descriptionShort String        @map("description_short")
   descriptionLong  String?       @map("description_long")
   measureUnitId    String?       @map("measure_unit_id") @db.Uuid
@@ -372,6 +372,7 @@ model RequestItem {
 
   request         Request          @relation(fields: [requestId], references: [id], onDelete: Cascade)
   product         Product?         @relation(fields: [productId], references: [id])
+  group           Group?           @relation(fields: [groupId], references: [id])
   measureUnit     MeasureUnit?     @relation(fields: [measureUnitId], references: [id])
   costCenter      CostCenter?      @relation(fields: [costCenterId], references: [id])
   ncmSuggestions  NcmSuggestion[]

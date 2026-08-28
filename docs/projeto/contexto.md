@@ -69,7 +69,8 @@ Mais 30 regras de negócio no Relatório Geral (Seção 12). Ver [`requisitos/re
 ```
 Grupo (1 dígito)     ex.: 1 — ALIMENTOS
 SubGrupo (3 dígitos) ex.: 101 — CARNES E PRODUTOS AVICOLAS
-Família (6 dígitos)  ex.: 101002 — AVES
+Família → Subgrupo → Grupo (texto SAP + FK; códigos internos FAM/SUB/GRP).
+ITM-11: um lote = uma família (nível amplo).
 
 família(6) = subgrupo(3) + sequencial(3)
 subgrupo(3) = grupo(1) + sequencial(2)

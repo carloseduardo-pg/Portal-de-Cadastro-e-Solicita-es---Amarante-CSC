@@ -1,6 +1,6 @@
 # Relatório de importação — Base SAP B1
 
-Gerado em 2026-08-28T18:22:50.406Z por `npm run import:sap`.
+Gerado em 2026-08-28T19:07:29.629Z por `npm run import:sap`.
 
 ## Contagem por aba
 

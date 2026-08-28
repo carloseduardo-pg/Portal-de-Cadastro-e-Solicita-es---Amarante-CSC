@@ -692,6 +692,7 @@ export class RequestsService {
         descriptionShort: item.descriptionShort.trim().toUpperCase(),
         descriptionLong: item.descriptionLong?.trim().toUpperCase() ?? null,
         productId: item.productId ?? null,
+        groupId: item.groupId ?? null,
         measureUnitId: item.measureUnitId ?? null,
         costCenterId: item.costCenterId ?? null,
         source: item.source ?? ProductSource.NATIONAL,
@@ -706,6 +707,29 @@ export class RequestsService {
         sortOrder: item.sortOrder ?? idx,
       };
     });
+  }
+
+  /** ITM-11 — grupo do item deve pertencer à família do lote. */
+  private async assertItemsBelongToFamily(
+    familyId: string,
+    items: { groupId: string | null; descriptionShort: string }[],
+  ) {
+    const groupIds = [...new Set(items.map((i) => i.groupId).filter(Boolean))] as string[];
+    if (!groupIds.length) return;
+    const groups = await this.prisma.group.findMany({
+      where: { id: { in: groupIds } },
+      include: { subgroup: { select: { familyId: true } } },
+    });
+    const byId = new Map(groups.map((g) => [g.id, g]));
+    for (const item of items) {
+      if (!item.groupId) continue;
+      const g = byId.get(item.groupId);
+      if (!g || g.subgroup.familyId !== familyId) {
+        throw new BadRequestException(
+          `Item "${item.descriptionShort}": grupo não pertence à família do lote (ITM-11).`,
+        );
+      }
+    }
   }
 
   private async assertNoExactDuplicateInBase(descriptionShort: string) {
@@ -772,6 +796,11 @@ export class RequestsService {
       if (submit) {
         if (!item.descriptionLong) {
           throw new BadRequestException('Descrição longa é obrigatória para enviar à aprovação.');
+        }
+        if (!item.groupId && type === RequestType.INCLUSAO) {
+          throw new BadRequestException(
+            'Grupo de itens é obrigatório em todos os itens para enviar à aprovação.',
+          );
         }
         if (!item.measureUnitId) {
           throw new BadRequestException('Unidade de medida é obrigatória em todos os itens.');
@@ -846,6 +875,7 @@ export class RequestsService {
     const target = this.resolveTargetStage(dto);
     const fixedAsset = Boolean(dto.fixedAsset);
     const strict = target === 'APROVADOR';
+    await this.assertItemsBelongToFamily(dto.familyId, items);
     await this.validateItems(items, hotelIds, strict, dto.type ?? RequestType.INCLUSAO, dto.observation);
 
     const now = new Date();
@@ -966,6 +996,8 @@ export class RequestsService {
     }
     if (dto.familyId) await this.assertFamilyExists(dto.familyId);
     if (items) {
+      const familyId = dto.familyId ?? existing.familyId;
+      await this.assertItemsBelongToFamily(familyId, items);
       const nextObservation =
         dto.observation !== undefined ? dto.observation : existing.observation;
       await this.validateItems(
@@ -1358,6 +1390,22 @@ export class RequestsService {
     return {
       measureUnit: { select: { id: true, code: true, name: true } },
       costCenter: { select: { id: true, code: true, name: true } },
+      group: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          subgroupId: true,
+          subgroup: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              familyId: true,
+            },
+          },
+        },
+      },
     };
   }
 
@@ -1386,7 +1434,7 @@ export class RequestsService {
       include: {
         requester: { select: { id: true, name: true, email: true } },
         hotel: true,
-        family: { include: { subgroup: { include: { group: true } } } },
+        family: { select: { id: true, code: true, name: true } },
         hotels: { include: { hotel: true } },
         items: {
           orderBy: { sortOrder: 'asc' },
@@ -1509,6 +1557,7 @@ export class RequestsService {
       items: {
         id: string;
         productId: string | null;
+        groupId: string | null;
         descriptionShort: string;
         descriptionLong: string | null;
         measureUnitId: string | null;
@@ -1568,12 +1617,17 @@ export class RequestsService {
           `Item "${item.descriptionShort}": descrição longa obrigatória para cadastro na base.`,
         );
       }
+      if (!item.groupId && !item.productId) {
+        throw new BadRequestException(
+          `Item "${item.descriptionShort}": grupo de itens obrigatório para cadastro na base.`,
+        );
+      }
 
       const ncm = ncmByItem.get(item.id) ?? '';
       const productFields = {
         descriptionShort: item.descriptionShort.trim().toUpperCase(),
         descriptionLong: item.descriptionLong!.trim().toUpperCase(),
-        familyId: request.familyId,
+        ...(item.groupId ? { groupId: item.groupId } : {}),
         measureUnitId: item.measureUnitId,
         source: item.source,
         legacyCode: item.legacyCode?.trim() || null,
@@ -1611,8 +1665,13 @@ export class RequestsService {
           );
         }
         const unifiedCode = await this.resolveUnifiedCodeForNewProduct(tx, item, request.familyId);
+        if (!item.groupId) {
+          throw new BadRequestException(
+            `Item "${item.descriptionShort}": grupo de itens obrigatório para inclusão na base.`,
+          );
+        }
         const created = await tx.product.create({
-          data: { ...productFields, unifiedCode },
+          data: { ...productFields, groupId: item.groupId, unifiedCode },
         });
         productId = created.id;
       }
@@ -1672,11 +1731,13 @@ export class RequestsService {
       where: { id: familyId },
       select: { code: true },
     });
-    const prefix = (family?.code ?? '000000').replace(/\D/g, '').slice(0, 6);
-    const baseCount = await tx.product.count({ where: { familyId } });
+    const prefix = family?.code ?? 'FAM00';
+    const baseCount = await tx.product.count({
+      where: { group: { subgroup: { familyId } } },
+    });
 
     for (let attempt = 0; attempt < 50; attempt++) {
-      const candidate = `${prefix}${String(baseCount + 1 + attempt).padStart(3, '0')}`;
+      const candidate = `${prefix}${String(baseCount + 1 + attempt).padStart(4, '0')}`;
       const clash = await tx.product.findFirst({ where: { unifiedCode: candidate } });
       if (!clash) return candidate;
     }

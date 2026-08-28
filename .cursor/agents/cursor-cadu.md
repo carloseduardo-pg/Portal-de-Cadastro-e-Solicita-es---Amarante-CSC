@@ -18,6 +18,9 @@
 
 ## Entregas recentes
 
+- **Perf base:** self-join dups O(n²) → exact (btree) + near só na página (GIN `%`); `/base` ~100 ms (antes ~121 s)
+- **Seed limpo:** só hotéis/users/UM/CC; catálogo via `import:sap`; attrs PDM = demo P3
+- **Hierarquia SAP:** Família → Subgrupo → Grupo; produto só com `group_id`; códigos FAM/SUB/GRP; ITM-11 = família ampla
 - **Import SAP B1:** `npm run import:sap` (`backend/prisma/import-sap.ts`) — 3.598 UC + 313 AF; hierarquia Família→Subgrupo→Grupo; relatório `base-sap/relatorio-importacao.md`
 - **Ativo fixo:** flag `requests.fixed_asset` + etapa `IMOBILIZADO` + role `APROVADOR_IMOBILIZADO`; fluxo Solicitante → Imobilizado → Aprovador → Encerrado
 - Roles: ADMIN / SOLICITANTE / APROVADOR / APROVADOR_IMOBILIZADO / COMPLIANCE — caixa por etapa; Admin vê todas

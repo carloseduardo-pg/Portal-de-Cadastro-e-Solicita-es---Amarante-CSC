@@ -11,6 +11,7 @@ Também roda no `migrate.sh` depois do `prisma migrate deploy`.
 | Item | Efeito |
 |------|--------|
 | `pg_trgm` + GIN | Busca similaridade em `products.description_short` |
+| btree `description_short` | Duplicata exata (RF-ITM-13) sem self-join O(n²) |
 | CHECK `products_ncm_requires_confirmation` | ITM-09 |
 | `fn_itm01_uppercase_descriptions` | ITM-01 em products e request_items |
 | `fn_set_updated_at` | `updated_at` |

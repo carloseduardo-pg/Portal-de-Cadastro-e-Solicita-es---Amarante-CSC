@@ -1,6 +1,6 @@
 import type { CatalogGroup, CatalogSubgroup, Family } from './types';
 
-/** Item mínimo para agrupamento visual em pastas PDM. */
+/** Item mínimo para agrupamento visual em pastas (dentro da família do lote). */
 export type PdmFolderItem = {
   descriptionShort: string;
   groupId: string;
@@ -8,70 +8,67 @@ export type PdmFolderItem = {
   familyId: string;
 };
 
-export type PdmSubgroupFolder = {
-  key: string;
-  group: CatalogGroup | null;
-  subgroup: CatalogSubgroup | null;
-  itemIndexes: number[];
-};
-
 export type PdmGroupFolder = {
   key: string;
   group: CatalogGroup | null;
-  subgroups: PdmSubgroupFolder[];
+  itemIndexes: number[];
+};
+
+export type PdmSubgroupFolder = {
+  key: string;
+  subgroup: CatalogSubgroup | null;
+  groups: PdmGroupFolder[];
 };
 
 /**
- * Agrupa índices de itens por grupo e subgrupo PDM (pastas aninhadas).
- * Itens sem classificação vão para pasta "Sem classificação".
+ * Agrupa índices por Subgrupo → Grupo (SAP), dentro da família do lote.
  */
 export function buildPdmFolderTree(
   items: PdmFolderItem[],
   groups: CatalogGroup[],
   subgroups: CatalogSubgroup[],
-): PdmGroupFolder[] {
+): PdmSubgroupFolder[] {
   const groupMap = new Map(groups.map((g) => [g.id, g]));
   const subgroupMap = new Map(subgroups.map((sg) => [sg.id, sg]));
 
   const buckets = new Map<string, Map<string, number[]>>();
 
   items.forEach((item, index) => {
-    const gKey = item.groupId || '_none';
     const sKey = item.subgroupId || '_none';
-    if (!buckets.has(gKey)) buckets.set(gKey, new Map());
-    const sgMap = buckets.get(gKey)!;
-    if (!sgMap.has(sKey)) sgMap.set(sKey, []);
-    sgMap.get(sKey)!.push(index);
+    const gKey = item.groupId || '_none';
+    if (!buckets.has(sKey)) buckets.set(sKey, new Map());
+    const gMap = buckets.get(sKey)!;
+    if (!gMap.has(gKey)) gMap.set(gKey, []);
+    gMap.get(gKey)!.push(index);
   });
 
-  const result: PdmGroupFolder[] = [];
+  const result: PdmSubgroupFolder[] = [];
 
-  for (const [gKey, sgMap] of buckets) {
-    const group = gKey === '_none' ? null : groupMap.get(gKey) ?? null;
-    const subgroupFolders: PdmSubgroupFolder[] = [];
+  for (const [sKey, gMap] of buckets) {
+    const subgroup = sKey === '_none' ? null : subgroupMap.get(sKey) ?? null;
+    const groupFolders: PdmGroupFolder[] = [];
 
-    for (const [sKey, indexes] of sgMap) {
-      const subgroup = sKey === '_none' ? null : subgroupMap.get(sKey) ?? null;
-      subgroupFolders.push({
-        key: `${gKey}:${sKey}`,
+    for (const [gKey, indexes] of gMap) {
+      const group = gKey === '_none' ? null : groupMap.get(gKey) ?? null;
+      groupFolders.push({
+        key: `${sKey}:${gKey}`,
         group,
-        subgroup,
         itemIndexes: indexes,
       });
     }
 
-    subgroupFolders.sort((a, b) => {
-      const ac = a.subgroup?.code ?? '999';
-      const bc = b.subgroup?.code ?? '999';
+    groupFolders.sort((a, b) => {
+      const ac = a.group?.code ?? 'ZZZ';
+      const bc = b.group?.code ?? 'ZZZ';
       return ac.localeCompare(bc);
     });
 
-    result.push({ key: gKey, group, subgroups: subgroupFolders });
+    result.push({ key: sKey, subgroup, groups: groupFolders });
   }
 
   result.sort((a, b) => {
-    const ac = a.group?.code ?? '999';
-    const bc = b.group?.code ?? '999';
+    const ac = a.subgroup?.code ?? 'ZZZ';
+    const bc = b.subgroup?.code ?? 'ZZZ';
     return ac.localeCompare(bc);
   });
 

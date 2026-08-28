@@ -5,7 +5,6 @@
  * Relatório: `base-sap/relatorio-importacao.md`
  */
 import { PrismaClient, ProductSource } from '@prisma/client';
-import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
@@ -74,17 +73,48 @@ function upper(s: string): string {
   return s.trim().toUpperCase();
 }
 
-function slugCode(prefix: string, ...parts: string[]): string {
-  const joined = parts.join('|').toUpperCase();
-  const body = joined
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Z0-9|]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .slice(0, 40);
-  const hash = createHash('sha1').update(joined).digest('hex').slice(0, 10);
-  return `${prefix}_${body}_${hash}`.slice(0, 64);
+/** Códigos internos estáveis: FAM01, SUB0101, GRP010101 (nome SAP = chave de reconciliação). */
+function buildHierarchyCodes(rows: NormRow[]): {
+  familyCode: Map<string, string>;
+  subgroupCode: Map<string, string>;
+  groupCode: Map<string, string>;
+} {
+  const familyNames = [...new Set(rows.map((r) => r.familyResolved))].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR'),
+  );
+  const familyCode = new Map<string, string>();
+  familyNames.forEach((name, i) => {
+    familyCode.set(name, `FAM${String(i + 1).padStart(2, '0')}`);
+  });
+
+  const subgroupCode = new Map<string, string>();
+  const groupCode = new Map<string, string>();
+
+  for (const fam of familyNames) {
+    const famSeq = familyCode.get(fam)!.replace(/\D/g, '');
+    const subs = [
+      ...new Set(rows.filter((r) => r.familyResolved === fam).map((r) => r.subgroupResolved)),
+    ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    subs.forEach((sub, si) => {
+      const sgCode = `SUB${famSeq}${String(si + 1).padStart(2, '0')}`;
+      subgroupCode.set(`${fam}||${sub}`, sgCode);
+      const groups = [
+        ...new Set(
+          rows
+            .filter((r) => r.familyResolved === fam && r.subgroupResolved === sub)
+            .map((r) => r.groupResolved),
+        ),
+      ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      groups.forEach((grp, gi) => {
+        groupCode.set(
+          `${fam}||${sub}||${grp}`,
+          `GRP${famSeq}${String(si + 1).padStart(2, '0')}${String(gi + 1).padStart(2, '0')}`,
+        );
+      });
+    });
+  }
+
+  return { familyCode, subgroupCode, groupCode };
 }
 
 /** A2 — float legado → texto sem decimal. */
@@ -319,8 +349,7 @@ function applyDominantBranch(rows: NormRow[]): { rows: NormRow[]; hits: Ambiguit
   return { rows: resolved, hits };
 }
 
-async function upsertFamily(name: string) {
-  const code = slugCode('FAM', name);
+async function upsertFamily(name: string, code: string) {
   return prisma.family.upsert({
     where: { name },
     update: { code, active: true },
@@ -328,8 +357,7 @@ async function upsertFamily(name: string) {
   });
 }
 
-async function upsertSubgroup(familyId: string, name: string, familyName: string) {
-  const code = slugCode('SUB', familyName, name);
+async function upsertSubgroup(familyId: string, name: string, code: string) {
   return prisma.subgroup.upsert({
     where: { familyId_name: { familyId, name } },
     update: { code, active: true },
@@ -337,8 +365,7 @@ async function upsertSubgroup(familyId: string, name: string, familyName: string
   });
 }
 
-async function upsertGroup(subgroupId: string, name: string, familyName: string, subgroupName: string) {
-  const code = slugCode('GRP', familyName, subgroupName, name);
+async function upsertGroup(subgroupId: string, name: string, code: string) {
   return prisma.group.upsert({
     where: { subgroupId_name: { subgroupId, name } },
     update: { code, active: true },
@@ -662,30 +689,31 @@ async function main() {
   const { rows, hits } = applyDominantBranch(normalized);
   normalized = rows;
 
-  // Ensure hierarchy entities (canonical paths only — after dominant)
+  const codes = buildHierarchyCodes(normalized);
+
+  // Ensure hierarchy entities (canonical paths — upsert por nome SAP)
   const familyCache = new Map<string, string>();
   const subgroupCache = new Map<string, string>();
   const groupCache = new Map<string, string>();
 
   async function resolvePath(family: string, subgroup: string, group: string) {
     if (!familyCache.has(family)) {
-      familyCache.set(family, (await upsertFamily(family)).id);
+      const code = codes.familyCode.get(family)!;
+      familyCache.set(family, (await upsertFamily(family, code)).id);
     }
     const familyId = familyCache.get(family)!;
     const sgKey = `${family}||${subgroup}`;
     if (!subgroupCache.has(sgKey)) {
-      subgroupCache.set(sgKey, (await upsertSubgroup(familyId, subgroup, family)).id);
+      const code = codes.subgroupCode.get(sgKey)!;
+      subgroupCache.set(sgKey, (await upsertSubgroup(familyId, subgroup, code)).id);
     }
     const subgroupId = subgroupCache.get(sgKey)!;
-    const gKey = `${sgKey}||${group}`;
+    const gKey = `${family}||${subgroup}||${group}`;
     if (!groupCache.has(gKey)) {
-      groupCache.set(gKey, (await upsertGroup(subgroupId, group, family, subgroup)).id);
+      const code = codes.groupCode.get(gKey)!;
+      groupCache.set(gKey, (await upsertGroup(subgroupId, group, code)).id);
     }
-    return {
-      familyId,
-      subgroupId,
-      groupId: groupCache.get(gKey)!,
-    };
+    return { groupId: groupCache.get(gKey)! };
   }
 
   let created = 0;
@@ -697,7 +725,6 @@ async function main() {
     const existing = await prisma.product.findUnique({ where: { sapCode: r.sapCode } });
     const data = {
       descriptionShort: r.description,
-      familyId: pathIds.familyId,
       groupId: pathIds.groupId,
       measureUnitId: r.measureUnitCode ? umByCode[r.measureUnitCode] ?? null : null,
       source: ProductSource.NATIONAL,

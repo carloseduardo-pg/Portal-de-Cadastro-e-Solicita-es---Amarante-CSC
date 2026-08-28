@@ -82,7 +82,7 @@ export function BasePage() {
 
       {duplicatePairs > 0 && status !== 'inactive' ? (
         <div className="duplicate-summary">
-          <strong>{duplicatePairs} possíveis duplicatas identificadas</strong>
+          <strong>{duplicatePairs} produtos com descrição idêntica na base</strong>
           <button type="button" className="btn btn-outline" onClick={() => setSearch('camisa')}>
             Revisar
           </button>

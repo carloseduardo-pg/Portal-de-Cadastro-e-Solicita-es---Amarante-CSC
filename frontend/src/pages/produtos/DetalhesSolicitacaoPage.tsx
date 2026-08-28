@@ -10,7 +10,7 @@ import { RequestDescriptionBlock } from '../../components/RequestDescriptionBloc
 import { RequestItemCompareTable } from '../../components/requests/RequestItemCompareTable';
 import { RequestTimeline } from '../../components/RequestTimeline';
 import { SolicitacaoPreForm } from '../../components/SolicitacaoPreForm';
-import { findFamilyById, classificationFromFamily } from '../../lib/pdmFolders';
+import { findFamilyById } from '../../lib/pdmFolders';
 import {
   isExistingProductRequestType,
   requestStateLabel,
@@ -135,16 +135,13 @@ export function DetalhesSolicitacaoPage() {
           } as Family)
         : undefined);
     void fam;
-    const { groupId, subgroupId } = classificationFromFamily(
-      families.find((f) => f.id === request.family?.id),
-    );
 
     setItems(
       request.items.map((it) => ({
         id: it.id,
         productId: it.productId,
-        groupId,
-        subgroupId,
+        groupId: it.groupId ?? it.group?.id ?? '',
+        subgroupId: it.group?.subgroupId ?? it.group?.subgroup?.id ?? '',
         descriptionShort: it.descriptionShort,
         descriptionLong: it.descriptionLong ?? '',
         measureUnitId: it.measureUnit?.id ?? '',
@@ -241,6 +238,7 @@ export function DetalhesSolicitacaoPage() {
   function buildItemsPayload() {
     return items.map((it, idx) => ({
       productId: it.productId ?? undefined,
+      groupId: it.groupId || undefined,
       descriptionShort: it.descriptionShort,
       descriptionLong: it.descriptionLong || undefined,
       measureUnitId: it.measureUnitId || undefined,
@@ -601,13 +599,11 @@ export function DetalhesSolicitacaoPage() {
         onFamilyChange={(nextId) => {
           markDirty();
           setEditFamilyId(nextId);
-          const fam = findFamilyById(families, nextId);
-          const { groupId, subgroupId } = classificationFromFamily(fam);
           setItems((prev) =>
             prev.map((it) => ({
               ...it,
-              groupId: groupId || it.groupId,
-              subgroupId: subgroupId || it.subgroupId,
+              groupId: '',
+              subgroupId: '',
             })),
           );
         }}

@@ -91,6 +91,14 @@ export type RequestItem = {
   ncmConfirmed: boolean;
   sortOrder: number;
   productId?: string | null;
+  groupId?: string | null;
+  group?: {
+    id: string;
+    code: string;
+    name: string;
+    subgroupId?: string;
+    subgroup?: { id: string; code: string; name: string; familyId?: string };
+  } | null;
   source?: string;
   itemValue?: number | string | null;
   purchaseQtyTotal?: number | string | null;

@@ -21,7 +21,7 @@ type Props = {
 };
 
 /**
- * Navegação visual em pastas — agrupada por Grupo → Subgrupo (ITM-11 na família).
+ * Navegação visual em pastas — Subgrupo → Grupo (dentro da família do lote).
  */
 export function ItemFolderStrip({
   items,
@@ -51,31 +51,31 @@ export function ItemFolderStrip({
         )}
       </div>
 
-      {tree.map((groupFolder) => {
-        const gVisual = familyGroupVisual(groupFolder.group?.code);
-        const groupLabel = groupFolder.group
-          ? `${groupFolder.group.code} — ${groupFolder.group.name}`
+      {tree.map((sgFolder) => {
+        const sgVisual = familyGroupVisual(sgFolder.subgroup?.code);
+        const subgroupLabel = sgFolder.subgroup
+          ? `${sgFolder.subgroup.code} — ${sgFolder.subgroup.name}`
           : 'Sem classificação';
 
         return (
-          <section key={groupFolder.key} className="item-folder-group">
+          <section key={sgFolder.key} className="item-folder-group">
             <header className="item-folder-group-header">
-              <span className="item-folder-group-icon" style={{ background: gVisual.bg, color: gVisual.color }}>
-                <Icon name={gVisual.icon} size={22} />
+              <span className="item-folder-group-icon" style={{ background: sgVisual.bg, color: sgVisual.color }}>
+                <Icon name={sgVisual.icon} size={22} />
               </span>
-              <h3 className="item-folder-group-title">{groupLabel}</h3>
+              <h3 className="item-folder-group-title">{subgroupLabel}</h3>
             </header>
 
-            {groupFolder.subgroups.map((sgFolder) => {
-              const sgLabel = sgFolder.subgroup
-                ? `${sgFolder.subgroup.code} — ${sgFolder.subgroup.name}`
-                : 'Subgrupo pendente';
+            {sgFolder.groups.map((gFolder) => {
+              const gLabel = gFolder.group
+                ? `${gFolder.group.code} — ${gFolder.group.name}`
+                : 'Grupo pendente';
 
               return (
-                <div key={sgFolder.key} className="item-folder-subgroup">
-                  <p className="item-folder-subgroup-label">{sgLabel}</p>
+                <div key={gFolder.key} className="item-folder-subgroup">
+                  <p className="item-folder-subgroup-label">{gLabel}</p>
                   <div className="item-folder-row">
-                    {sgFolder.itemIndexes.map((index) => {
+                    {gFolder.itemIndexes.map((index) => {
                       const item = items[index];
                       const active = index === currentIndex;
                       return (
@@ -98,9 +98,9 @@ export function ItemFolderStrip({
                           >
                             <span
                               className="item-folder-icon"
-                              style={{ background: gVisual.bg, color: gVisual.color }}
+                              style={{ background: sgVisual.bg, color: sgVisual.color }}
                             >
-                              <Icon name={gVisual.icon} size={36} />
+                              <Icon name={sgVisual.icon} size={36} />
                             </span>
                             <span className="item-folder-name">
                               {itemTileLabel(item.descriptionShort, index)}

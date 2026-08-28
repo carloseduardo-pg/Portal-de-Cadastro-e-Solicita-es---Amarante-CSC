@@ -10,6 +10,10 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX IF NOT EXISTS products_description_short_trgm_idx
   ON products USING gin (description_short gin_trgm_ops);
 
+-- Igualdade / GROUP BY para duplicatas exatas (RF-ITM-13) — barato em volume real
+CREATE INDEX IF NOT EXISTS products_description_short_btree_idx
+  ON products (description_short);
+
 -- ITM-09: NCM no produto exige confirmação humana
 ALTER TABLE products DROP CONSTRAINT IF EXISTS products_ncm_requires_confirmation;
 ALTER TABLE products ADD CONSTRAINT products_ncm_requires_confirmation

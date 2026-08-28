@@ -27,4 +27,4 @@ bash "$ROOT/database/scripts/apply-triggers.sh"
 
 echo "==> Amarante seed"
 npx prisma db seed
-echo "OK  exemplos carregados"
+echo "OK  seed infra (catálogo: npm run import:sap)"
