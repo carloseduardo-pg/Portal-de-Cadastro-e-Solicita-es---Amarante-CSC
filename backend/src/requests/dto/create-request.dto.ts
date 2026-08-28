@@ -61,6 +61,55 @@ export class RequestItemInputDto {
   @Min(0)
   purchaseQtyTotal?: number;
 
+  /**
+   * Ativo fixo: quantidade de unidades físicas a cadastrar (materializa N produtos na aprovação).
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @Min(1)
+  unitQuantity?: number;
+
+  /** Ativo fixo: localização física (texto livre). */
+  @IsOptional()
+  @IsString()
+  physicalLocation?: string;
+
+  /** TODO AF5 — opcional até Amarante definir. */
+  @IsOptional()
+  @IsString()
+  assetTag?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  acquisitionValue?: number;
+
+  @IsOptional()
+  @IsString()
+  acquisitionDate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @Min(1)
+  usefulLifeMonths?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  depreciationRate?: number;
+
+  @IsOptional()
+  @IsString()
+  supplierDocument?: string;
+
+  @IsOptional()
+  @IsString()
+  invoiceNumber?: string;
+
   @IsOptional()
   @IsString()
   unifiedCode?: string;

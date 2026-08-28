@@ -13,6 +13,7 @@ import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
 import { parsePage } from '../common/pagination';
 import { CreateRequestDto, UpdateRequestDto } from './dto/create-request.dto';
+import { ReclassifyRequestDto } from './dto/reclassify-request.dto';
 import { RequestsService } from './requests.service';
 
 @Controller('requests')
@@ -195,18 +196,39 @@ export class RequestsController {
     return this.requests.sendToApprover(id, req.user?.id ?? '', body.message ?? '');
   }
 
-  /** Imobilizado → Aprovador de cadastro (ativo fixo). */
+  /** Imobilizado → Aprovador de cadastro (ativo fixo), ou encerra se returnToApprover=false. */
   @Post(':id/send-from-imobilizado')
   sendFromImobilizado(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { message?: string },
+    @Body() body: { message?: string; items?: { itemId: string; ncm: string }[] },
     @Req() req: Request & { user?: { id: string } },
   ) {
     return this.requests.sendFromImobilizadoToApprover(
       id,
       req.user?.id ?? '',
       body.message ?? '',
+      body.items ?? [],
     );
+  }
+
+  /** Aprovador → reclassifica lote como Ativo Fixo (etapa Imobilizado). */
+  @Post(':id/reclassify-fixed-asset')
+  reclassifyFixedAsset(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReclassifyRequestDto,
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    return this.requests.reclassifyAsFixedAsset(id, req.user?.id ?? '', dto);
+  }
+
+  /** Imobilizado → reclassifica lote como Uso e Consumo (etapa Aprovador). */
+  @Post(':id/reclassify-consumption')
+  reclassifyConsumption(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReclassifyRequestDto,
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    return this.requests.reclassifyAsConsumption(id, req.user?.id ?? '', dto);
   }
 
   @Post(':id/submit')

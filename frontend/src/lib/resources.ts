@@ -39,9 +39,37 @@ export const dashboardApi = {
 };
 
 export const productsApi = {
-  search: (opts: { q: string; hotelId?: string; page?: number; pageSize?: number }) =>
+  search: (opts: {
+    q: string;
+    hotelId?: string;
+    itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+    page?: number;
+    pageSize?: number;
+  }) =>
     apiFetch<PageResult<ProductSearchResult>>(
-      `/products/search${qs({ q: opts.q, hotel_id: opts.hotelId, page: opts.page ?? 1, pageSize: opts.pageSize ?? 20 })}`,
+      `/products/search${qs({
+        q: opts.q,
+        hotel_id: opts.hotelId,
+        item_kind: opts.itemKind,
+        page: opts.page ?? 1,
+        pageSize: opts.pageSize ?? 20,
+      })}`,
+    ),
+  /** Contagem de produtos com descrição exatamente igual a `q`. */
+  exactCount: (opts: { q: string; itemKind?: 'CONSUMPTION' | 'FIXED_ASSET' }) =>
+    apiFetch<{
+      count: number;
+      sample: {
+        id: string;
+        unifiedCode: string | null;
+        descriptionShort: string;
+        itemKind: string;
+      } | null;
+    }>(
+      `/products/exact-count${qs({
+        q: opts.q,
+        item_kind: opts.itemKind,
+      })}`,
     ),
   base: (opts?: {
     search?: string;
@@ -165,6 +193,7 @@ export const requestsApi = {
     fixedAsset?: boolean;
     items: {
       productId?: string;
+      groupId?: string;
       descriptionShort: string;
       descriptionLong?: string;
       measureUnitId?: string;
@@ -172,6 +201,15 @@ export const requestsApi = {
       source?: 'NATIONAL' | 'FOREIGN';
       itemValue?: number;
       purchaseQtyTotal?: number;
+      unitQuantity?: number;
+      physicalLocation?: string;
+      assetTag?: string;
+      acquisitionValue?: number;
+      acquisitionDate?: string;
+      usefulLifeMonths?: number;
+      depreciationRate?: number;
+      supplierDocument?: string;
+      invoiceNumber?: string;
       unifiedCode?: string;
       legacyCode?: string;
       law116?: string;
@@ -198,6 +236,7 @@ export const requestsApi = {
       fixedAsset?: boolean;
       items?: {
         productId?: string;
+        groupId?: string;
         descriptionShort: string;
         descriptionLong?: string;
         measureUnitId?: string;
@@ -205,6 +244,15 @@ export const requestsApi = {
         source?: 'NATIONAL' | 'FOREIGN';
         itemValue?: number;
         purchaseQtyTotal?: number;
+        unitQuantity?: number;
+        physicalLocation?: string;
+        assetTag?: string;
+        acquisitionValue?: number;
+        acquisitionDate?: string;
+        usefulLifeMonths?: number;
+        depreciationRate?: number;
+        supplierDocument?: string;
+        invoiceNumber?: string;
         unifiedCode?: string;
         legacyCode?: string;
         law116?: string;
@@ -233,10 +281,30 @@ export const requestsApi = {
       method: 'POST',
       body: JSON.stringify({ message }),
     }),
-  sendFromImobilizado: (id: string, message: string) =>
+  sendFromImobilizado: (
+    id: string,
+    message: string,
+    items?: { itemId: string; ncm: string }[],
+  ) =>
     apiFetch<Request>(`/requests/${id}/send-from-imobilizado`, {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, items }),
+    }),
+  reclassifyFixedAsset: (
+    id: string,
+    body: { justification: string; itemIds: string[]; returnToApprover?: boolean },
+  ) =>
+    apiFetch<Request>(`/requests/${id}/reclassify-fixed-asset`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  reclassifyConsumption: (
+    id: string,
+    body: { justification: string; itemIds: string[] },
+  ) =>
+    apiFetch<Request>(`/requests/${id}/reclassify-consumption`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
   returnToRequester: (id: string, message: string) =>
     apiFetch<Request>(`/requests/${id}/return-to-requester`, {
@@ -257,32 +325,59 @@ export const requestsApi = {
 
 export const catalogApi = {
   hotels: () => apiFetch<Hotel[]>('/catalog/hotels'),
-  families: (opts?: { search?: string; page?: number; pageSize?: number }) =>
+  families: (opts?: {
+    search?: string;
+    itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+    page?: number;
+    pageSize?: number;
+  }) =>
     apiFetch<PageResult<Family>>(
       `/catalog/families${qs({
         search: opts?.search,
+        item_kind: opts?.itemKind,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 50,
       })}`,
     ),
   familyAttributes: (familyId: string) =>
     apiFetch<ProductAttribute[]>(`/catalog/families/${familyId}/attributes`),
-  groups: (opts?: { subgroupId?: string; page?: number; pageSize?: number } | number, pageSize = 200) => {
+  groups: (
+    opts?:
+      | {
+          search?: string;
+          subgroupId?: string;
+          itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+          page?: number;
+          pageSize?: number;
+        }
+      | number,
+    pageSize = 200,
+  ) => {
     if (typeof opts === 'number') {
       return apiFetch<PageResult<CatalogGroup>>(`/catalog/groups${qs({ page: opts, pageSize })}`);
     }
     return apiFetch<PageResult<CatalogGroup>>(
       `/catalog/groups${qs({
+        search: opts?.search,
         subgroup_id: opts?.subgroupId,
+        item_kind: opts?.itemKind,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 200,
       })}`,
     );
   },
-  subgroups: (opts?: { familyId?: string; page?: number; pageSize?: number }) =>
+  subgroups: (opts?: {
+    search?: string;
+    familyId?: string;
+    itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+    page?: number;
+    pageSize?: number;
+  }) =>
     apiFetch<PageResult<CatalogSubgroup>>(
       `/catalog/subgroups${qs({
+        search: opts?.search,
         family_id: opts?.familyId,
+        item_kind: opts?.itemKind,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 200,
       })}`,

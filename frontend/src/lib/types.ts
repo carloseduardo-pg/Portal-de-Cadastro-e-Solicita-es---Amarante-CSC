@@ -30,6 +30,9 @@ export type ProductSearchResult = {
   similarity: number;
   hotelCodes: string[];
   similarTo: (string | null)[];
+  /** Incluído para trava de duplicidade (inativos/bloqueados também entram na busca). */
+  active?: boolean;
+  blockState?: 'NONE' | 'PARTIAL' | 'TOTAL' | string;
 };
 
 export type ProductBase = {
@@ -40,24 +43,41 @@ export type ProductBase = {
   descriptionLong: string | null;
   ncmCode: string | null;
   active: boolean;
+  itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+  fixedAsset?: boolean;
   hotelCodes?: string[];
   possibleDuplicate?: boolean;
   similarTo?: string | null;
   family?: { code: string; name: string; subgroup?: { code: string; name: string; group?: { code: string; name: string } } };
   measureUnit?: { code: string; name: string };
   hotels?: { hotel: Hotel }[];
+  physicalLocation?: string | null;
+  assetTag?: string | null;
+  acquisitionValue?: number | string | null;
+  acquisitionDate?: string | null;
+  usefulLifeMonths?: number | null;
+  depreciationRate?: number | string | null;
+  supplierDocument?: string | null;
+  invoiceNumber?: string | null;
+  costCenter?: CostCenter | null;
 };
 
 export type ProductBaseResult = PageResult<ProductBase> & {
   duplicateSummary?: { pairCount: number };
 };
 
+/** Flags de anomalia da importação SAP (quarentena, TMP_*, grupo "Itens"). */
+export type HierarchyAnomaly = 'quarantine' | 'ambiguous' | 'itens_placeholder';
+
 export type Family = {
   id: string;
   code: string;
   name: string;
+  itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
   attributesCount?: number;
   subgroupsCount?: number;
+  productsCount?: number;
+  anomalies?: HierarchyAnomaly[];
 };
 
 export type CatalogGroup = {
@@ -66,6 +86,11 @@ export type CatalogGroup = {
   name: string;
   subgroupId?: string;
   familyId?: string;
+  itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+  productsCount?: number;
+  anomalies?: HierarchyAnomaly[];
+  subgroup?: { id: string; code: string; name: string };
+  family?: { id: string; code: string; name: string };
 };
 
 export type CatalogSubgroup = {
@@ -73,6 +98,10 @@ export type CatalogSubgroup = {
   code: string;
   name: string;
   familyId?: string;
+  itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+  groupsCount?: number;
+  productsCount?: number;
+  anomalies?: HierarchyAnomaly[];
   family?: { id: string; code: string; name: string };
 };
 
@@ -100,8 +129,20 @@ export type RequestItem = {
     subgroup?: { id: string; code: string; name: string; familyId?: string };
   } | null;
   source?: string;
+  itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
   itemValue?: number | string | null;
   purchaseQtyTotal?: number | string | null;
+  /** Ativo fixo: quantidade de unidades físicas a cadastrar. */
+  unitQuantity?: number | null;
+  /** Ativo fixo: localização física. */
+  physicalLocation?: string | null;
+  assetTag?: string | null;
+  acquisitionValue?: number | string | null;
+  acquisitionDate?: string | null;
+  usefulLifeMonths?: number | null;
+  depreciationRate?: number | string | null;
+  supplierDocument?: string | null;
+  invoiceNumber?: string | null;
   unifiedCode?: string | null;
   legacyCode?: string | null;
   law116?: string | null;
@@ -126,6 +167,14 @@ export type Request = {
   state: string;
   type: string;
   fixedAsset?: boolean;
+  /** Após AF no Imobilizado: true = volta ao Aprovador; false = Imobilizado encerra. */
+  returnToApprover?: boolean;
+  /** Classificação merceológica invalidada — exige árvore AF antes de enviar. */
+  classificationInvalidated?: boolean;
+  /** Vínculo de divisão de lote misto. */
+  parentRequestId?: string | null;
+  parentRequest?: { id: string; state: string; fixedAsset?: boolean } | null;
+  childRequests?: { id: string; state: string; fixedAsset?: boolean; createdAt: string }[];
   observation?: string | null;
   requestDescription?: string | null;
   createdAt: string;
@@ -137,9 +186,41 @@ export type Request = {
   approvedBy?: { id: string; name: string } | null;
   hotel?: { id: string; code: string; name: string };
   hotels?: { hotel: Hotel }[];
-  family?: { id: string; code: string; name: string; subgroup?: { group?: { code: string; name: string } } };
+  family?: {
+    id: string;
+    code: string;
+    name: string;
+    itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+    subgroup?: { group?: { code: string; name: string } };
+  };
   items: RequestItem[];
   stages?: RequestStage[];
+};
+
+export type RequestStageOutcomeDetail = {
+  justification?: string;
+  returnToApprover?: boolean;
+  split?: boolean;
+  parentRequestId?: string;
+  childRequestId?: string;
+  itemIds?: string[];
+  remainingItemIds?: string[];
+  itemsBefore?: {
+    id: string;
+    descriptionShort: string;
+    itemKind: string;
+    groupId: string | null;
+    groupCode?: string;
+    familyId?: string;
+  }[];
+  itemsAfter?: {
+    id: string;
+    descriptionShort: string;
+    itemKind: string;
+    groupId: string | null;
+    groupCode?: string;
+    familyId?: string;
+  }[];
 };
 
 export type RequestStage = {
@@ -149,6 +230,8 @@ export type RequestStage = {
   finishedAt: string | null;
   isLate: boolean;
   message: string | null;
+  outcome?: string | null;
+  outcomeDetail?: RequestStageOutcomeDetail | null;
   user?: { name: string };
 };
 

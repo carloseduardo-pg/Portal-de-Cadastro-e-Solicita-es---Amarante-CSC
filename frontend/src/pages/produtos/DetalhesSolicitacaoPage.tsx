@@ -6,6 +6,8 @@ import { ItemPrimaryFields } from '../../components/ItemPrimaryFields';
 import { ItemCompletionSection } from '../../components/ItemCompletionSection';
 import { ItemFolderStrip } from '../../components/ItemFolderStrip';
 import { PageStageHeader } from '../../components/PageStageHeader';
+import { ReclassifyRequestDialog } from '../../components/ReclassifyRequestDialog';
+import type { ReclassifyDirection } from '../../components/ReclassifyRequestDialog';
 import { RequestDescriptionBlock } from '../../components/RequestDescriptionBlock';
 import { RequestItemCompareTable } from '../../components/requests/RequestItemCompareTable';
 import { RequestTimeline } from '../../components/RequestTimeline';
@@ -17,6 +19,7 @@ import {
   requestTypeLabel,
 } from '../../lib/requestLabels';
 import { toFormUppercase } from '../../lib/formText';
+import { formatNcmDisplay } from '../../lib/ncm';
 import { catalogApi, productsApi, requestsApi } from '../../lib/resources';
 import type {
   CatalogGroup,
@@ -39,6 +42,8 @@ import '../../components/ItemCompletionSection.css';
 import '../../components/RequestTimeline.css';
 import '../../components/requests/RequestItemCompareTable.css';
 import '../../components/ConfirmDialog.css';
+import '../../components/ReclassifyRequestDialog.css';
+import '../../components/Modal.css';
 
 type ViewItem = {
   id: string;
@@ -52,6 +57,15 @@ type ViewItem = {
   source: 'NATIONAL' | 'FOREIGN';
   itemValue: string;
   purchaseQtyTotal: string;
+  unitQuantity: string;
+  physicalLocation: string;
+  assetTag: string;
+  acquisitionValue: string;
+  acquisitionDate: string;
+  usefulLifeMonths: string;
+  depreciationRate: string;
+  supplierDocument: string;
+  invoiceNumber: string;
   unifiedCode: string;
   legacyCode: string;
   law116: string;
@@ -99,16 +113,29 @@ export function DetalhesSolicitacaoPage() {
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const [confirmSendDirty, setConfirmSendDirty] = useState(false);
+  const [reclassifyOpen, setReclassifyOpen] = useState(false);
+  const [reclassifyDirection, setReclassifyDirection] =
+    useState<ReclassifyDirection>('fixed-asset');
 
   useEffect(() => {
     void Promise.all([
       catalogApi.hotels().then(setHotels),
       catalogApi.groups({ pageSize: 500 }).then((r) => setGroups(r.data)),
       catalogApi.subgroups({ pageSize: 500 }).then((r) => setSubgroups(r.data)),
-      catalogApi.families({ pageSize: 500 }).then((r) => setFamilies(r.data)),
       catalogApi.measureUnits().then((r) => setMeasureUnits(r.data)),
     ]).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    const kind = editFixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
+    void catalogApi
+      .families({ pageSize: 500, itemKind: kind })
+      .then((r) => {
+        setFamilies(r.data);
+        setEditFamilyId((prev) => (prev && r.data.some((f) => f.id === prev) ? prev : ''));
+      })
+      .catch(console.error);
+  }, [editFixedAsset]);
 
   useEffect(() => {
     if (!id) return;
@@ -149,6 +176,15 @@ export function DetalhesSolicitacaoPage() {
         source: (it.source === 'FOREIGN' ? 'FOREIGN' : 'NATIONAL') as ViewItem['source'],
         itemValue: it.itemValue != null ? String(it.itemValue) : '',
         purchaseQtyTotal: it.purchaseQtyTotal != null ? String(it.purchaseQtyTotal) : '',
+        unitQuantity: it.unitQuantity != null ? String(it.unitQuantity) : '1',
+        physicalLocation: it.physicalLocation ?? '',
+        assetTag: it.assetTag ?? '',
+        acquisitionValue: it.acquisitionValue != null ? String(it.acquisitionValue) : '',
+        acquisitionDate: it.acquisitionDate ? String(it.acquisitionDate).slice(0, 10) : '',
+        usefulLifeMonths: it.usefulLifeMonths != null ? String(it.usefulLifeMonths) : '',
+        depreciationRate: it.depreciationRate != null ? String(it.depreciationRate) : '',
+        supplierDocument: it.supplierDocument ?? '',
+        invoiceNumber: it.invoiceNumber ?? '',
         unifiedCode: it.unifiedCode ?? '',
         legacyCode: it.legacyCode ?? '',
         law116: it.law116 ?? '',
@@ -207,8 +243,11 @@ export function DetalhesSolicitacaoPage() {
   const canSendToApprover = isSolicitante || isReturnToRequester;
   const canConcludeStage = canSendToApprover || isApprover || isImobilizado;
   const draftEditable = Boolean(isDraft);
-  const fieldsEditable = draftEditable || isApprover;
+  const fieldsEditable = draftEditable || isApprover || isImobilizado;
   const approverEditable = isApprover;
+  const imobilizadoEditable = isImobilizado;
+  const classificationEditable =
+    imobilizadoEditable || (isApprover && Boolean(request?.classificationInvalidated));
 
   useEffect(() => {
     const productId = requestItem?.productId;
@@ -225,7 +264,7 @@ export function DetalhesSolicitacaoPage() {
   }, [requestItem?.productId, isApprover]);
 
   function markDirty() {
-    if (draftEditable || isApprover) setDirty(true);
+    if (draftEditable || isApprover || isImobilizado) setDirty(true);
   }
 
   function patchCurrentItem(patch: Partial<ViewItem>) {
@@ -241,14 +280,34 @@ export function DetalhesSolicitacaoPage() {
       groupId: it.groupId || undefined,
       descriptionShort: it.descriptionShort,
       descriptionLong: it.descriptionLong || undefined,
-      measureUnitId: it.measureUnitId || undefined,
+      measureUnitId: editFixedAsset ? undefined : it.measureUnitId || undefined,
       costCenterId: it.costCenterId || undefined,
       source: it.source,
       itemValue: it.itemValue ? Number(it.itemValue) : undefined,
-      purchaseQtyTotal: it.purchaseQtyTotal ? Number(it.purchaseQtyTotal) : undefined,
+      purchaseQtyTotal: editFixedAsset
+        ? undefined
+        : it.purchaseQtyTotal
+          ? Number(it.purchaseQtyTotal)
+          : undefined,
+      unitQuantity: editFixedAsset
+        ? Math.max(1, Math.floor(Number(it.unitQuantity) || 1))
+        : undefined,
+      physicalLocation: editFixedAsset ? it.physicalLocation.trim() || undefined : undefined,
+      assetTag: editFixedAsset ? it.assetTag.trim() || undefined : undefined,
+      acquisitionValue:
+        editFixedAsset && it.acquisitionValue ? Number(it.acquisitionValue) : undefined,
+      acquisitionDate: editFixedAsset ? it.acquisitionDate || undefined : undefined,
+      usefulLifeMonths:
+        editFixedAsset && it.usefulLifeMonths
+          ? Math.floor(Number(it.usefulLifeMonths))
+          : undefined,
+      depreciationRate:
+        editFixedAsset && it.depreciationRate ? Number(it.depreciationRate) : undefined,
+      supplierDocument: editFixedAsset ? it.supplierDocument.trim() || undefined : undefined,
+      invoiceNumber: editFixedAsset ? it.invoiceNumber.trim() || undefined : undefined,
       unifiedCode: it.unifiedCode.trim() || undefined,
       legacyCode: it.legacyCode.trim() || undefined,
-      law116: it.law116.trim() || undefined,
+      law116: editFixedAsset ? undefined : it.law116.trim() || undefined,
       productLink: it.productLink.trim() || it.productLinks[0]?.trim() || undefined,
       productLinks: it.productLinks.map((l) => l.trim()).filter(Boolean),
       itemObservation: it.itemObservation.trim() || undefined,
@@ -309,6 +368,9 @@ export function DetalhesSolicitacaoPage() {
     setBusy(true);
     try {
       await requestsApi.update(request.id, {
+        ...(request.classificationInvalidated && editFamilyId
+          ? { familyId: editFamilyId }
+          : {}),
         editNote: editNote.trim() || 'Aprovador alterou campos da solicitação.',
         items: buildItemsPayload(),
       });
@@ -318,6 +380,38 @@ export function DetalhesSolicitacaoPage() {
       alert('Alterações salvas e registradas na timeline.');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Falha ao salvar alterações.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Imobilizado grava família AF + grupos dos itens (limpa classificationInvalidated se válido). */
+  async function saveImobilizadoChanges() {
+    if (!request) return;
+    if (!editFamilyId) {
+      alert('Selecione a família de Ativo Fixo.');
+      return;
+    }
+    for (const it of items) {
+      if (!it.groupId || !it.subgroupId) {
+        alert('Informe grupo e subgrupo de todos os itens na árvore de Ativo Fixo.');
+        return;
+      }
+    }
+    setBusy(true);
+    try {
+      await requestsApi.update(request.id, {
+        familyId: editFamilyId,
+        editNote:
+          editNote.trim() || 'Imobilizado atualizou a classificação (árvore de ativo fixo).',
+        items: buildItemsPayload(),
+      });
+      setEditNote('');
+      setDirty(false);
+      await reloadRequest();
+      alert('Classificação salva. A invalidação é removida quando a árvore AF estiver completa.');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Falha ao salvar classificação.');
     } finally {
       setBusy(false);
     }
@@ -343,8 +437,12 @@ export function DetalhesSolicitacaoPage() {
         alert('Informe grupo e subgrupo de todos os itens.');
         return false;
       }
-      if (!it.measureUnitId || !it.costCenterId) {
-        alert('Informe unidade de medida e centro de custo de todos os itens.');
+      if ((!editFixedAsset && !it.measureUnitId) || !it.costCenterId) {
+        alert(
+          editFixedAsset
+            ? 'Informe o centro de custo de todos os itens.'
+            : 'Informe unidade de medida e centro de custo de todos os itens.',
+        );
         return false;
       }
     }
@@ -443,13 +541,93 @@ export function DetalhesSolicitacaoPage() {
       alert('Escreva um comentário sobre a conclusão da etapa de imobilizado.');
       return;
     }
+    if (request.classificationInvalidated) {
+      alert(
+        'Classificação invalidada: escolha a família e os grupos de Ativo Fixo e salve antes de encaminhar.',
+      );
+      return;
+    }
+
+    const concludesAlone = request.returnToApprover === false;
+    let itemNcms: { itemId: string; ncm: string }[] | undefined;
+    if (concludesAlone) {
+      itemNcms = [];
+      for (const it of request.items) {
+        const ncm = selectedNcm[it.id] || customNcm[it.id] || it.ncmCode;
+        if (!ncm) {
+          alert(
+            'ITM-09: confirme o NCM de todos os itens antes que o Imobilizado encerre sozinho.',
+          );
+          return;
+        }
+        itemNcms.push({ itemId: it.id, ncm });
+      }
+    }
+
     setBusy(true);
     try {
-      await requestsApi.sendFromImobilizado(request.id, stageComment.trim());
-      alert('Etapa de imobilizado concluída. Solicitação enviada ao aprovador de cadastro.');
-      navigate('/produtos/caixa-de-entrada');
+      await requestsApi.sendFromImobilizado(
+        request.id,
+        stageComment.trim(),
+        itemNcms,
+      );
+      alert(
+        concludesAlone
+          ? 'Imobilizado encerrou a solicitação. Itens promovidos à Base de Produtos.'
+          : 'Etapa de imobilizado concluída. Solicitação enviada ao aprovador de cadastro.',
+      );
+      navigate(concludesAlone ? '/produtos/base' : '/produtos/caixa-de-entrada');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Falha ao encaminhar ao aprovador.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmReclassify(payload: {
+    justification: string;
+    itemIds: string[];
+    returnToApprover?: boolean;
+  }) {
+    if (!request) return;
+    setBusy(true);
+    try {
+      const beforeChildren = request.childRequests?.length ?? 0;
+      let updated: typeof request;
+      if (reclassifyDirection === 'fixed-asset') {
+        updated = await requestsApi.reclassifyFixedAsset(request.id, {
+          justification: payload.justification,
+          itemIds: payload.itemIds,
+          returnToApprover: payload.returnToApprover,
+        });
+      } else {
+        updated = await requestsApi.reclassifyConsumption(request.id, {
+          justification: payload.justification,
+          itemIds: payload.itemIds,
+        });
+      }
+      setReclassifyOpen(false);
+      const newChild = (updated.childRequests ?? []).find(
+        (c) => !(request.childRequests ?? []).some((old) => old.id === c.id),
+      );
+      const split = Boolean(newChild) || (updated.childRequests?.length ?? 0) > beforeChildren;
+      if (split && newChild) {
+        alert(
+          `Lote dividido.\n\n` +
+            `• Esta solicitação permanece com os itens que não foram reclassificados.\n` +
+            `• Nova solicitação ${newChild.id.slice(0, 8)}… criada para os itens reclassificados ` +
+            `(${newChild.fixedAsset ? 'Ativo Fixo / Imobilizado' : 'Uso e Consumo / Aprovador'}).`,
+        );
+        await reloadRequest();
+      } else if (reclassifyDirection === 'fixed-asset') {
+        alert('Solicitação reclassificada como Ativo Fixo e enviada ao Imobilizado.');
+        navigate('/produtos/caixa-de-entrada');
+      } else {
+        alert('Solicitação reclassificada como Uso e Consumo e enviada ao Aprovador.');
+        navigate('/produtos/caixa-de-entrada');
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Falha na reclassificação.');
     } finally {
       setBusy(false);
     }
@@ -539,6 +717,46 @@ export function DetalhesSolicitacaoPage() {
             : ''}
       </p>
 
+      {request.classificationInvalidated ? (
+        <p className="ncm-warning" role="status">
+          {isImobilizado
+            ? 'Classificação merceológica invalidada por reclassificação. Escolha a família e os grupos da árvore de Ativo Fixo e salve antes de encaminhar ou encerrar.'
+            : 'Classificação merceológica invalidada por reclassificação. Reatribua a família e os grupos dos itens (árvore correta) antes de finalizar.'}
+        </p>
+      ) : null}
+
+      {request.parentRequest ? (
+        <p className="info-banner" role="status">
+          Esta solicitação foi gerada por divisão de lote a partir de{' '}
+          <button
+            type="button"
+            className="btn-link"
+            onClick={() => navigate(`/produtos/solicitacao/${request.parentRequest!.id}`)}
+          >
+            {request.parentRequest.id.slice(0, 8)}…
+          </button>
+          {request.parentRequest.fixedAsset ? ' (ativo fixo)' : ' (uso e consumo)'}.
+        </p>
+      ) : null}
+
+      {request.childRequests?.length ? (
+        <p className="info-banner" role="status">
+          Solicitações geradas por divisão deste lote:{' '}
+          {request.childRequests.map((c, idx) => (
+            <span key={c.id}>
+              {idx > 0 ? ', ' : null}
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => navigate(`/produtos/solicitacao/${c.id}`)}
+              >
+                {c.id.slice(0, 8)}… ({c.fixedAsset ? 'AF' : 'consumo'} · {requestStateLabel(c.state)})
+              </button>
+            </span>
+          ))}
+        </p>
+      ) : null}
+
       {(request.requestDescription?.trim() ||
         request.observation?.trim() ||
         isDraft) ? (
@@ -590,7 +808,9 @@ export function DetalhesSolicitacaoPage() {
         hotelIds={editHotelIds}
         familyId={editFamilyId}
         fixedAsset={editFixedAsset}
-        readOnly={!draftEditable}
+        readOnly={!draftEditable && !classificationEditable}
+        kindReadOnly={!draftEditable}
+        hotelsReadOnly={!draftEditable}
         familyLocked={draftEditable && items.length > 0}
         onHotelChange={(ids) => {
           markDirty();
@@ -610,6 +830,7 @@ export function DetalhesSolicitacaoPage() {
         onFixedAssetChange={(v) => {
           markDirty();
           setEditFixedAsset(v);
+          setEditFamilyId('');
         }}
       />
 
@@ -651,6 +872,7 @@ export function DetalhesSolicitacaoPage() {
             <p className="form-section-title">Classificação do item</p>
             <ItemPrimaryFields
               readOnly={!fieldsEditable}
+              hideMeasureUnit={editFixedAsset || Boolean(request.fixedAsset)}
               value={{
                 descriptionShort: item.descriptionShort,
                 costCenterId: item.costCenterId,
@@ -660,6 +882,15 @@ export function DetalhesSolicitacaoPage() {
                 unifiedCode: item.unifiedCode,
                 legacyCode: item.legacyCode,
                 law116: item.law116,
+                unitQuantity: item.unitQuantity,
+                physicalLocation: item.physicalLocation,
+                assetTag: item.assetTag,
+                acquisitionValue: item.acquisitionValue,
+                acquisitionDate: item.acquisitionDate,
+                usefulLifeMonths: item.usefulLifeMonths,
+                depreciationRate: item.depreciationRate,
+                supplierDocument: item.supplierDocument,
+                invoiceNumber: item.invoiceNumber,
               }}
               costCenters={costCenters}
               measureUnits={measureUnits}
@@ -671,6 +902,15 @@ export function DetalhesSolicitacaoPage() {
                       }
                       if (patch.legacyCode !== undefined) {
                         patch.legacyCode = toFormUppercase(patch.legacyCode);
+                      }
+                      if (patch.physicalLocation !== undefined) {
+                        patch.physicalLocation = toFormUppercase(patch.physicalLocation);
+                      }
+                      if (patch.assetTag !== undefined) {
+                        patch.assetTag = toFormUppercase(patch.assetTag);
+                      }
+                      if (patch.invoiceNumber !== undefined) {
+                        patch.invoiceNumber = toFormUppercase(patch.invoiceNumber);
                       }
                       patchCurrentItem(patch);
                     }
@@ -724,7 +964,7 @@ export function DetalhesSolicitacaoPage() {
             }
           />
 
-          {isApprover ? (
+          {isApprover || (isImobilizado && request.returnToApprover === false) ? (
             <div className="solicitacao-form-section detalhes-ncm-block">
               <p className="form-section-title">NCM — candidatos do histórico</p>
               <div className="ncm-warning">
@@ -732,7 +972,7 @@ export function DetalhesSolicitacaoPage() {
               </div>
               {item.ncmConfirmed && item.ncmCode ? (
                 <p className="info-banner form-success">
-                  NCM confirmado: <strong>{item.ncmCode}</strong>
+                  NCM confirmado: <strong>{formatNcmDisplay(item.ncmCode)}</strong>
                 </p>
               ) : (
                 <div className="ncm-list">
@@ -750,7 +990,7 @@ export function DetalhesSolicitacaoPage() {
                         }
                       />
                       <span>
-                        <strong>{s.ncm}</strong> — usado {s.usageCount} vezes (score{' '}
+                        <strong>{formatNcmDisplay(s.ncm)}</strong> — usado {s.usageCount} vezes (similaridade{' '}
                         {Number(s.score).toFixed(2)})
                       </span>
                     </label>
@@ -781,7 +1021,7 @@ export function DetalhesSolicitacaoPage() {
             </div>
           ) : item.ncmCode ? (
             <p className="info-banner" style={{ marginTop: 16 }}>
-              NCM: <strong>{item.ncmCode}</strong>
+              NCM: <strong>{formatNcmDisplay(item.ncmCode)}</strong>
               {item.ncmConfirmed ? ' (confirmado)' : ''}
             </p>
           ) : null}
@@ -827,6 +1067,28 @@ export function DetalhesSolicitacaoPage() {
             onClick={() => void saveApproverChanges()}
           >
             Salvar alterações do aprovador
+          </button>
+        </div>
+      ) : null}
+
+      {imobilizadoEditable ? (
+        <div className="stage-conclude-block">
+          <label className="form-field">
+            <span>Nota da edição (timeline)</span>
+            <textarea
+              rows={2}
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="Opcional — descreva a reclassificação na árvore AF"
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn-outline"
+            disabled={busy || !dirty}
+            onClick={() => void saveImobilizadoChanges()}
+          >
+            Salvar classificação do Imobilizado
           </button>
         </div>
       ) : null}
@@ -900,11 +1162,24 @@ export function DetalhesSolicitacaoPage() {
             </button>
             <button
               type="button"
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => {
+                setReclassifyDirection('consumption');
+                setReclassifyOpen(true);
+              }}
+            >
+              Reclassificar como Uso e Consumo
+            </button>
+            <button
+              type="button"
               className="btn btn-primary"
               disabled={busy}
               onClick={() => void sendFromImobilizado()}
             >
-              Encaminhar ao aprovador de cadastro
+              {request.returnToApprover === false
+                ? 'Encerrar solicitação (Imobilizado)'
+                : 'Encaminhar ao aprovador de cadastro'}
             </button>
           </>
         ) : null}
@@ -920,6 +1195,17 @@ export function DetalhesSolicitacaoPage() {
             </button>
             <button type="button" className="btn btn-outline" disabled>
               Recusar solicitação
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => {
+                setReclassifyDirection('fixed-asset');
+                setReclassifyOpen(true);
+              }}
+            >
+              Reclassificar como Ativo Fixo
             </button>
             <button
               type="button"
@@ -1005,6 +1291,15 @@ export function DetalhesSolicitacaoPage() {
           </div>
         </div>
       ) : null}
+
+      <ReclassifyRequestDialog
+        open={reclassifyOpen}
+        direction={reclassifyDirection}
+        items={request.items}
+        busy={busy}
+        onClose={() => setReclassifyOpen(false)}
+        onConfirm={(payload) => void confirmReclassify(payload)}
+      />
     </section>
   );
 }

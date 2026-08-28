@@ -1,4 +1,4 @@
-/** Parâmetros de paginação já normalizados (page ≥ 1, pageSize ≤ 100). */
+/** Parâmetros de paginação já normalizados (page ≥ 1, pageSize limitado). */
 export type PageParams = {
   page: number;
   pageSize: number;
@@ -16,6 +16,8 @@ export type PageResult<T> = {
 const DEFAULT_PAGE = 1;
 const DEFAULT_SIZE = 20;
 const MAX_SIZE = 100;
+/** Catálogo PDM (famílias/subgrupos/grupos) — precisa listar ~100 grupos sem truncar. */
+const MAX_SIZE_CATALOG = 500;
 
 /**
  * Normaliza `page`/`pageSize` de query string.
@@ -26,6 +28,19 @@ export function parsePage(page?: string, pageSize?: string): PageParams {
   const size = Math.min(
     MAX_SIZE,
     Math.max(1, Number(pageSize) || DEFAULT_SIZE),
+  );
+  return { page: p, pageSize: size };
+}
+
+/**
+ * Paginação do catálogo PDM: permite até 500 registros por página
+ * (lista de grupos SAP não cabe no teto padrão de 100).
+ */
+export function parseCatalogPage(page?: string, pageSize?: string): PageParams {
+  const p = Math.max(1, Number(page) || DEFAULT_PAGE);
+  const size = Math.min(
+    MAX_SIZE_CATALOG,
+    Math.max(1, Number(pageSize) || 200),
   );
   return { page: p, pageSize: size };
 }

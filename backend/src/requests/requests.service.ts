@@ -4,10 +4,21 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ProductBlockState, ProductSource, RequestState, RequestType, UserRole } from '@prisma/client';
+import {
+  ItemKind,
+  Prisma,
+  ProductBlockState,
+  ProductSource,
+  RequestState,
+  RequestType,
+  UserRole,
+} from '@prisma/client';
+import { buildPdmSignature } from '../common/pdm-signature';
+import { formatNcmDisplay, normalizeNcmCode } from '../common/ncm';
 import { pageResult, skipTake, type PageParams } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateRequestDto, UpdateRequestDto } from './dto/create-request.dto';
+import type { ReclassifyRequestDto } from './dto/reclassify-request.dto';
 import { isBlockRequestType, isExistingProductRequestType } from './request-type.helpers';
 
 const ACTIONABLE_STATES: RequestState[] = [
@@ -29,6 +40,10 @@ const EDITABLE_STATES: RequestState[] = [
   RequestState.RETORNO_SOLICITANTE,
   RequestState.APROVADOR,
 ];
+
+/** Outcome de etapa ao reclassificar consumo ↔ ativo fixo. */
+const OUTCOME_RECLASSIFY_FIXED_ASSET = 'RECLASSIFY_FIXED_ASSET';
+const OUTCOME_RECLASSIFY_CONSUMPTION = 'RECLASSIFY_CONSUMPTION';
 
 /** Etapas visíveis na caixa de entrada conforme o perfil (Produtos — sem Compliance). */
 function inboxStatesForRole(role: UserRole): RequestState[] {
@@ -234,6 +249,81 @@ export class RequestsService {
    */
   private firstApprovalState(fixedAsset: boolean): RequestState {
     return fixedAsset ? RequestState.IMOBILIZADO : RequestState.APROVADOR;
+  }
+
+  /**
+   * Valida seleção de itens: não vazia e subset do lote.
+   * Retorna { selectedIds, remainingIds }.
+   */
+  private resolveSelectedItemIds(allItemIds: string[], selectedIds: string[]) {
+    if (!selectedIds?.length) {
+      throw new BadRequestException('Selecione ao menos um item para reclassificar.');
+    }
+    const all = new Set(allItemIds);
+    const selected = [...new Set(selectedIds)];
+    for (const id of selected) {
+      if (!all.has(id)) {
+        throw new BadRequestException('Um ou mais itens selecionados não pertencem a esta solicitação.');
+      }
+    }
+    const selectedSet = new Set(selected);
+    const remainingIds = allItemIds.filter((id) => !selectedSet.has(id));
+    return { selectedIds: selected, remainingIds, isFullLot: remainingIds.length === 0 };
+  }
+
+  /**
+   * Snapshot de classificação por item (antes/depois da reclassificação).
+   */
+  private itemClassificationSnapshot(
+    item: {
+      id: string;
+      descriptionShort: string;
+      itemKind: ItemKind;
+      groupId: string | null;
+      familyId?: string | null;
+      group?: { code: string; subgroup?: { familyId: string } | null } | null;
+    },
+    familyId: string,
+  ) {
+    return {
+      id: item.id,
+      descriptionShort: item.descriptionShort,
+      itemKind: item.itemKind,
+      groupId: item.groupId,
+      groupCode: item.group?.code ?? undefined,
+      familyId: item.group?.subgroup?.familyId ?? familyId,
+    };
+  }
+
+  /**
+   * Árvore AF válida após invalidação: família FIXED_ASSET e todo item com grupo dela.
+   */
+  private async assertFixedAssetClassificationReady(
+    familyId: string,
+    items: { id: string; descriptionShort: string; groupId: string | null }[],
+  ) {
+    const family = await this.prisma.family.findUnique({
+      where: { id: familyId },
+      select: { id: true, itemKind: true, active: true },
+    });
+    if (!family?.active || family.itemKind !== ItemKind.FIXED_ASSET) {
+      throw new BadRequestException(
+        'Classificação invalidada: o Imobilizado deve reclassificar a solicitação na árvore de Ativo Fixo antes de encaminhar.',
+      );
+    }
+    const missing = items.filter((i) => !i.groupId);
+    if (missing.length) {
+      throw new BadRequestException(
+        'Classificação invalidada: todos os itens precisam de grupo na árvore de Ativo Fixo antes de encaminhar.',
+      );
+    }
+    await this.assertItemsBelongToFamily(
+      familyId,
+      items.map((i) => ({
+        groupId: i.groupId,
+        descriptionShort: i.descriptionShort,
+      })),
+    );
   }
 
   /**
@@ -657,13 +747,25 @@ export class RequestsService {
   }
 
   /** ITM-11 — uma família por solicitação (lote). */
-  private async assertFamilyExists(familyId: string) {
+  private async assertFamilyExists(
+    familyId: string,
+    expectedKind?: 'CONSUMPTION' | 'FIXED_ASSET',
+  ) {
     const family = await this.prisma.family.findFirst({
-      where: { id: familyId, active: true },
+      where: {
+        id: familyId,
+        active: true,
+        ...(expectedKind ? { itemKind: expectedKind } : {}),
+      },
     });
     if (!family) {
-      throw new BadRequestException('Família inválida ou inativa.');
+      throw new BadRequestException(
+        expectedKind
+          ? `Família inválida/inativa ou incompatível com o tipo ${expectedKind}.`
+          : 'Família inválida ou inativa.',
+      );
     }
+    return family;
   }
 
   private async syncRequestHotels(requestId: string, hotelIds: string[]) {
@@ -685,19 +787,50 @@ export class RequestsService {
     return fromArray;
   }
 
-  private normalizeItemInput(items: CreateRequestDto['items']) {
+  private normalizeItemInput(items: CreateRequestDto['items'], itemKind: 'CONSUMPTION' | 'FIXED_ASSET') {
     return items.map((item, idx) => {
       const links = this.extractItemLinks(item);
+      const unitQuantity =
+        itemKind === 'FIXED_ASSET'
+          ? Math.max(1, Math.floor(Number(item.unitQuantity ?? 1)))
+          : null;
       return {
         descriptionShort: item.descriptionShort.trim().toUpperCase(),
         descriptionLong: item.descriptionLong?.trim().toUpperCase() ?? null,
         productId: item.productId ?? null,
         groupId: item.groupId ?? null,
-        measureUnitId: item.measureUnitId ?? null,
+        itemKind,
+        measureUnitId: itemKind === 'FIXED_ASSET' ? null : item.measureUnitId ?? null,
         costCenterId: item.costCenterId ?? null,
         source: item.source ?? ProductSource.NATIONAL,
         itemValue: item.itemValue != null ? item.itemValue : null,
-        purchaseQtyTotal: item.purchaseQtyTotal != null ? item.purchaseQtyTotal : null,
+        purchaseQtyTotal: itemKind === 'FIXED_ASSET' ? null : item.purchaseQtyTotal != null ? item.purchaseQtyTotal : null,
+        unitQuantity,
+        physicalLocation:
+          itemKind === 'FIXED_ASSET'
+            ? item.physicalLocation?.trim().toUpperCase() || null
+            : null,
+        assetTag: itemKind === 'FIXED_ASSET' ? item.assetTag?.trim().toUpperCase() || null : null,
+        acquisitionValue:
+          itemKind === 'FIXED_ASSET' && item.acquisitionValue != null
+            ? item.acquisitionValue
+            : null,
+        acquisitionDate:
+          itemKind === 'FIXED_ASSET' && item.acquisitionDate
+            ? new Date(item.acquisitionDate)
+            : null,
+        usefulLifeMonths:
+          itemKind === 'FIXED_ASSET' && item.usefulLifeMonths != null
+            ? item.usefulLifeMonths
+            : null,
+        depreciationRate:
+          itemKind === 'FIXED_ASSET' && item.depreciationRate != null
+            ? item.depreciationRate
+            : null,
+        supplierDocument:
+          itemKind === 'FIXED_ASSET' ? item.supplierDocument?.trim() || null : null,
+        invoiceNumber:
+          itemKind === 'FIXED_ASSET' ? item.invoiceNumber?.trim() || null : null,
         unifiedCode: item.unifiedCode?.trim() || null,
         legacyCode: item.legacyCode?.trim().toUpperCase() || null,
         law116: item.law116?.trim() || null,
@@ -732,35 +865,44 @@ export class RequestsService {
     }
   }
 
+  /**
+   * Trava de match 100% — só CONSUMPTION.
+   * Considera ativos, inativos e bloqueados (BLOQUEIO_TOTAL some da busca antiga).
+   */
   private async assertNoExactDuplicateInBase(descriptionShort: string) {
     const normalized = descriptionShort.trim().toUpperCase();
-    const exact = await this.prisma.product.findFirst({
-      where: { active: true, descriptionShort: normalized },
-    });
-    if (exact) {
-      throw new BadRequestException(
-        'Produto com descrição idêntica já existe na base unificada. Não é possível solicitar inclusão duplicada.',
-      );
-    }
-    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      SELECT p.id
+    const signature = buildPdmSignature(normalized);
+    const rows = await this.prisma.$queryRaw<
+      { id: string; active: boolean; block_state: string }[]
+    >`
+      SELECT p.id, p.active, p.block_state::text AS block_state
       FROM products p
-      WHERE p.active = true
-        AND similarity(p.description_short, ${normalized}) >= 0.999
+      WHERE p.item_kind = 'CONSUMPTION'::"ItemKind"
+        AND (
+          p.description_short = ${normalized}
+          OR p.pdm_signature = ${signature}
+          OR similarity(p.description_short, ${normalized}) >= 0.999
+        )
+      ORDER BY p.active DESC
       LIMIT 1
     `;
-    if (rows.length) {
-      throw new BadRequestException(
-        'Match de 100% com produto existente na base unificada. Não é possível continuar com a inclusão.',
-      );
+    if (!rows.length) return;
+
+    const hit = rows[0];
+    if (!hit.active || hit.block_state !== 'NONE') {
+      throw new BadRequestException('Existe um item idêntico bloqueado na base.');
     }
+    throw new BadRequestException(
+      'Produto com descrição idêntica já existe na base unificada. Não é possível solicitar inclusão duplicada.',
+    );
   }
 
+  /** Similaridade só entre CONSUMPTION (inclui inativos/bloqueados). */
   private async assertNoSimilarProductInBase(descriptionShort: string) {
     const rows = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT p.id
       FROM products p
-      WHERE p.active = true
+      WHERE p.item_kind = 'CONSUMPTION'::"ItemKind"
         AND similarity(p.description_short, ${descriptionShort}) > 0.08
       LIMIT 1
     `;
@@ -783,9 +925,12 @@ export class RequestsService {
         throw new BadRequestException('Descrição curta é obrigatória em todos os itens.');
       }
       if (type === RequestType.INCLUSAO && !item.productId) {
-        await this.assertNoExactDuplicateInBase(item.descriptionShort);
-        if (!observation?.trim()) {
-          await this.assertNoSimilarProductInBase(item.descriptionShort);
+        // Ativo fixo = instância: descrição idêntica é esperada (mais unidades do mesmo bem).
+        if (item.itemKind !== 'FIXED_ASSET') {
+          await this.assertNoExactDuplicateInBase(item.descriptionShort);
+          if (!observation?.trim()) {
+            await this.assertNoSimilarProductInBase(item.descriptionShort);
+          }
         }
       }
       if (isExistingProductRequestType(type) && !item.productId) {
@@ -802,8 +947,23 @@ export class RequestsService {
             'Grupo de itens é obrigatório em todos os itens para enviar à aprovação.',
           );
         }
-        if (!item.measureUnitId) {
-          throw new BadRequestException('Unidade de medida é obrigatória em todos os itens.');
+        if (item.itemKind === 'CONSUMPTION' && !item.measureUnitId) {
+          throw new BadRequestException(
+            'Unidade de medida é obrigatória para itens de consumo.',
+          );
+        }
+        if (item.itemKind === 'FIXED_ASSET' && item.measureUnitId) {
+          throw new BadRequestException(
+            'Ativo fixo não possui unidade de medida.',
+          );
+        }
+        if (item.itemKind === 'FIXED_ASSET') {
+          const qty = item.unitQuantity ?? 0;
+          if (!Number.isInteger(qty) || qty < 1) {
+            throw new BadRequestException(
+              'Quantidade de unidades é obrigatória para ativo fixo (mínimo 1).',
+            );
+          }
         }
         if (!item.costCenterId) {
           throw new BadRequestException('Centro de custo é obrigatório em todos os itens.');
@@ -831,14 +991,20 @@ export class RequestsService {
   private async seedNcmSuggestions(requestId: string) {
     const items = await this.prisma.requestItem.findMany({ where: { requestId } });
     for (const item of items) {
-      const rows = await this.prisma.$queryRaw<{ ncm: string; usage_count: bigint }[]>`
-        SELECT p.ncm_code AS ncm, COUNT(*)::bigint AS usage_count
+      // Score = similaridade real (pg_trgm) no histórico classificado — não escada sintética.
+      const rows = await this.prisma.$queryRaw<
+        { ncm: string; usage_count: bigint; score: number }[]
+      >`
+        SELECT
+          trim(p.ncm_code)::text AS ncm,
+          COUNT(*)::bigint AS usage_count,
+          MAX(similarity(p.description_short, ${item.descriptionShort}))::float8 AS score
         FROM products p
-        WHERE p.active = true
-          AND p.ncm_code IS NOT NULL
-          AND similarity(p.description_short, ${item.descriptionShort}) > 0.2
-        GROUP BY p.ncm_code
-        ORDER BY usage_count DESC, similarity(MAX(p.description_short), ${item.descriptionShort}) DESC
+        WHERE p.ncm_code IS NOT NULL
+          AND length(trim(p.ncm_code)) = 8
+          AND similarity(p.description_short, ${item.descriptionShort}) > 0.15
+        GROUP BY trim(p.ncm_code)
+        ORDER BY score DESC, usage_count DESC
         LIMIT 5
       `;
       if (!rows.length) continue;
@@ -846,7 +1012,7 @@ export class RequestsService {
         data: rows.map((row, rank) => ({
           requestItemId: item.id,
           ncm: row.ncm,
-          score: Math.max(0.3, 0.92 - rank * 0.12),
+          score: Math.min(1, Math.max(0, Number(row.score))),
           usageCount: Number(row.usage_count),
           rank: rank + 1,
         })),
@@ -868,12 +1034,13 @@ export class RequestsService {
   async create(dto: CreateRequestDto, userId: string) {
     const hotelIds = this.resolveHotelIds(dto);
     await this.validateHotels(hotelIds);
-    await this.assertFamilyExists(dto.familyId);
+    const fixedAsset = Boolean(dto.fixedAsset);
+    const itemKind = fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
+    await this.assertFamilyExists(dto.familyId, itemKind);
     const requestType = dto.type ?? RequestType.INCLUSAO;
     this.assertObservation(dto.observation, requestType);
-    const items = this.normalizeItemInput(dto.items);
+    const items = this.normalizeItemInput(dto.items, itemKind);
     const target = this.resolveTargetStage(dto);
-    const fixedAsset = Boolean(dto.fixedAsset);
     const strict = target === 'APROVADOR';
     await this.assertItemsBelongToFamily(dto.familyId, items);
     await this.validateItems(items, hotelIds, strict, dto.type ?? RequestType.INCLUSAO, dto.observation);
@@ -964,14 +1131,18 @@ export class RequestsService {
       RequestState.SOLICITANTE,
       RequestState.RETORNO_SOLICITANTE,
     ]);
+    const isImobilizadoEdit =
+      existing.state === RequestState.IMOBILIZADO &&
+      (role === UserRole.APROVADOR_IMOBILIZADO || role === UserRole.ADMIN);
     const canEdit =
       role === UserRole.ADMIN ||
       (existing.requesterId === userId && requesterEditable.has(existing.state)) ||
-      (role === UserRole.APROVADOR && existing.state === RequestState.APROVADOR);
+      (role === UserRole.APROVADOR && existing.state === RequestState.APROVADOR) ||
+      isImobilizadoEdit;
     if (!canEdit) {
       throw new ForbiddenException('Sem permissão para editar esta solicitação.');
     }
-    if (!EDITABLE_STATES.includes(existing.state)) {
+    if (!isImobilizadoEdit && !EDITABLE_STATES.includes(existing.state)) {
       throw new BadRequestException(
         'Só é possível editar solicitações nas etapas editáveis do fluxo.',
       );
@@ -980,21 +1151,22 @@ export class RequestsService {
     const isApproverEdit =
       existing.state === RequestState.APROVADOR &&
       (role === UserRole.APROVADOR || role === UserRole.ADMIN);
-    const target = isApproverEdit ? 'APROVADOR' : this.resolveTargetStage(dto);
+    const target = isApproverEdit || isImobilizadoEdit ? 'APROVADOR' : this.resolveTargetStage(dto);
     const canChangeFixedAsset = requesterEditable.has(existing.state) || role === UserRole.ADMIN;
     const fixedAsset =
       dto.fixedAsset !== undefined && canChangeFixedAsset
         ? Boolean(dto.fixedAsset)
         : existing.fixedAsset;
-    const strict = target === 'APROVADOR';
-    const items = dto.items ? this.normalizeItemInput(dto.items) : undefined;
+    const itemKind = fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
+    const strict = target === 'APROVADOR' && !isImobilizadoEdit;
+    const items = dto.items ? this.normalizeItemInput(dto.items, itemKind) : undefined;
     const hotelIds = dto.hotelIds?.length || dto.hotelId
       ? this.resolveHotelIds({ hotelIds: dto.hotelIds, hotelId: dto.hotelId ?? existing.hotelId })
       : (await this.prisma.requestHotel.findMany({ where: { requestId: id } })).map((h) => h.hotelId);
     if (dto.hotelIds?.length || dto.hotelId) {
       await this.validateHotels(hotelIds);
     }
-    if (dto.familyId) await this.assertFamilyExists(dto.familyId);
+    if (dto.familyId) await this.assertFamilyExists(dto.familyId, itemKind);
     if (items) {
       const familyId = dto.familyId ?? existing.familyId;
       await this.assertItemsBelongToFamily(familyId, items);
@@ -1019,6 +1191,8 @@ export class RequestsService {
     const approvalState = this.firstApprovalState(fixedAsset);
     const nextState = isApproverEdit
       ? RequestState.APROVADOR
+      : isImobilizadoEdit
+        ? RequestState.IMOBILIZADO
       : target === 'APROVADOR'
         ? approvalState
         : RequestState.SOLICITANTE;
@@ -1026,11 +1200,59 @@ export class RequestsService {
     const stageMessage =
       editNote ||
       (dto.observation !== undefined ? dto.observation : existing.observation)?.trim() ||
-      (target === 'APROVADOR'
-        ? fixedAsset
-          ? 'Rascunho enviado ao aprovador de imobilizado (ativo fixo)'
-          : 'Rascunho enviado direto ao aprovador'
-        : 'Rascunho salvo na caixa do solicitante');
+      (isImobilizadoEdit
+        ? 'Imobilizado atualizou a classificação (árvore de ativo fixo)'
+        : target === 'APROVADOR'
+          ? fixedAsset
+            ? 'Rascunho enviado ao aprovador de imobilizado (ativo fixo)'
+            : 'Rascunho enviado direto ao aprovador'
+          : 'Rascunho salvo na caixa do solicitante');
+
+    let clearClassificationInvalidated = false;
+    if (isImobilizadoEdit) {
+      const nextFamilyId = dto.familyId ?? existing.familyId;
+      const nextItems = items
+        ? items.map((i) => ({
+            id: '',
+            descriptionShort: i.descriptionShort,
+            groupId: i.groupId,
+          }))
+        : (
+            await this.prisma.requestItem.findMany({
+              where: { requestId: id },
+              select: { id: true, groupId: true, descriptionShort: true },
+            })
+          );
+      try {
+        await this.assertFixedAssetClassificationReady(nextFamilyId, nextItems);
+        clearClassificationInvalidated = true;
+      } catch {
+        clearClassificationInvalidated = false;
+      }
+    } else if (isApproverEdit && existing.classificationInvalidated) {
+      const nextFamilyId = dto.familyId ?? existing.familyId;
+      const nextItems = items
+        ? items.map((i) => ({
+            descriptionShort: i.descriptionShort,
+            groupId: i.groupId,
+          }))
+        : (
+            await this.prisma.requestItem.findMany({
+              where: { requestId: id },
+              select: { groupId: true, descriptionShort: true },
+            })
+          );
+      try {
+        const family = await this.assertFamilyExists(nextFamilyId, 'CONSUMPTION');
+        void family;
+        if (nextItems.every((i) => i.groupId)) {
+          await this.assertItemsBelongToFamily(nextFamilyId, nextItems);
+          clearClassificationInvalidated = true;
+        }
+      } catch {
+        clearClassificationInvalidated = false;
+      }
+    }
 
     await this.prisma.$transaction(async (tx) => {
       if (items) {
@@ -1073,13 +1295,16 @@ export class RequestsService {
           ...(dto.requestDescription !== undefined
             ? { requestDescription: dto.requestDescription.trim().toUpperCase() || null }
             : {}),
+          ...(clearClassificationInvalidated
+            ? { classificationInvalidated: false }
+            : {}),
           state: nextState,
           submittedAt: existing.submittedAt ?? now,
           expiresAt: null,
         },
       });
 
-      if (target === 'APROVADOR' && !isApproverEdit) {
+      if (target === 'APROVADOR' && !isApproverEdit && !isImobilizadoEdit) {
         await tx.requestStage.updateMany({
           where: { requestId: id, finishedAt: null },
           data: {
@@ -1102,6 +1327,7 @@ export class RequestsService {
         dto.observation !== undefined ||
         dto.requestDescription !== undefined ||
         (canChangeFixedAsset && dto.fixedAsset !== undefined) ||
+        dto.familyId ||
         editNote
       ) {
         await tx.requestStage.updateMany({
@@ -1121,7 +1347,7 @@ export class RequestsService {
             message: null,
           },
         });
-      } else if (existing.state !== RequestState.SOLICITANTE && !isApproverEdit) {
+      } else if (existing.state !== RequestState.SOLICITANTE && !isApproverEdit && !isImobilizadoEdit) {
         await tx.requestStage.updateMany({
           where: { requestId: id, finishedAt: null },
           data: {
@@ -1142,7 +1368,7 @@ export class RequestsService {
       }
     });
 
-    if (target === 'APROVADOR' && !isApproverEdit && approvalState === RequestState.APROVADOR) {
+    if (target === 'APROVADOR' && !isApproverEdit && !isImobilizadoEdit && approvalState === RequestState.APROVADOR) {
       await this.prisma.ncmSuggestion.deleteMany({
         where: { requestItem: { requestId: id } },
       });
@@ -1329,9 +1555,598 @@ export class RequestsService {
   }
 
   /**
-   * Aprovador de imobilizado encaminha ao aprovador de cadastro (só ativo fixo).
+   * Aprovador reclassifica itens como Ativo Fixo → etapa Imobilizado.
+   * Lote inteiro: a própria solicitação vai ao Imobilizado.
+   * Lote misto: itens AF vão para solicitação filha (parent_request_id); consumo permanece no Aprovador.
    */
-  async sendFromImobilizadoToApprover(requestId: string, userId: string, message: string) {
+  async reclassifyAsFixedAsset(
+    requestId: string,
+    userId: string,
+    dto: ReclassifyRequestDto,
+  ) {
+    const justification = dto.justification?.trim();
+    if (!justification) {
+      throw new BadRequestException('Informe a justificativa da reclassificação.');
+    }
+
+    const request = await this.prisma.request.findUnique({
+      where: { id: requestId },
+      include: {
+        hotels: true,
+        items: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            links: { orderBy: { sortOrder: 'asc' } },
+            group: {
+              select: {
+                code: true,
+                subgroup: { select: { familyId: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!request) throw new NotFoundException('Solicitação não encontrada');
+    if (request.state !== RequestState.APROVADOR) {
+      throw new BadRequestException(
+        'Só é possível reclassificar como ativo fixo na etapa Aprovador.',
+      );
+    }
+    const role = await this.resolveUserRole(userId);
+    if (role !== UserRole.ADMIN && role !== UserRole.APROVADOR) {
+      throw new ForbiddenException(
+        'Sem permissão para reclassificar como ativo fixo.',
+      );
+    }
+
+    const { selectedIds, remainingIds, isFullLot } = this.resolveSelectedItemIds(
+      request.items.map((i) => i.id),
+      dto.itemIds,
+    );
+    const returnToApprover = dto.returnToApprover ?? true;
+    const selectedItems = request.items.filter((i) => selectedIds.includes(i.id));
+    const itemsBefore = selectedItems.map((i) =>
+      this.itemClassificationSnapshot(i, request.familyId),
+    );
+
+    if (isFullLot) {
+      const now = new Date();
+      await this.prisma.$transaction(async (tx) => {
+        for (const item of request.items) {
+          await tx.requestItem.update({
+            where: { id: item.id },
+            data: {
+              itemKind: ItemKind.FIXED_ASSET,
+              groupId: null,
+              measureUnitId: null,
+              purchaseQtyTotal: null,
+              unitQuantity: item.unitQuantity ?? 1,
+            },
+          });
+        }
+
+        const updatedItems = await tx.requestItem.findMany({
+          where: { requestId },
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            group: {
+              select: {
+                code: true,
+                subgroup: { select: { familyId: true } },
+              },
+            },
+          },
+        });
+        const itemsAfter = updatedItems.map((i) =>
+          this.itemClassificationSnapshot(i, request.familyId),
+        );
+
+        await tx.requestStage.updateMany({
+          where: { requestId, finishedAt: null },
+          data: {
+            finishedAt: now,
+            userId,
+            message: justification,
+            outcome: OUTCOME_RECLASSIFY_FIXED_ASSET,
+            outcomeDetail: {
+              justification,
+              returnToApprover,
+              split: false,
+              itemIds: selectedIds,
+              itemsBefore,
+              itemsAfter,
+            },
+          },
+        });
+        await tx.request.update({
+          where: { id: requestId },
+          data: {
+            fixedAsset: true,
+            returnToApprover,
+            classificationInvalidated: true,
+            state: RequestState.IMOBILIZADO,
+          },
+        });
+        await tx.requestStage.create({
+          data: {
+            requestId,
+            stage: RequestState.IMOBILIZADO,
+            userId,
+            startedAt: now,
+            message: null,
+          },
+        });
+      });
+
+      if (!returnToApprover) {
+        await this.prisma.ncmSuggestion.deleteMany({
+          where: { requestItem: { requestId } },
+        });
+        await this.seedNcmSuggestions(requestId);
+      }
+
+      return this.findOne(requestId);
+    }
+
+    // --- Lote misto: filha AF + mãe permanece no Aprovador com o consumo ---
+    const now = new Date();
+    const splitNote = `Divisão automática: itens de ativo fixo separados da solicitação ${requestId.slice(0, 8)}…`;
+    const childObservation = [request.observation?.trim(), splitNote, `Justificativa: ${justification}`]
+      .filter(Boolean)
+      .join('\n\n');
+    const childDescription = request.requestDescription?.trim()
+      ? `${request.requestDescription.trim()} (ATIVO FIXO — DIVISÃO)`
+      : 'ATIVO FIXO — DIVISÃO DE LOTE MISTO';
+
+    const childId = await this.prisma.$transaction(async (tx) => {
+      const child = await tx.request.create({
+        data: {
+          requesterId: request.requesterId,
+          hotelId: request.hotelId,
+          familyId: request.familyId,
+          type: request.type,
+          state: RequestState.IMOBILIZADO,
+          fixedAsset: true,
+          returnToApprover,
+          classificationInvalidated: true,
+          parentRequestId: request.id,
+          observation: childObservation,
+          requestDescription: childDescription,
+          submittedAt: request.submittedAt ?? now,
+          hotels: {
+            create: request.hotels.map((h) => ({ hotelId: h.hotelId })),
+          },
+        },
+      });
+
+      let sort = 0;
+      for (const item of selectedItems) {
+        await tx.requestItem.update({
+          where: { id: item.id },
+          data: {
+            requestId: child.id,
+            sortOrder: sort++,
+            itemKind: ItemKind.FIXED_ASSET,
+            groupId: null,
+            measureUnitId: null,
+            purchaseQtyTotal: null,
+            unitQuantity: item.unitQuantity ?? 1,
+          },
+        });
+      }
+
+      await tx.ncmSuggestion.deleteMany({
+        where: { requestItemId: { in: selectedIds } },
+      });
+
+      // Reordena itens remanescentes na mãe
+      const remaining = request.items.filter((i) => remainingIds.includes(i.id));
+      let remSort = 0;
+      for (const item of remaining) {
+        await tx.requestItem.update({
+          where: { id: item.id },
+          data: { sortOrder: remSort++ },
+        });
+      }
+
+      const movedItems = await tx.requestItem.findMany({
+        where: { id: { in: selectedIds } },
+        orderBy: { sortOrder: 'asc' },
+        include: {
+          group: {
+            select: {
+              code: true,
+              subgroup: { select: { familyId: true } },
+            },
+          },
+        },
+      });
+      const itemsAfter = movedItems.map((i) =>
+        this.itemClassificationSnapshot(i, request.familyId),
+      );
+
+      const parentMessage =
+        `${justification}\n\n` +
+        `Lote dividido: ${selectedIds.length} item(ns) de ativo fixo → solicitação ${child.id}. ` +
+        `${remainingIds.length} item(ns) de consumo permanecem nesta solicitação.`;
+
+      await tx.requestStage.updateMany({
+        where: { requestId, finishedAt: null },
+        data: {
+          finishedAt: now,
+          userId,
+          message: parentMessage,
+          outcome: OUTCOME_RECLASSIFY_FIXED_ASSET,
+          outcomeDetail: {
+            justification,
+            returnToApprover,
+            split: true,
+            parentRequestId: request.id,
+            childRequestId: child.id,
+            itemIds: selectedIds,
+            remainingItemIds: remainingIds,
+            itemsBefore,
+            itemsAfter,
+          },
+        },
+      });
+      // Mãe segue no Aprovador (consumo)
+      await tx.requestStage.create({
+        data: {
+          requestId,
+          stage: RequestState.APROVADOR,
+          userId,
+          startedAt: now,
+          message: null,
+        },
+      });
+
+      const childOpenMessage =
+        `${justification}\n\n` +
+        `Gerada a partir da solicitação ${request.id} (divisão de lote misto).`;
+
+      await tx.requestStage.create({
+        data: {
+          requestId: child.id,
+          stage: RequestState.APROVADOR,
+          userId,
+          startedAt: now,
+          finishedAt: now,
+          message: childOpenMessage,
+          outcome: OUTCOME_RECLASSIFY_FIXED_ASSET,
+          outcomeDetail: {
+            justification,
+            returnToApprover,
+            split: true,
+            parentRequestId: request.id,
+            childRequestId: child.id,
+            itemIds: selectedIds,
+            remainingItemIds: remainingIds,
+            itemsBefore,
+            itemsAfter,
+          },
+        },
+      });
+      await tx.requestStage.create({
+        data: {
+          requestId: child.id,
+          stage: RequestState.IMOBILIZADO,
+          userId,
+          startedAt: now,
+          message: null,
+        },
+      });
+
+      return child.id;
+    });
+
+    if (!returnToApprover) {
+      await this.prisma.ncmSuggestion.deleteMany({
+        where: { requestItem: { requestId: childId } },
+      });
+      await this.seedNcmSuggestions(childId);
+    }
+
+    // Retorna a mãe (consumo); filha acessível via childRequests
+    return this.findOne(requestId);
+  }
+
+  /**
+   * Imobilizado reclassifica itens como Uso e Consumo → Aprovador.
+   * Lote inteiro: a própria solicitação volta ao Aprovador.
+   * Lote misto: itens de consumo vão para filha no Aprovador; AF permanece no Imobilizado.
+   */
+  async reclassifyAsConsumption(
+    requestId: string,
+    userId: string,
+    dto: ReclassifyRequestDto,
+  ) {
+    const justification = dto.justification?.trim();
+    if (!justification) {
+      throw new BadRequestException('Informe a justificativa da reclassificação.');
+    }
+
+    const request = await this.prisma.request.findUnique({
+      where: { id: requestId },
+      include: {
+        hotels: true,
+        items: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            links: { orderBy: { sortOrder: 'asc' } },
+            group: {
+              select: {
+                code: true,
+                subgroup: { select: { familyId: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!request) throw new NotFoundException('Solicitação não encontrada');
+    if (request.state !== RequestState.IMOBILIZADO) {
+      throw new BadRequestException(
+        'Só é possível reclassificar como uso e consumo na etapa Imobilizado.',
+      );
+    }
+    const role = await this.resolveUserRole(userId);
+    if (role !== UserRole.ADMIN && role !== UserRole.APROVADOR_IMOBILIZADO) {
+      throw new ForbiddenException(
+        'Sem permissão para reclassificar como uso e consumo.',
+      );
+    }
+
+    const { selectedIds, remainingIds, isFullLot } = this.resolveSelectedItemIds(
+      request.items.map((i) => i.id),
+      dto.itemIds,
+    );
+    const selectedItems = request.items.filter((i) => selectedIds.includes(i.id));
+    const itemsBefore = selectedItems.map((i) =>
+      this.itemClassificationSnapshot(i, request.familyId),
+    );
+
+    const clearAfFields = {
+      itemKind: ItemKind.CONSUMPTION,
+      groupId: null as string | null,
+      measureUnitId: null as string | null,
+      unitQuantity: null as number | null,
+      physicalLocation: null as string | null,
+      assetTag: null as string | null,
+      acquisitionValue: null as null,
+      acquisitionDate: null as null,
+      usefulLifeMonths: null as number | null,
+      depreciationRate: null as null,
+      supplierDocument: null as string | null,
+      invoiceNumber: null as string | null,
+    };
+
+    if (isFullLot) {
+      const now = new Date();
+      await this.prisma.$transaction(async (tx) => {
+        for (const item of request.items) {
+          await tx.requestItem.update({
+            where: { id: item.id },
+            data: clearAfFields,
+          });
+        }
+
+        const updatedItems = await tx.requestItem.findMany({
+          where: { requestId },
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            group: {
+              select: {
+                code: true,
+                subgroup: { select: { familyId: true } },
+              },
+            },
+          },
+        });
+        const itemsAfter = updatedItems.map((i) =>
+          this.itemClassificationSnapshot(i, request.familyId),
+        );
+
+        await tx.requestStage.updateMany({
+          where: { requestId, finishedAt: null },
+          data: {
+            finishedAt: now,
+            userId,
+            message: justification,
+            outcome: OUTCOME_RECLASSIFY_CONSUMPTION,
+            outcomeDetail: {
+              justification,
+              returnToApprover: true,
+              split: false,
+              itemIds: selectedIds,
+              itemsBefore,
+              itemsAfter,
+            },
+          },
+        });
+        await tx.request.update({
+          where: { id: requestId },
+          data: {
+            fixedAsset: false,
+            returnToApprover: true,
+            classificationInvalidated: true,
+            state: RequestState.APROVADOR,
+          },
+        });
+        await tx.requestStage.create({
+          data: {
+            requestId,
+            stage: RequestState.APROVADOR,
+            userId,
+            startedAt: now,
+            message: null,
+          },
+        });
+      });
+
+      await this.prisma.ncmSuggestion.deleteMany({
+        where: { requestItem: { requestId } },
+      });
+      await this.seedNcmSuggestions(requestId);
+      return this.findOne(requestId);
+    }
+
+    // --- Lote misto inverso: filha consumo no Aprovador; mãe AF no Imobilizado ---
+    const now = new Date();
+    const splitNote = `Divisão automática: itens de uso e consumo separados da solicitação ${requestId.slice(0, 8)}…`;
+    const childObservation = [request.observation?.trim(), splitNote, `Justificativa: ${justification}`]
+      .filter(Boolean)
+      .join('\n\n');
+    const childDescription = request.requestDescription?.trim()
+      ? `${request.requestDescription.trim()} (USO E CONSUMO — DIVISÃO)`
+      : 'USO E CONSUMO — DIVISÃO DE LOTE MISTO';
+
+    await this.prisma.$transaction(async (tx) => {
+      const child = await tx.request.create({
+        data: {
+          requesterId: request.requesterId,
+          hotelId: request.hotelId,
+          familyId: request.familyId,
+          type: request.type,
+          state: RequestState.APROVADOR,
+          fixedAsset: false,
+          returnToApprover: true,
+          classificationInvalidated: true,
+          parentRequestId: request.id,
+          observation: childObservation,
+          requestDescription: childDescription,
+          submittedAt: request.submittedAt ?? now,
+          hotels: {
+            create: request.hotels.map((h) => ({ hotelId: h.hotelId })),
+          },
+        },
+      });
+
+      let sort = 0;
+      for (const item of selectedItems) {
+        await tx.requestItem.update({
+          where: { id: item.id },
+          data: {
+            requestId: child.id,
+            sortOrder: sort++,
+            ...clearAfFields,
+          },
+        });
+      }
+
+      await tx.ncmSuggestion.deleteMany({
+        where: { requestItemId: { in: selectedIds } },
+      });
+
+      const remaining = request.items.filter((i) => remainingIds.includes(i.id));
+      let remSort = 0;
+      for (const item of remaining) {
+        await tx.requestItem.update({
+          where: { id: item.id },
+          data: { sortOrder: remSort++ },
+        });
+      }
+
+      const movedItems = await tx.requestItem.findMany({
+        where: { id: { in: selectedIds } },
+        orderBy: { sortOrder: 'asc' },
+        include: {
+          group: {
+            select: {
+              code: true,
+              subgroup: { select: { familyId: true } },
+            },
+          },
+        },
+      });
+      const itemsAfter = movedItems.map((i) =>
+        this.itemClassificationSnapshot(i, request.familyId),
+      );
+
+      const parentMessage =
+        `${justification}\n\n` +
+        `Lote dividido: ${selectedIds.length} item(ns) de uso e consumo → solicitação ${child.id}. ` +
+        `${remainingIds.length} item(ns) de ativo fixo permanecem nesta solicitação.`;
+
+      await tx.requestStage.updateMany({
+        where: { requestId, finishedAt: null },
+        data: {
+          finishedAt: now,
+          userId,
+          message: parentMessage,
+          outcome: OUTCOME_RECLASSIFY_CONSUMPTION,
+          outcomeDetail: {
+            justification,
+            returnToApprover: true,
+            split: true,
+            parentRequestId: request.id,
+            childRequestId: child.id,
+            itemIds: selectedIds,
+            remainingItemIds: remainingIds,
+            itemsBefore,
+            itemsAfter,
+          },
+        },
+      });
+      await tx.requestStage.create({
+        data: {
+          requestId,
+          stage: RequestState.IMOBILIZADO,
+          userId,
+          startedAt: now,
+          message: null,
+        },
+      });
+
+      const childMsg =
+        `${justification}\n\n` +
+        `Gerada a partir da solicitação ${request.id} (divisão de lote misto).`;
+      await tx.requestStage.create({
+        data: {
+          requestId: child.id,
+          stage: RequestState.IMOBILIZADO,
+          userId,
+          startedAt: now,
+          finishedAt: now,
+          message: childMsg,
+          outcome: OUTCOME_RECLASSIFY_CONSUMPTION,
+          outcomeDetail: {
+            justification,
+            returnToApprover: true,
+            split: true,
+            parentRequestId: request.id,
+            childRequestId: child.id,
+            itemIds: selectedIds,
+            remainingItemIds: remainingIds,
+            itemsBefore,
+            itemsAfter,
+          },
+        },
+      });
+      await tx.requestStage.create({
+        data: {
+          requestId: child.id,
+          stage: RequestState.APROVADOR,
+          userId,
+          startedAt: now,
+          message: null,
+        },
+      });
+    });
+
+    return this.findOne(requestId);
+  }
+
+  /**
+   * Aprovador de imobilizado encaminha ao aprovador de cadastro (ou encerra sozinho).
+   */
+  async sendFromImobilizadoToApprover(
+    requestId: string,
+    userId: string,
+    message: string,
+    itemNcms: { itemId: string; ncm: string }[] = [],
+  ) {
     const trimmed = message?.trim();
     if (!trimmed) {
       throw new BadRequestException(
@@ -1339,7 +2154,15 @@ export class RequestsService {
       );
     }
 
-    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    const request = await this.prisma.request.findUnique({
+      where: { id: requestId },
+      include: {
+        items: { orderBy: { sortOrder: 'asc' } },
+        hotels: true,
+        family: { select: { id: true, itemKind: true } },
+        stages: { where: { finishedAt: null } },
+      },
+    });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
     if (request.state !== RequestState.IMOBILIZADO) {
       throw new BadRequestException(
@@ -1358,7 +2181,73 @@ export class RequestsService {
       );
     }
 
+    if (request.classificationInvalidated) {
+      await this.assertFixedAssetClassificationReady(
+        request.familyId,
+        request.items.map((i) => ({
+          id: i.id,
+          descriptionShort: i.descriptionShort,
+          groupId: i.groupId,
+        })),
+      );
+    }
+
     const now = new Date();
+
+    // Imobilizado conclui sozinho (return_to_approver=false) → promove e encerra.
+    if (request.returnToApprover === false) {
+      const ncmByItem = new Map<string, string>();
+      for (const item of request.items) {
+        const pair = itemNcms.find((x) => x.itemId === item.id);
+        let ncm = pair?.ncm?.trim() || item.ncmCode?.trim();
+        if (!ncm && item.productId) {
+          const product = await this.prisma.product.findUnique({
+            where: { id: item.productId },
+            select: { ncmCode: true },
+          });
+          ncm = product?.ncmCode?.trim() ?? '';
+        }
+      if (!ncm && !isBlockRequestType(request.type)) {
+        throw new BadRequestException(
+          'ITM-09: confirme o NCM de todos os itens antes de finalizar.',
+        );
+      }
+      if (ncm) {
+        ncmByItem.set(item.id, await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'));
+      }
+    }
+
+    const stageMessage = `${trimmed} — Imobilizado encerrou (return_to_approver=false)`;
+    await this.prisma.$transaction(async (tx) => {
+      await this.promoteApprovedRequestToBase(tx, request, userId, now, ncmByItem);
+
+        await tx.requestStage.updateMany({
+          where: { requestId, finishedAt: null },
+          data: { finishedAt: now, userId, message: stageMessage },
+        });
+        await tx.requestStage.create({
+          data: {
+            requestId,
+            stage: RequestState.ENCERRADO,
+            userId,
+            startedAt: now,
+            finishedAt: now,
+            message: stageMessage,
+          },
+        });
+        await tx.request.update({
+          where: { id: requestId },
+          data: {
+            state: RequestState.ENCERRADO,
+            closedAt: now,
+            classificationInvalidated: false,
+          },
+        });
+      });
+
+      return this.findOne(requestId);
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.requestStage.updateMany({
         where: { requestId, finishedAt: null },
@@ -1366,7 +2255,10 @@ export class RequestsService {
       });
       await tx.request.update({
         where: { id: requestId },
-        data: { state: RequestState.APROVADOR },
+        data: {
+          state: RequestState.APROVADOR,
+          classificationInvalidated: false,
+        },
       });
       await tx.requestStage.create({
         data: {
@@ -1434,7 +2326,7 @@ export class RequestsService {
       include: {
         requester: { select: { id: true, name: true, email: true } },
         hotel: true,
-        family: { select: { id: true, code: true, name: true } },
+        family: { select: { id: true, code: true, name: true, itemKind: true } },
         hotels: { include: { hotel: true } },
         items: {
           orderBy: { sortOrder: 'asc' },
@@ -1444,6 +2336,11 @@ export class RequestsService {
             ncmSuggestions: { orderBy: { rank: 'asc' } },
           },
         },
+        parentRequest: { select: { id: true, state: true, fixedAsset: true } },
+        childRequests: {
+          select: { id: true, state: true, fixedAsset: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        },
         stages: { orderBy: { startedAt: 'asc' }, include: { user: { select: { name: true } } } },
       },
     });
@@ -1451,13 +2348,42 @@ export class RequestsService {
     return request;
   }
 
+  /**
+   * Garante linha em ncm_codes (bootstrap/manual) antes da FK.
+   * Retorna código canônico de 8 dígitos.
+   */
+  private async ensureNcmCode(
+    tx: Prisma.TransactionClient | PrismaService,
+    raw: string,
+    source: 'MANUAL' | 'SAP_USAGE' | 'RECEITA' = 'MANUAL',
+  ): Promise<string> {
+    const code = normalizeNcmCode(raw);
+    if (!code) {
+      throw new BadRequestException(
+        'NCM inválido. Informe 8 dígitos (ex.: 2202.10.00 ou 22021000).',
+      );
+    }
+    await tx.ncmCode.upsert({
+      where: { code },
+      create: {
+        code,
+        description: formatNcmDisplay(code),
+        active: true,
+        source,
+      },
+      update: { active: true },
+    });
+    return code;
+  }
+
   async confirmNcm(itemId: string, ncm: string, userId: string) {
     const item = await this.prisma.requestItem.findUnique({ where: { id: itemId } });
     if (!item) throw new NotFoundException('Item não encontrado');
 
+    const code = await this.ensureNcmCode(this.prisma, ncm, 'MANUAL');
     return this.prisma.requestItem.update({
       where: { id: itemId },
-      data: { ncmCode: ncm, ncmConfirmed: true },
+      data: { ncmCode: code, ncmConfirmed: true },
     });
   }
 
@@ -1509,7 +2435,9 @@ export class RequestsService {
           'ITM-09: confirme o NCM de todos os itens antes de finalizar.',
         );
       }
-      if (ncm) ncmByItem.set(item.id, ncm);
+      if (ncm) {
+        ncmByItem.set(item.id, await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'));
+      }
     }
 
     const now = new Date();
@@ -1562,9 +2490,19 @@ export class RequestsService {
         descriptionLong: string | null;
         measureUnitId: string | null;
         costCenterId: string | null;
+        itemKind: 'CONSUMPTION' | 'FIXED_ASSET';
         source: ProductSource;
         itemValue: Prisma.Decimal | null;
         purchaseQtyTotal: Prisma.Decimal | null;
+        unitQuantity: number | null;
+        physicalLocation: string | null;
+        assetTag: string | null;
+        acquisitionValue: Prisma.Decimal | null;
+        acquisitionDate: Date | null;
+        usefulLifeMonths: number | null;
+        depreciationRate: Prisma.Decimal | null;
+        supplierDocument: string | null;
+        invoiceNumber: string | null;
         unifiedCode: string | null;
         legacyCode: string | null;
         law116: string | null;
@@ -1607,9 +2545,10 @@ export class RequestsService {
         continue;
       }
 
-      if (!item.measureUnitId) {
+      const isFixed = item.itemKind === 'FIXED_ASSET' || request.fixedAsset;
+      if (!isFixed && !item.measureUnitId) {
         throw new BadRequestException(
-          `Item "${item.descriptionShort}": unidade de medida obrigatória para cadastro na base.`,
+          `Item "${item.descriptionShort}": unidade de medida obrigatória para consumo.`,
         );
       }
       if (!item.descriptionLong?.trim()) {
@@ -1624,29 +2563,57 @@ export class RequestsService {
       }
 
       const ncm = ncmByItem.get(item.id) ?? '';
+      const unitQuantity =
+        isFixed && request.type === RequestType.INCLUSAO
+          ? Math.max(1, item.unitQuantity ?? 1)
+          : 1;
+
+      const afFields = isFixed
+        ? {
+            physicalLocation: item.physicalLocation?.trim().toUpperCase() || null,
+            costCenterId: item.costCenterId,
+            hotelId: hotelIds[0] ?? request.hotelId,
+            assetTag: item.assetTag?.trim().toUpperCase() || null,
+            acquisitionValue: item.acquisitionValue,
+            acquisitionDate: item.acquisitionDate,
+            usefulLifeMonths: item.usefulLifeMonths,
+            depreciationRate: item.depreciationRate,
+            supplierDocument: item.supplierDocument?.trim() || null,
+            invoiceNumber: item.invoiceNumber?.trim() || null,
+          }
+        : {};
+
       const productFields = {
         descriptionShort: item.descriptionShort.trim().toUpperCase(),
         descriptionLong: item.descriptionLong!.trim().toUpperCase(),
         ...(item.groupId ? { groupId: item.groupId } : {}),
-        measureUnitId: item.measureUnitId,
+        measureUnitId: isFixed ? null : item.measureUnitId,
+        itemKind: isFixed ? ('FIXED_ASSET' as const) : ('CONSUMPTION' as const),
         source: item.source,
         legacyCode: item.legacyCode?.trim() || null,
         law116: item.law116?.trim() || null,
         productLink: item.productLink?.trim() || null,
         notes: item.itemObservation?.trim() || null,
         itemValue: item.itemValue,
-        purchaseQtyTotal: item.purchaseQtyTotal,
+        purchaseQtyTotal: isFixed ? null : item.purchaseQtyTotal,
         ncmCode: ncm || null,
         ncmConfirmedById: ncm ? userId : null,
         ncmConfirmedAt: ncm ? now : null,
         active: true,
-        fixedAsset: request.fixedAsset,
+        fixedAsset: isFixed,
         blockState: ProductBlockState.NONE,
+        ...afFields,
       };
 
-      let productId: string;
+      // Ativo fixo INCLUSÃO: N instâncias (mesmo bem, N patrimônios). Consumo/alteração: 1.
+      let lastProductId: string | null = null;
+      const itemLinks = await tx.requestItemLink.findMany({
+        where: { requestItemId: item.id },
+        orderBy: { sortOrder: 'asc' },
+      });
+      const hotelRows = await this.buildProductHotelRows(tx, hotelIds, item.costCenterId);
 
-      if (item.productId) {
+      if (item.productId && !(isFixed && request.type === RequestType.INCLUSAO)) {
         const existing = await tx.product.findUnique({ where: { id: item.productId } });
         if (!existing) {
           throw new BadRequestException(
@@ -1657,55 +2624,79 @@ export class RequestsService {
           where: { id: item.productId },
           data: productFields,
         });
-        productId = item.productId;
+        lastProductId = item.productId;
+
+        await tx.productLink.deleteMany({ where: { productId: lastProductId } });
+        if (itemLinks.length) {
+          await tx.productLink.createMany({
+            data: itemLinks.map((link, sortOrder) => ({
+              productId: lastProductId!,
+              url: link.url,
+              sortOrder,
+            })),
+          });
+        }
+        await tx.productHotel.deleteMany({ where: { productId: lastProductId } });
+        if (hotelRows.length) {
+          await tx.productHotel.createMany({
+            data: hotelRows.map((row) => ({
+              productId: lastProductId!,
+              hotelId: row.hotelId,
+              costCenterId: row.costCenterId,
+            })),
+          });
+        }
       } else {
         if (isExistingProductRequestType(request.type)) {
           throw new BadRequestException(
             `Solicitação "${item.descriptionShort}": vincule o produto existente na base.`,
           );
         }
-        const unifiedCode = await this.resolveUnifiedCodeForNewProduct(tx, item, request.familyId);
         if (!item.groupId) {
           throw new BadRequestException(
             `Item "${item.descriptionShort}": grupo de itens obrigatório para inclusão na base.`,
           );
         }
-        const created = await tx.product.create({
-          data: { ...productFields, groupId: item.groupId, unifiedCode },
-        });
-        productId = created.id;
-      }
 
-      await tx.productLink.deleteMany({ where: { productId } });
-      const itemLinks = await tx.requestItemLink.findMany({
-        where: { requestItemId: item.id },
-        orderBy: { sortOrder: 'asc' },
-      });
-      if (itemLinks.length) {
-        await tx.productLink.createMany({
-          data: itemLinks.map((link, sortOrder) => ({
-            productId,
-            url: link.url,
-            sortOrder,
-          })),
-        });
-      }
+        for (let i = 0; i < unitQuantity; i++) {
+          const unifiedCode = await this.resolveUnifiedCodeForNewProduct(
+            tx,
+            { unifiedCode: i === 0 ? item.unifiedCode : null },
+            request.familyId,
+          );
+          const created = await tx.product.create({
+            data: { ...productFields, groupId: item.groupId, unifiedCode },
+          });
+          lastProductId = created.id;
 
-      await tx.productHotel.deleteMany({ where: { productId } });
-      const hotelRows = await this.buildProductHotelRows(tx, hotelIds, item.costCenterId);
-      if (hotelRows.length) {
-        await tx.productHotel.createMany({
-          data: hotelRows.map((row) => ({
-            productId,
-            hotelId: row.hotelId,
-            costCenterId: row.costCenterId,
-          })),
-        });
+          if (itemLinks.length) {
+            await tx.productLink.createMany({
+              data: itemLinks.map((link, sortOrder) => ({
+                productId: created.id,
+                url: link.url,
+                sortOrder,
+              })),
+            });
+          }
+          if (hotelRows.length) {
+            await tx.productHotel.createMany({
+              data: hotelRows.map((row) => ({
+                productId: created.id,
+                hotelId: row.hotelId,
+                costCenterId: row.costCenterId,
+              })),
+            });
+          }
+        }
       }
 
       await tx.requestItem.update({
         where: { id: item.id },
-        data: { productId, ncmCode: ncm || null, ncmConfirmed: Boolean(ncm) },
+        data: {
+          productId: lastProductId,
+          ncmCode: ncm || null,
+          ncmConfirmed: Boolean(ncm),
+        },
       });
     }
   }

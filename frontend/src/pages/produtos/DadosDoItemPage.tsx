@@ -16,7 +16,11 @@ import { RequestDescriptionBlock } from '../../components/RequestDescriptionBloc
 import { SolicitacaoPreForm } from '../../components/SolicitacaoPreForm';
 import { useSimilarProducts } from '../../hooks/useSimilarProducts';
 import { requiredText } from '../../lib/formValidation';
-import { hasExactProductMatch } from '../../lib/productMatch';
+import {
+  hasExactProductMatch,
+  findExactProductMatch,
+  exactDuplicateMessage,
+} from '../../lib/productMatch';
 import { isExistingProductRequestType } from '../../lib/requestLabels';
 import { toFormUppercase } from '../../lib/formText';
 import { findFamilyById, classificationFromFamily } from '../../lib/pdmFolders';
@@ -53,6 +57,8 @@ type DadosFieldErrors = ItemClassificationErrors & {
   descriptionLong?: string;
   measureUnitId?: string;
   costCenterId?: string;
+  unitQuantity?: string;
+  physicalLocation?: string;
   observation?: string;
   duplicate?: string;
 };
@@ -68,6 +74,15 @@ type ItemDraft = {
   source: 'NATIONAL' | 'FOREIGN';
   itemValue: string;
   purchaseQtyTotal: string;
+  unitQuantity: string;
+  physicalLocation: string;
+  assetTag: string;
+  acquisitionValue: string;
+  acquisitionDate: string;
+  usefulLifeMonths: string;
+  depreciationRate: string;
+  supplierDocument: string;
+  invoiceNumber: string;
   unifiedCode: string;
   legacyCode: string;
   law116: string;
@@ -81,10 +96,14 @@ type NavState = {
   searchQuery?: string;
   observation?: string;
   existingProductId?: string;
+  /** Prefill a partir de bem existente (novas unidades AF — ainda INCLUSAO). */
+  templateProductId?: string;
+  afExactChoice?: 'more' | 'different' | null;
   hotelId?: string;
   hotelIds?: string[];
   requestId?: string;
   type?: RequestType;
+  fixedAsset?: boolean;
 };
 
 function emptyItem(descriptionShort = ''): ItemDraft {
@@ -98,6 +117,15 @@ function emptyItem(descriptionShort = ''): ItemDraft {
     source: 'NATIONAL',
     itemValue: '',
     purchaseQtyTotal: '',
+    unitQuantity: '1',
+    physicalLocation: '',
+    assetTag: '',
+    acquisitionValue: '',
+    acquisitionDate: '',
+    usefulLifeMonths: '',
+    depreciationRate: '',
+    supplierDocument: '',
+    invoiceNumber: '',
     unifiedCode: '',
     legacyCode: '',
     law116: '',
@@ -118,6 +146,15 @@ function itemHasData(it: ItemDraft) {
       it.costCenterId ||
       it.itemValue ||
       it.purchaseQtyTotal ||
+      (it.unitQuantity.trim() !== '' && it.unitQuantity !== '1') ||
+      it.physicalLocation.trim() ||
+      it.assetTag.trim() ||
+      it.acquisitionValue ||
+      it.acquisitionDate ||
+      it.usefulLifeMonths ||
+      it.depreciationRate ||
+      it.supplierDocument.trim() ||
+      it.invoiceNumber.trim() ||
       it.unifiedCode.trim() ||
       it.legacyCode.trim() ||
       it.law116.trim() ||
@@ -143,8 +180,15 @@ export function DadosDoItemPage() {
     nav.hotelIds?.length ? nav.hotelIds : nav.hotelId ? [nav.hotelId] : [],
   );
   const [familyId, setFamilyId] = useState('');
-  const [fixedAsset, setFixedAsset] = useState(false);
-  const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
+  const [fixedAsset, setFixedAsset] = useState(Boolean(nav.fixedAsset));
+  const [afExactChoice, setAfExactChoice] = useState<'more' | 'different' | null>(
+    nav.afExactChoice ?? null,
+  );
+  const [afExactCount, setAfExactCount] = useState(0);
+  const [afSampleId, setAfSampleId] = useState<string | undefined>(nav.templateProductId);
+  const [items, setItems] = useState<ItemDraft[]>([
+    emptyItem(nav.searchQuery?.toUpperCase() ?? ''),
+  ]);
   const [currentItem, setCurrentItem] = useState(0);
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
   const [observation, setObservation] = useState(nav.observation ?? '');
@@ -188,7 +232,13 @@ export function DadosDoItemPage() {
   } = useSimilarProducts({
     query: item.descriptionShort,
     enabled: similarCheckEnabled,
+    itemKind: fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION',
   });
+
+  const itemExactMatch =
+    isInclusionItem && hasExactProductMatch(similarResults, item.descriptionShort);
+  /** Oferta AF só enquanto o usuário não escolheu o atalho. */
+  const showAfExactOffer = fixedAsset && itemExactMatch && afExactChoice === null;
 
   const folderItems = useMemo(
     () =>
@@ -215,10 +265,45 @@ export function DadosDoItemPage() {
       catalogApi.hotels().then(setHotels),
       catalogApi.groups({ pageSize: 500 }).then((r) => setGroups(r.data)),
       catalogApi.subgroups({ pageSize: 500 }).then((r) => setSubgroups(r.data)),
-      catalogApi.families({ pageSize: 500 }).then((r) => setFamilies(r.data)),
       catalogApi.measureUnits().then((r) => setMeasureUnits(r.data)),
     ]).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    const kind = fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
+    void catalogApi
+      .families({ pageSize: 500, itemKind: kind })
+      .then((r) => {
+        setFamilies(r.data);
+        setFamilyId((prev) => (prev && r.data.some((f) => f.id === prev) ? prev : ''));
+      })
+      .catch(console.error);
+  }, [fixedAsset]);
+
+  useEffect(() => {
+    if (!fixedAsset || !isInclusionItem || item.descriptionShort.trim().length < 3) {
+      setAfExactCount(0);
+      return;
+    }
+    if (!itemExactMatch) {
+      setAfExactCount(0);
+      return;
+    }
+    let cancelled = false;
+    void productsApi
+      .exactCount({ q: item.descriptionShort, itemKind: 'FIXED_ASSET' })
+      .then((r) => {
+        if (cancelled) return;
+        setAfExactCount(r.count);
+        if (r.sample?.id) setAfSampleId(r.sample.id);
+      })
+      .catch(() => {
+        if (!cancelled) setAfExactCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fixedAsset, isInclusionItem, item.descriptionShort, itemExactMatch]);
 
   useEffect(() => {
     if (!hotelIds.length) {
@@ -251,8 +336,8 @@ export function DadosDoItemPage() {
           req.items.length
             ? req.items.map((it) => ({
                 productId: it.productId ?? undefined,
-                groupId: '',
-                subgroupId: '',
+                groupId: it.groupId ?? it.group?.id ?? '',
+                subgroupId: it.group?.subgroupId ?? it.group?.subgroup?.id ?? '',
                 descriptionShort: it.descriptionShort,
                 descriptionLong: it.descriptionLong ?? '',
                 measureUnitId: it.measureUnit?.id ?? '',
@@ -260,6 +345,18 @@ export function DadosDoItemPage() {
                 source: (it.source === 'FOREIGN' ? 'FOREIGN' : 'NATIONAL') as ItemDraft['source'],
                 itemValue: it.itemValue != null ? String(it.itemValue) : '',
                 purchaseQtyTotal: it.purchaseQtyTotal != null ? String(it.purchaseQtyTotal) : '',
+                unitQuantity: it.unitQuantity != null ? String(it.unitQuantity) : '1',
+                physicalLocation: it.physicalLocation ?? '',
+                assetTag: it.assetTag ?? '',
+                acquisitionValue: it.acquisitionValue != null ? String(it.acquisitionValue) : '',
+                acquisitionDate: it.acquisitionDate
+                  ? String(it.acquisitionDate).slice(0, 10)
+                  : '',
+                usefulLifeMonths: it.usefulLifeMonths != null ? String(it.usefulLifeMonths) : '',
+                depreciationRate:
+                  it.depreciationRate != null ? String(it.depreciationRate) : '',
+                supplierDocument: it.supplierDocument ?? '',
+                invoiceNumber: it.invoiceNumber ?? '',
                 unifiedCode: it.unifiedCode ?? '',
                 legacyCode: it.legacyCode ?? '',
                 law116: it.law116 ?? '',
@@ -278,7 +375,10 @@ export function DadosDoItemPage() {
       const navType = nav.type ?? 'ALTERACAO';
       setRequestType(navType);
       void productsApi.get(nav.existingProductId).then(async (p) => {
-        const famList = families.length ? families : (await catalogApi.families({ pageSize: 500 })).data;
+        const kind = p.itemKind === 'FIXED_ASSET' || p.fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
+        const famList = families.length
+          ? families
+          : (await catalogApi.families({ pageSize: 500, itemKind: kind })).data;
         if (!families.length) setFamilies(famList);
         const fam = famList.find((f) => f.code === p.family?.code);
         if (fam) setFamilyId(fam.id);
@@ -294,10 +394,18 @@ export function DadosDoItemPage() {
             descriptionShort: p.descriptionShort,
             descriptionLong: p.descriptionLong ?? '',
             measureUnitId: mu?.id ?? '',
-            costCenterId: '',
+            costCenterId: p.costCenter?.id ?? '',
             source: 'NATIONAL',
             itemValue: '',
             purchaseQtyTotal: '',
+            physicalLocation: p.physicalLocation ?? '',
+            assetTag: p.assetTag ?? '',
+            acquisitionValue: p.acquisitionValue != null ? String(p.acquisitionValue) : '',
+            acquisitionDate: p.acquisitionDate ? String(p.acquisitionDate).slice(0, 10) : '',
+            usefulLifeMonths: p.usefulLifeMonths != null ? String(p.usefulLifeMonths) : '',
+            depreciationRate: p.depreciationRate != null ? String(p.depreciationRate) : '',
+            supplierDocument: p.supplierDocument ?? '',
+            invoiceNumber: p.invoiceNumber ?? '',
             unifiedCode: p.unifiedCode ?? '',
             legacyCode: '',
             law116: '',
@@ -308,8 +416,42 @@ export function DadosDoItemPage() {
           },
         ]);
       }).catch(console.error);
+      return;
     }
-  }, [nav.requestId, nav.existingProductId, families, measureUnits]);
+
+    if (nav.templateProductId) {
+      setRequestType('INCLUSAO');
+      setFixedAsset(true);
+      setAfExactChoice('more');
+      void productsApi.get(nav.templateProductId).then(async (p) => {
+        const famList = families.length
+          ? families
+          : (await catalogApi.families({ pageSize: 500, itemKind: 'FIXED_ASSET' })).data;
+        if (!families.length) setFamilies(famList);
+        const fam = famList.find((f) => f.code === p.family?.code);
+        if (fam) setFamilyId(fam.id);
+        setItems([
+          {
+            ...emptyItem(nav.searchQuery?.toUpperCase() || p.descriptionShort),
+            // Sem productId: novas unidades (ainda INCLUSAO)
+            descriptionShort: nav.searchQuery?.toUpperCase() || p.descriptionShort,
+            descriptionLong: p.descriptionLong ?? '',
+            costCenterId: p.costCenter?.id ?? '',
+            physicalLocation: p.physicalLocation ?? '',
+            assetTag: '',
+            acquisitionValue: p.acquisitionValue != null ? String(p.acquisitionValue) : '',
+            acquisitionDate: p.acquisitionDate ? String(p.acquisitionDate).slice(0, 10) : '',
+            usefulLifeMonths: p.usefulLifeMonths != null ? String(p.usefulLifeMonths) : '',
+            depreciationRate: p.depreciationRate != null ? String(p.depreciationRate) : '',
+            supplierDocument: p.supplierDocument ?? '',
+            invoiceNumber: '',
+            unifiedCode: '',
+            legacyCode: '',
+          },
+        ]);
+      }).catch(console.error);
+    }
+  }, [nav.requestId, nav.existingProductId, nav.templateProductId, nav.searchQuery, families, measureUnits]);
 
   function handleFamilyChange(nextId: string) {
     const prevId = familyId;
@@ -320,6 +462,17 @@ export function DadosDoItemPage() {
       setCurrentItem(0);
       setError(null);
       setSuccess(null);
+    }
+  }
+
+  function handleFixedAssetChange(next: boolean) {
+    if (next === fixedAsset) return;
+    setFixedAsset(next);
+    setAfExactChoice(null);
+    setFamilyId('');
+    if (familyLocked) {
+      setItems([emptyItem(requestDescription || nav.searchQuery?.toUpperCase() || '')]);
+      setCurrentItem(0);
     }
   }
 
@@ -338,10 +491,22 @@ export function DadosDoItemPage() {
       patch.descriptionShort = toFormUppercase(patch.descriptionShort);
       clearFieldError('descriptionShort');
       clearFieldError('duplicate');
+      setAfExactChoice(null);
     }
     if (patch.legacyCode !== undefined) {
       patch.legacyCode = toFormUppercase(patch.legacyCode);
     }
+    if (patch.physicalLocation !== undefined) {
+      patch.physicalLocation = toFormUppercase(patch.physicalLocation);
+      clearFieldError('physicalLocation');
+    }
+    if (patch.assetTag !== undefined) {
+      patch.assetTag = toFormUppercase(patch.assetTag);
+    }
+    if (patch.invoiceNumber !== undefined) {
+      patch.invoiceNumber = toFormUppercase(patch.invoiceNumber);
+    }
+    if (patch.unitQuantity !== undefined) clearFieldError('unitQuantity');
     if (patch.costCenterId !== undefined) clearFieldError('costCenterId');
     if (patch.measureUnitId !== undefined) clearFieldError('measureUnitId');
     patchCurrent(patch);
@@ -365,10 +530,18 @@ export function DadosDoItemPage() {
     e.target.value = toFormUppercase(e.target.value);
   }
 
-  async function findExactDuplicateInBase(description: string): Promise<boolean> {
-    if (description.trim().length < 3) return false;
-    const r = await productsApi.search({ q: description, pageSize: 20 });
-    return hasExactProductMatch(r.data, description);
+  async function findExactDuplicateInBase(
+    description: string,
+  ): Promise<{ blocked: boolean; message: string } | null> {
+    if (description.trim().length < 3) return null;
+    const r = await productsApi.search({
+      q: description,
+      pageSize: 20,
+      itemKind: fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION',
+    });
+    const hit = findExactProductMatch(r.data, description);
+    if (!hit) return null;
+    return { blocked: true, message: exactDuplicateMessage(hit) };
   }
 
   function addItem() {
@@ -470,8 +643,17 @@ export function DadosDoItemPage() {
       if (submit && !it.descriptionLong.trim()) {
         itemErrors.descriptionLong = `Item ${i + 1}: descrição longa é obrigatória para enviar.`;
       }
-      if (!it.measureUnitId) {
+      if (!fixedAsset && !it.measureUnitId) {
         itemErrors.measureUnitId = 'Campo é obrigatório';
+      }
+      if (fixedAsset) {
+        const qty = Number(it.unitQuantity);
+        if (!it.unitQuantity.trim() || !Number.isFinite(qty) || qty < 1 || !Number.isInteger(qty)) {
+          itemErrors.unitQuantity = 'Informe a quantidade de unidades (inteiro ≥ 1).';
+        }
+        if (!it.physicalLocation.trim()) {
+          itemErrors.physicalLocation = 'Campo é obrigatório';
+        }
       }
       if (!it.costCenterId) {
         itemErrors.costCenterId = 'Campo é obrigatório';
@@ -500,6 +682,8 @@ export function DadosDoItemPage() {
       descriptionLong: 'Descrição longa',
       measureUnitId: 'Unidade de medida',
       costCenterId: 'Centro de custo',
+      unitQuantity: 'Quantidade de unidades',
+      physicalLocation: 'Localização física',
       groupId: 'Grupo de itens',
       subgroupId: 'Subgrupo',
       duplicate: 'Duplicidade na base',
@@ -531,14 +715,30 @@ export function DadosDoItemPage() {
         groupId: it.groupId || undefined,
         descriptionShort: it.descriptionShort,
         descriptionLong: it.descriptionLong || undefined,
-        measureUnitId: it.measureUnitId || undefined,
+        measureUnitId: fixedAsset ? undefined : it.measureUnitId || undefined,
         costCenterId: it.costCenterId || undefined,
         source: it.source,
         itemValue: it.itemValue ? Number(it.itemValue) : undefined,
-        purchaseQtyTotal: it.purchaseQtyTotal ? Number(it.purchaseQtyTotal) : undefined,
+        purchaseQtyTotal: fixedAsset
+          ? undefined
+          : it.purchaseQtyTotal
+            ? Number(it.purchaseQtyTotal)
+            : undefined,
+        unitQuantity: fixedAsset ? Math.max(1, Math.floor(Number(it.unitQuantity) || 1)) : undefined,
+        physicalLocation: fixedAsset ? it.physicalLocation.trim() || undefined : undefined,
+        assetTag: fixedAsset ? it.assetTag.trim() || undefined : undefined,
+        acquisitionValue:
+          fixedAsset && it.acquisitionValue ? Number(it.acquisitionValue) : undefined,
+        acquisitionDate: fixedAsset ? it.acquisitionDate || undefined : undefined,
+        usefulLifeMonths:
+          fixedAsset && it.usefulLifeMonths ? Math.floor(Number(it.usefulLifeMonths)) : undefined,
+        depreciationRate:
+          fixedAsset && it.depreciationRate ? Number(it.depreciationRate) : undefined,
+        supplierDocument: fixedAsset ? it.supplierDocument.trim() || undefined : undefined,
+        invoiceNumber: fixedAsset ? it.invoiceNumber.trim() || undefined : undefined,
         unifiedCode: it.unifiedCode.trim() || undefined,
         legacyCode: it.legacyCode.trim() || undefined,
-        law116: it.law116.trim() || undefined,
+        law116: fixedAsset ? undefined : it.law116.trim() || undefined,
         productLink: it.productLink.trim() || it.productLinks[0]?.trim() || undefined,
         productLinks: it.productLinks.map((l) => l.trim()).filter(Boolean),
         itemObservation: it.itemObservation.trim() || undefined,
@@ -561,17 +761,17 @@ export function DadosDoItemPage() {
     }
     setFieldErrors({});
 
-    if (requestType === 'INCLUSAO') {
+    // Consumo: bloqueia match 100% (inclui inativos/bloqueados). AF: atalho na UI.
+    if (requestType === 'INCLUSAO' && !fixedAsset) {
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         if (it.productId) continue;
-        if (await findExactDuplicateInBase(it.descriptionShort)) {
+        const dup = await findExactDuplicateInBase(it.descriptionShort);
+        if (dup) {
           if (i !== currentItem) setCurrentItem(i);
           const dupErrors: DadosFieldErrors = {
-            duplicate:
-              'Produto já existe na base unificada (match 100%). Use Alteração ou Bloqueio.',
-            descriptionShort:
-              'Descrição idêntica a item já cadastrado na base unificada.',
+            duplicate: dup.message,
+            descriptionShort: dup.message,
           };
           setFieldErrors(dupErrors);
           setError(null);
@@ -580,6 +780,18 @@ export function DadosDoItemPage() {
           return;
         }
       }
+    }
+
+    if (requestType === 'INCLUSAO' && fixedAsset && showAfExactOffer && !afExactChoice) {
+      const afErrors: DadosFieldErrors = {
+        duplicate:
+          'Já existem unidades deste bem. Escolha cadastrar mais unidades ou indicar que é um bem diferente.',
+      };
+      setFieldErrors(afErrors);
+      setError(null);
+      setSendDialogOpen(false);
+      setValidationAlert(validationAlertMessage(afErrors, strict ? 'enviar' : 'salvar'));
+      return;
     }
 
     setSaving(true);
@@ -671,7 +883,7 @@ export function DadosDoItemPage() {
         familyError={fieldErrors.familyId}
         onHotelChange={setHotelIds}
         onFamilyChange={handleFamilyChange}
-        onFixedAssetChange={setFixedAsset}
+        onFixedAssetChange={handleFixedAssetChange}
         onClearHotelError={() => clearFieldError('hotelIds')}
         onClearFamilyError={() => clearFieldError('familyId')}
       />
@@ -728,25 +940,97 @@ export function DadosDoItemPage() {
                     unifiedCode: item.unifiedCode,
                     legacyCode: item.legacyCode,
                     law116: item.law116,
+                    unitQuantity: item.unitQuantity,
+                    physicalLocation: item.physicalLocation,
+                    assetTag: item.assetTag,
+                    acquisitionValue: item.acquisitionValue,
+                    acquisitionDate: item.acquisitionDate,
+                    usefulLifeMonths: item.usefulLifeMonths,
+                    depreciationRate: item.depreciationRate,
+                    supplierDocument: item.supplierDocument,
+                    invoiceNumber: item.invoiceNumber,
                   }}
                   costCenters={costCenters}
                   measureUnits={measureUnits}
+                  hideMeasureUnit={fixedAsset}
                   errors={{
                     descriptionShort: fieldErrors.descriptionShort,
                     costCenterId: fieldErrors.costCenterId,
                     measureUnitId: fieldErrors.measureUnitId,
+                    unitQuantity: fieldErrors.unitQuantity,
+                    physicalLocation: fieldErrors.physicalLocation,
                     duplicate: fieldErrors.duplicate,
                   }}
                   similarPanel={
                     isInclusionItem && item.descriptionShort.trim().length >= 3 ? (
-                      <SimilarProductsPanel
-                        results={similarResults}
-                        loading={similarLoading}
-                        searched={similarSearched}
-                        query={item.descriptionShort}
-                        advisory
-                        showHotelLegend
-                      />
+                      <>
+                        {showAfExactOffer ? (
+                          <div className="af-exact-banner" role="status">
+                            <p>
+                              Já existem{' '}
+                              <strong>{afExactCount > 0 ? afExactCount : 1}</strong> unidade
+                              {(afExactCount > 0 ? afExactCount : 1) === 1 ? '' : 's'} deste bem
+                              cadastradas.
+                            </p>
+                            <div className="af-exact-banner__actions">
+                              <button
+                                type="button"
+                                className={`btn ${afExactChoice === 'more' ? 'btn-primary' : 'btn-outline'}`}
+                                onClick={() => {
+                                  setAfExactChoice('more');
+                                  clearFieldError('duplicate');
+                                  if (afSampleId) {
+                                    void productsApi.get(afSampleId).then((p) => {
+                                      patchCurrent({
+                                        descriptionLong: p.descriptionLong ?? item.descriptionLong,
+                                        physicalLocation:
+                                          p.physicalLocation ?? item.physicalLocation,
+                                        acquisitionValue:
+                                          p.acquisitionValue != null
+                                            ? String(p.acquisitionValue)
+                                            : item.acquisitionValue,
+                                        acquisitionDate: p.acquisitionDate
+                                          ? String(p.acquisitionDate).slice(0, 10)
+                                          : item.acquisitionDate,
+                                        usefulLifeMonths:
+                                          p.usefulLifeMonths != null
+                                            ? String(p.usefulLifeMonths)
+                                            : item.usefulLifeMonths,
+                                        depreciationRate:
+                                          p.depreciationRate != null
+                                            ? String(p.depreciationRate)
+                                            : item.depreciationRate,
+                                        supplierDocument:
+                                          p.supplierDocument ?? item.supplierDocument,
+                                      });
+                                    });
+                                  }
+                                }}
+                              >
+                                Cadastrar mais unidades deste bem
+                              </button>
+                              <button
+                                type="button"
+                                className={`btn ${afExactChoice === 'different' ? 'btn-primary' : 'btn-outline'}`}
+                                onClick={() => {
+                                  setAfExactChoice('different');
+                                  clearFieldError('duplicate');
+                                }}
+                              >
+                                É um bem diferente
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                        <SimilarProductsPanel
+                          results={similarResults}
+                          loading={similarLoading}
+                          searched={similarSearched}
+                          query={item.descriptionShort}
+                          advisory
+                          showHotelLegend
+                        />
+                      </>
                     ) : null
                   }
                   onChange={onPrimaryChange}
@@ -775,7 +1059,7 @@ export function DadosDoItemPage() {
 
               {item.groupId && item.subgroupId ? (
                 <>
-                  {attributes.length > 0 ? (
+                  {!fixedAsset && attributes.length > 0 ? (
                     <div className="solicitacao-form-section">
                       <p className="form-section-title">Atributos desta família</p>
                       <div className="solicitacao-attributes-grid">
@@ -796,12 +1080,12 @@ export function DadosDoItemPage() {
                         ))}
                       </div>
                     </div>
-                  ) : (
+                  ) : !fixedAsset ? (
                     <p className="info-banner" style={{ marginTop: 16 }}>
                       Sem atributos para esta família no catálogo de teste. Rode o seed ou troque a
                       família (base real Amarante substituirá depois).
                     </p>
-                  )}
+                  ) : null}
 
                   <ItemCompletionSection
                     value={{

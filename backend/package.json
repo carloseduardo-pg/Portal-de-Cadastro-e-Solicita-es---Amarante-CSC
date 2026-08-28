@@ -21,6 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed": "ts-node --transpile-only prisma/seed.ts",
     "import:sap": "ts-node --transpile-only prisma/import-sap.ts",
+    "import:ncm-receita": "ts-node --transpile-only prisma/import-ncm-receita.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",

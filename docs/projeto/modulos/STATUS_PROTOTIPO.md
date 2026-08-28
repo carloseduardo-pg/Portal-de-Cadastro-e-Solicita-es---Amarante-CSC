@@ -14,7 +14,8 @@
 | Segurança (Helmet, throttle, ValidationPipe) | OK |
 | UI marca Amarante (tokens, logos vazados) | OK |
 | Módulo Produtos (core) | Parcial — telas principais; alguns forms só UI |
-| Fornecedores / Fiscal / Parametrizações | Placeholders |
+| Fornecedores / Fiscal | Placeholders |
+| Parametrizações — Produtos | Hierarquia SAP real (Famílias→Subgrupos→Grupos), busca servidor, anomalias |
 | Integrações SAP / V360 / CM | Fora do protótipo (TODOs no schema) |
 | Homologação | Alvo 02/10/2026 |
 
@@ -71,7 +72,8 @@ Redirects legados: `/produtos/todas-solicitacoes`, `/minhas-solicitacoes` → `/
 | UI | API |
 |----|-----|
 | `/notificacoes` | `GET /api/notifications` |
-| `/parametrizacoes/*` | Placeholder |
+| `/parametrizacoes/produtos` | Famílias / Subgrupos / Grupos (SAP) + hotéis/armazéns/UM |
+| `/parametrizacoes/administrativo` | Stub |
 | `/fiscal/*` | Placeholder (menu desabilitado) |
 
 ---
@@ -106,6 +108,7 @@ Login: `admin@amarante.local` / `amarante123`
 
 ## Pendências conhecidas
 
-- Fornecedores, parametrizações e fiscal — telas stub
+- Fornecedores e fiscal — telas stub
+- Parametrizações Produtos — catálogo SAP (não protótipo)
 - Testes E2E browser automatizados
 - CI/homolog — a definir com infra Amarante

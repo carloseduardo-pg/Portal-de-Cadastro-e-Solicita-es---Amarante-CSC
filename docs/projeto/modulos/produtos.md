@@ -28,11 +28,14 @@ Substitui o Semplice. Prioridade máxima do projeto.
 ## Regras críticas
 
 - **ITM-01** CAIXA ALTA
-- **ITM-09** NCM confirmado
+- **ITM-09** NCM confirmado (`ncm_codes` CHAR(8); FK; UI `9999.99.99`)
 - **ITM-11** Lote mesma família
+- **ItemKind** `CONSUMPTION` | `FIXED_ASSET` em `products` / `request_items` / `families` — árvores separadas; AF sem UM; consumo exige UM (CHECK no banco)
 - Busca: `pg_trgm`, mínimo 3 caracteres
 - Produto 1×N hotéis via `product_hotels`
-- Hierarquia SAP B1: Família → Subgrupo → Grupo (texto + FK; sem códigos 1/3/6 Semplice)
+- Hierarquia SAP B1: Família → Subgrupo → Grupo (texto + FK; sem códigos 1/3/6 Semplice); AF usa códigos AFF/AFS/AFG
+- Campos patrimoniais AF5 (`asset_tag`, depreciação, etc.) — colunas nullable, sem regra inventada
+- Sugestão NCM: score = **similaridade real** (`pg_trgm`) no histórico classificado — não escada sintética
 
 ## Estados da solicitação
 
@@ -46,8 +49,11 @@ Também: `RASCUNHO` · `RETORNO_SOLICITANTE` · `REPROVADO` · `ERRO_INTEGRACAO`
 
 Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQUEIO_TOTAL`
 
-- Flag **Ativo fixo** na classificação da solicitação (pré-formulário)
-- Match 100% na base bloqueia inclusão (UI + API)
+- Segmented control **Uso e consumo | Ativo fixo** (nova solicitação + pré-formulário); famílias filtradas por `item_kind`
+- Match 100% / `pdm_signature`: **só CONSUMPTION** — bloqueia inclusão (ativos **e** inativos/bloqueados; msg própria se bloqueado). **FIXED_ASSET** não trava — vira atalho AF2 (N unidades + cadastrar mais / bem diferente)
+- Constraint `UNIQUE(pdm_family_id, pdm_signature)` parcial para CONSUMPTION: migration detecta colisões antes; com legado sujo (41 dups) a unique fica **adiada** e o trigger impede **novas** duplicatas. Relatório: `base-sap/pdm-signature-collisions.md` + tabela `_pdm_signature_collisions`
+- Formulário AF: sem UM / qty compra / atributos PDM; obrigatórios `unitQuantity` + `physicalLocation`; contábeis opcionais (nullable)
+- `GET /api/products/exact-count?q=&item_kind=` e filtro `item_kind` em `/products/search` (busca inclui inativos)
 - Devolução ao solicitante reinicia SLA (`POST /api/requests/:id/return-to-requester`) — Imobilizado ou Aprovador
 - Imobilizado encaminha ao cadastro: `POST /api/requests/:id/send-from-imobilizado`
 - Aprovador pode editar campos na etapa Aprovador; edições registradas na timeline
@@ -58,7 +64,8 @@ Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQ
 
 | Endpoint | Uso |
 |----------|-----|
-| `GET /api/products/search` | Busca similaridade (tela 1) |
+| `GET /api/products/search` | Busca similaridade (tela 1); opcional `item_kind` |
+| `GET /api/products/exact-count` | Contagem por descrição exata (ativo fixo) |
 | `GET /api/products/base` | Base ativos/inativos/todos |
 | `GET /api/requests/kanban` | Board + lista unificada |
 | `GET /api/requests/queue` | Caixa de entrada / fila |

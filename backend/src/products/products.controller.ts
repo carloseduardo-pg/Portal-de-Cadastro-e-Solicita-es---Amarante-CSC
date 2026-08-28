@@ -16,14 +16,28 @@ export class ProductsController {
   search(
     @Query('q') q = '',
     @Query('hotel_id') hotelId?: string,
+    @Query('item_kind') itemKind?: 'CONSUMPTION' | 'FIXED_ASSET',
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
     return this.products.search({
       q,
       hotelId,
+      itemKind,
       ...parsePage(page, pageSize),
     });
+  }
+
+  /**
+   * Contagem de produtos com descrição exatamente igual a `q`.
+   * Query: `GET /products/exact-count?q=&item_kind=FIXED_ASSET`
+   */
+  @Get('exact-count')
+  exactCount(
+    @Query('q') q = '',
+    @Query('item_kind') itemKind?: 'CONSUMPTION' | 'FIXED_ASSET',
+  ) {
+    return this.products.exactCount({ q, itemKind });
   }
 
   @Get('base')

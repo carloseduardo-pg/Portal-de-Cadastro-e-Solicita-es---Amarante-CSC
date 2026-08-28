@@ -1,4 +1,5 @@
 import type { ProductBase, RequestItem } from '../../lib/types';
+import { formatNcmDisplay } from '../../lib/ncm';
 import './RequestItemCompareTable.css';
 
 type CompareField = {
@@ -42,8 +43,8 @@ function buildFields(base: ProductBase, item: RequestItem): CompareField[] {
     {
       key: 'ncm',
       label: 'NCM',
-      baseValue: fmt(base.ncmCode),
-      requestValue: fmt(item.ncmCode),
+      baseValue: (formatNcmDisplay(base.ncmCode) || '—'),
+      requestValue: (formatNcmDisplay(item.ncmCode) || '—'),
     },
     {
       key: 'measureUnit',

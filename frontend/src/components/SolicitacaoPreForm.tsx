@@ -16,6 +16,10 @@ type Props = {
   hotelError?: string;
   familyError?: string;
   readOnly?: boolean;
+  /** Quando true, bloqueia só o tipo de item (uso/consumo × AF). */
+  kindReadOnly?: boolean;
+  /** Quando true, bloqueia só as unidades. */
+  hotelsReadOnly?: boolean;
   onHotelChange: (ids: string[]) => void;
   onFamilyChange: (familyId: string) => void;
   onFixedAssetChange?: (fixedAsset: boolean) => void;
@@ -40,6 +44,8 @@ export function SolicitacaoPreForm({
   hotelError,
   familyError,
   readOnly = false,
+  kindReadOnly,
+  hotelsReadOnly,
   onHotelChange,
   onFamilyChange,
   onFixedAssetChange,
@@ -47,6 +53,8 @@ export function SolicitacaoPreForm({
   onClearFamilyError,
 }: Props) {
   const [pendingFamilyId, setPendingFamilyId] = useState<string | null>(null);
+  const kindDisabled = kindReadOnly ?? readOnly;
+  const hotelsDisabled = hotelsReadOnly ?? readOnly;
 
   const sortedFamilies = useMemo(
     () =>
@@ -90,6 +98,11 @@ export function SolicitacaoPreForm({
     setPendingFamilyId(null);
   }
 
+  function setKind(nextFixed: boolean) {
+    if (kindDisabled || nextFixed === fixedAsset) return;
+    onFixedAssetChange?.(nextFixed);
+  }
+
   return (
     <article className={`solicitacao-pre-form${readOnly ? ' solicitacao-pre-form--readonly' : ''}`}>
       <header className="solicitacao-pre-form-header">
@@ -109,11 +122,49 @@ export function SolicitacaoPreForm({
       </header>
 
       <div className="solicitacao-pre-form-body">
+        <FormField
+          label="Tipo de item"
+          required
+          hint={
+            fixedAsset
+              ? 'Ativo fixo: famílias patrimoniais e etapa Imobilizado antes do aprovador de cadastro.'
+              : 'Uso e consumo: famílias de estoque/consumo e fluxo padrão ao aprovador.'
+          }
+        >
+          <div
+            className="item-kind-segment"
+            role="radiogroup"
+            aria-label="Tipo de item"
+            aria-disabled={kindDisabled}
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!fixedAsset}
+              disabled={kindDisabled}
+              className={`item-kind-segment__btn${!fixedAsset ? ' item-kind-segment__btn--active' : ''}`}
+              onClick={() => setKind(false)}
+            >
+              Uso e consumo
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={fixedAsset}
+              disabled={kindDisabled}
+              className={`item-kind-segment__btn${fixedAsset ? ' item-kind-segment__btn--active' : ''}`}
+              onClick={() => setKind(true)}
+            >
+              Ativo fixo
+            </button>
+          </div>
+        </FormField>
+
         <HotelMultiSelect
           hotels={hotels}
           selectedIds={hotelIds}
           error={hotelError}
-          readOnly={readOnly}
+          readOnly={hotelsDisabled}
           onChange={(ids) => {
             onHotelChange(ids);
             onClearHotelError?.();
@@ -148,21 +199,6 @@ export function SolicitacaoPreForm({
             Família selecionada: <strong>{familyLabel(selectedFamily)}</strong>
           </p>
         ) : null}
-
-        <label className={`pre-form-fixed-asset${readOnly ? ' pre-form-fixed-asset--readonly' : ''}`}>
-          <input
-            type="checkbox"
-            checked={fixedAsset}
-            disabled={readOnly}
-            onChange={(e) => onFixedAssetChange?.(e.target.checked)}
-          />
-          <span>
-            <strong>Ativo fixo</strong>
-            <span className="pre-form-fixed-asset-hint">
-              Inclui etapa de aprovação do Imobilizado antes do aprovador de cadastro.
-            </span>
-          </span>
-        </label>
 
         {!readOnly && familyLocked && familyId ? (
           <p className="family-lock-note">

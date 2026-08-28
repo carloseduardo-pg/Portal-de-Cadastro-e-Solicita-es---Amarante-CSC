@@ -4,6 +4,7 @@ import { HotelCodeBadges } from '../../components/HotelCodeBadges';
 import { PaginationBar } from '../../components/PaginationBar';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { catalogApi, productsApi } from '../../lib/resources';
+import { formatNcmDisplay } from '../../lib/ncm';
 import type { Family, Hotel, ProductBase } from '../../lib/types';
 import './produtos.css';
 
@@ -157,7 +158,7 @@ export function BasePage() {
             <HotelCodeBadges codes={r.hotelCodes ?? r.hotels?.map((ph) => ph.hotel.code) ?? []} />
           )},
           { key: 'family', header: 'Família', render: (r) => r.family?.name ?? '—' },
-          { key: 'ncm', header: 'NCM', render: (r) => r.ncmCode ?? '—' },
+          { key: 'ncm', header: 'NCM', render: (r) => formatNcmDisplay(r.ncmCode) || '—' },
           { key: 'unit', header: 'Unidade', render: (r) => r.measureUnit?.code ?? '—' },
         ]}
       />

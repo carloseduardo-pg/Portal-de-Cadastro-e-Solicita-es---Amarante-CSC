@@ -21,6 +21,10 @@
   grid-column: span 6;
 }
 
+.pdm-span-8 {
+  grid-column: span 8;
+}
+
 .pdm-span-3 {
   grid-column: span 3;
 }
@@ -82,10 +86,24 @@
   margin: 0;
 }
 
+.item-af-accounting {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle, #d8dfd0);
+}
+
+.item-af-accounting-hint {
+  margin: 0 0 14px;
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
 @media (max-width: 960px) {
   .pdm-span-4,
   .pdm-span-3,
   .pdm-span-6,
+  .pdm-span-8,
   .pdm-span-12 {
     grid-column: span 12;
   }

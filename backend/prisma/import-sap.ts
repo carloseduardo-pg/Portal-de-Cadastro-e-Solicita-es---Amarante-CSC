@@ -4,16 +4,18 @@
  * Uso: `npm run import:sap` (idempotente — upsert por sap_code / nome natural).
  * Relatório: `base-sap/relatorio-importacao.md`
  */
-import { PrismaClient, ProductSource } from '@prisma/client';
+import { ItemKind, PrismaClient, ProductSource } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
+import { formatNcmDisplay, normalizeNcmCode } from '../src/common/ncm';
 
 const prisma = new PrismaClient();
 
 const ROOT = path.resolve(__dirname, '../..');
 const XLSX_PATH = path.join(ROOT, 'base-sap/itens/Base de itens SAP B1.xlsx');
 const REPORT_PATH = path.join(ROOT, 'base-sap/relatorio-importacao.md');
+const NCM_MISSING_REPORT_PATH = path.join(ROOT, 'base-sap/ncm-missing-active.md');
 
 const QUARANTINE = 'NAO CLASSIFICADO';
 const VALID_UM = new Set(['UN', 'KG', 'MT', 'M3', 'LT']);
@@ -51,6 +53,7 @@ type NormRow = {
   groupResolved: string;
   active: boolean;
   fixedAsset: boolean;
+  itemKind: ItemKind;
   measureUnitCode: string | null;
   quarantine: boolean;
   swappedA5: boolean;
@@ -73,8 +76,11 @@ function upper(s: string): string {
   return s.trim().toUpperCase();
 }
 
-/** Códigos internos estáveis: FAM01, SUB0101, GRP010101 (nome SAP = chave de reconciliação). */
-function buildHierarchyCodes(rows: NormRow[]): {
+/** Códigos internos estáveis por árvore (consumo FAM/SUB/GRP · AF AFF/AFS/AFG). */
+function buildHierarchyCodes(
+  rows: NormRow[],
+  prefixes: { family: string; subgroup: string; group: string },
+): {
   familyCode: Map<string, string>;
   subgroupCode: Map<string, string>;
   groupCode: Map<string, string>;
@@ -84,7 +90,7 @@ function buildHierarchyCodes(rows: NormRow[]): {
   );
   const familyCode = new Map<string, string>();
   familyNames.forEach((name, i) => {
-    familyCode.set(name, `FAM${String(i + 1).padStart(2, '0')}`);
+    familyCode.set(name, `${prefixes.family}${String(i + 1).padStart(2, '0')}`);
   });
 
   const subgroupCode = new Map<string, string>();
@@ -96,7 +102,7 @@ function buildHierarchyCodes(rows: NormRow[]): {
       ...new Set(rows.filter((r) => r.familyResolved === fam).map((r) => r.subgroupResolved)),
     ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     subs.forEach((sub, si) => {
-      const sgCode = `SUB${famSeq}${String(si + 1).padStart(2, '0')}`;
+      const sgCode = `${prefixes.subgroup}${famSeq}${String(si + 1).padStart(2, '0')}`;
       subgroupCode.set(`${fam}||${sub}`, sgCode);
       const groups = [
         ...new Set(
@@ -108,7 +114,7 @@ function buildHierarchyCodes(rows: NormRow[]): {
       groups.forEach((grp, gi) => {
         groupCode.set(
           `${fam}||${sub}||${grp}`,
-          `GRP${famSeq}${String(si + 1).padStart(2, '0')}${String(gi + 1).padStart(2, '0')}`,
+          `${prefixes.group}${famSeq}${String(si + 1).padStart(2, '0')}${String(gi + 1).padStart(2, '0')}`,
         );
       });
     });
@@ -140,29 +146,19 @@ function normalizeNcm(raw: unknown): { ncm: string | null; corrupt: boolean; dis
     return { ncm: null, corrupt: false, display: '' };
   }
 
-  if (raw instanceof Date) {
-    const y = raw.getFullYear();
-    const m = String(raw.getMonth() + 1).padStart(2, '0');
-    const d = String(raw.getDate()).padStart(2, '0');
-    const digits = `${y}${m}${d}`;
-    return { ncm: digits.slice(0, 8), corrupt: true, display: String(raw) };
+  let corrupt = false;
+  if (raw instanceof Date) corrupt = true;
+  else {
+    const s = String(raw).trim();
+    if (/^\d{4}-\d{2}-\d{2}(?:[ T].*)?$/.test(s)) corrupt = true;
   }
 
-  if (typeof raw === 'number' && Number.isFinite(raw)) {
-    const digits = String(Math.trunc(raw)).replace(/\D/g, '');
-    return { ncm: digits.padStart(8, '0').slice(-8), corrupt: false, display: String(raw) };
-  }
-
-  const s = String(raw).trim();
-  const dateLike = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/);
-  if (dateLike) {
-    const digits = `${dateLike[1]}${dateLike[2]}${dateLike[3]}`;
-    return { ncm: digits.slice(0, 8), corrupt: true, display: s };
-  }
-
-  const digits = s.replace(/\D/g, '');
-  if (!digits) return { ncm: null, corrupt: false, display: s };
-  return { ncm: digits.padStart(8, '0').slice(-8), corrupt: false, display: s };
+  const ncm = normalizeNcmCode(raw);
+  return {
+    ncm,
+    corrupt: corrupt && ncm != null,
+    display: raw instanceof Date ? raw.toISOString() : String(raw),
+  };
 }
 
 function cell(row: Record<string, unknown>, ...keys: string[]): unknown {
@@ -229,8 +225,14 @@ function normalizeRow(raw: RawRow): NormRow {
   const ncm = normalizeNcm(raw.ncmRaw);
   const umTrim = raw.umRaw ? upper(raw.umRaw) : null;
   const umManual = umTrim === 'MANUAL';
-  const measureUnitCode =
-    raw.sheet === 'ativo_fixo' || !umTrim || umManual || !VALID_UM.has(umTrim) ? null : umTrim;
+  const isAf = raw.sheet === 'ativo_fixo';
+  // FIXED_ASSET: sem UM. CONSUMPTION: Manual → UN (CHECK exige UM; A6 sinaliza no relatório).
+  let measureUnitCode: string | null = null;
+  if (!isAf) {
+    if (umManual) measureUnitCode = 'UN';
+    else if (umTrim && VALID_UM.has(umTrim)) measureUnitCode = umTrim;
+    else measureUnitCode = 'UN';
+  }
 
   return {
     sheet: raw.sheet,
@@ -247,7 +249,8 @@ function normalizeRow(raw: RawRow): NormRow {
     subgroupResolved: subgroup,
     groupResolved: group || QUARANTINE,
     active: raw.active,
-    fixedAsset: raw.sheet === 'ativo_fixo',
+    fixedAsset: isAf,
+    itemKind: isAf ? ItemKind.FIXED_ASSET : ItemKind.CONSUMPTION,
     measureUnitCode,
     quarantine,
     swappedA5,
@@ -349,27 +352,101 @@ function applyDominantBranch(rows: NormRow[]): { rows: NormRow[]; hits: Ambiguit
   return { rows: resolved, hits };
 }
 
-async function upsertFamily(name: string, code: string) {
-  return prisma.family.upsert({
-    where: { name },
-    update: { code, active: true },
-    create: { name, code, active: true },
+async function upsertFamily(name: string, code: string, itemKind: ItemKind) {
+  const byKey = await prisma.family.findUnique({
+    where: { name_itemKind: { name, itemKind } },
+  });
+  if (byKey) {
+    if (byKey.code === code) {
+      return prisma.family.update({ where: { id: byKey.id }, data: { active: true } });
+    }
+    const codeHolder = await prisma.family.findUnique({ where: { code } });
+    if (codeHolder && codeHolder.id !== byKey.id) {
+      await prisma.family.update({
+        where: { id: codeHolder.id },
+        data: { code: `TMP_${codeHolder.id.replace(/-/g, '').slice(0, 12)}` },
+      });
+    }
+    return prisma.family.update({
+      where: { id: byKey.id },
+      data: { code, active: true },
+    });
+  }
+
+  const codeHolder = await prisma.family.findUnique({ where: { code } });
+  if (codeHolder) {
+    // Código legado de outra família: libera e cria a linha correta (name+kind).
+    await prisma.family.update({
+      where: { id: codeHolder.id },
+      data: { code: `TMP_${codeHolder.id.replace(/-/g, '').slice(0, 12)}` },
+    });
+  }
+  return prisma.family.create({
+    data: { name, code, itemKind, active: true },
   });
 }
 
 async function upsertSubgroup(familyId: string, name: string, code: string) {
-  return prisma.subgroup.upsert({
+  const byKey = await prisma.subgroup.findUnique({
     where: { familyId_name: { familyId, name } },
-    update: { code, active: true },
-    create: { familyId, name, code, active: true },
+  });
+  if (byKey) {
+    if (byKey.code === code) {
+      return prisma.subgroup.update({ where: { id: byKey.id }, data: { active: true } });
+    }
+    const codeHolder = await prisma.subgroup.findUnique({ where: { code } });
+    if (codeHolder && codeHolder.id !== byKey.id) {
+      await prisma.subgroup.update({
+        where: { id: codeHolder.id },
+        data: { code: `TMP_${codeHolder.id.replace(/-/g, '').slice(0, 12)}` },
+      });
+    }
+    return prisma.subgroup.update({
+      where: { id: byKey.id },
+      data: { code, active: true },
+    });
+  }
+  const codeHolder = await prisma.subgroup.findUnique({ where: { code } });
+  if (codeHolder) {
+    await prisma.subgroup.update({
+      where: { id: codeHolder.id },
+      data: { code: `TMP_${codeHolder.id.replace(/-/g, '').slice(0, 12)}` },
+    });
+  }
+  return prisma.subgroup.create({
+    data: { familyId, name, code, active: true },
   });
 }
 
 async function upsertGroup(subgroupId: string, name: string, code: string) {
-  return prisma.group.upsert({
+  const byKey = await prisma.group.findUnique({
     where: { subgroupId_name: { subgroupId, name } },
-    update: { code, active: true },
-    create: { subgroupId, name, code, active: true },
+  });
+  if (byKey) {
+    if (byKey.code === code) {
+      return prisma.group.update({ where: { id: byKey.id }, data: { active: true } });
+    }
+    const codeHolder = await prisma.group.findUnique({ where: { code } });
+    if (codeHolder && codeHolder.id !== byKey.id) {
+      await prisma.group.update({
+        where: { id: codeHolder.id },
+        data: { code: `TMP_${codeHolder.id.replace(/-/g, '').slice(0, 12)}` },
+      });
+    }
+    return prisma.group.update({
+      where: { id: byKey.id },
+      data: { code, active: true },
+    });
+  }
+  const codeHolder = await prisma.group.findUnique({ where: { code } });
+  if (codeHolder) {
+    await prisma.group.update({
+      where: { id: codeHolder.id },
+      data: { code: `TMP_${codeHolder.id.replace(/-/g, '').slice(0, 12)}` },
+    });
+  }
+  return prisma.group.create({
+    data: { subgroupId, name, code, active: true },
   });
 }
 
@@ -552,7 +629,7 @@ function buildReport(opts: {
   lines.push('## A6 — Unidade de medida "Manual"');
   lines.push('');
   lines.push(
-    `${a6.length} itens com UM "Manual" importados com **measure_unit_id nulo**. UMs válidas: UN, KG, MT, M3, LT.`,
+    `${a6.length} itens CONSUMPTION com UM "Manual" na planilha: gravados como **UN** (ItemKind exige UM em consumo). Ativo fixo continua sem UM.`,
   );
   lines.push('');
   lines.push('| Item | Descrição |');
@@ -624,10 +701,60 @@ function buildReport(opts: {
     lines.push(`- ${mdEscape(d)}`);
   }
   lines.push('');
+  lines.push('## Passivo fiscal — itens ATIVOS sem NCM');
+  lines.push('');
+  lines.push(
+    'Análise oficial da base: **225** itens ativos sem NCM (passivo fiscal). Lista abaixo gerada a partir desta carga, **por família**, para a Amarante priorizar classificação.',
+  );
+  lines.push('');
+  const missingByFamily = new Map<string, { sap: string; desc: string; kind: string }[]>();
+  for (const r of opts.rows) {
+    if (!r.active || r.ncmCode) continue;
+    const list = missingByFamily.get(r.familyResolved) ?? [];
+    list.push({
+      sap: r.sapCode,
+      desc: r.description,
+      kind: r.itemKind === ItemKind.FIXED_ASSET ? 'AF' : 'UC',
+    });
+    missingByFamily.set(r.familyResolved, list);
+  }
+  const missingTotal = [...missingByFamily.values()].reduce((a, b) => a + b.length, 0);
+  lines.push(`**Total nesta carga:** ${missingTotal} itens ativos sem NCM · ${missingByFamily.size} famílias.`);
+  lines.push('');
+  for (const [fam, items] of [...missingByFamily.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    lines.push(`### ${mdEscape(fam)} (${items.length})`);
+    lines.push('');
+    for (const it of items.sort((a, b) => a.sap.localeCompare(b.sap))) {
+      lines.push(`- \`${it.sap}\` [${it.kind}] ${mdEscape(it.desc)}`);
+    }
+    lines.push('');
+  }
+
+  // also write dedicated report for Amarante
+  const missingLines: string[] = [
+    '# Passivo fiscal — itens ativos sem NCM',
+    '',
+    'Relatório para a Amarante priorizar classificação fiscal.',
+    '',
+    `Gerado em ${now}. Total: **${missingTotal}** (análise oficial citava 225).`,
+    '',
+  ];
+  for (const [fam, items] of [...missingByFamily.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    missingLines.push(`## ${fam} (${items.length})`, '');
+    for (const it of items.sort((a, b) => a.sap.localeCompare(b.sap))) {
+      missingLines.push(`- \`${it.sap}\` [${it.kind}] ${it.desc}`);
+    }
+    missingLines.push('');
+  }
+  fs.writeFileSync(NCM_MISSING_REPORT_PATH, missingLines.join('\n'), 'utf8');
+
   lines.push('## Notas');
   lines.push('');
   lines.push(
-    '- NCM importado da base SAP oficial; `ncm_confirmed_by` preenchido com o usuário admin do portal para satisfazer o CHECK ITM-09 no banco. Não substitui confirmação humana no fluxo de novas solicitações.',
+    '- NCM canônico = 8 dígitos em `ncm_codes` (FK). Bootstrap SAP_USAGE; import Receita: `npm run import:ncm-receita`.',
+  );
+  lines.push(
+    '- `ncm_confirmed_by` preenchido com o admin do portal no import para satisfazer o CHECK ITM-09. Não substitui confirmação humana no fluxo de novas solicitações.',
   );
   lines.push(
     '- Número de patrimônio, valor de aquisição e depreciação **não** estão na planilha e **não** foram inventados.',
@@ -674,43 +801,63 @@ async function main() {
 
   let normalized = [...rawUc, ...rawAf].map(normalizeRow);
 
-  // Ambiguity maps BEFORE dominant (on post-A5/A4 names, pre-dominant)
+  // Ambiguidades e ramo dominante **por aba** (árvores não se misturam)
+  const ucOnly = normalized.filter((r) => r.sheet === 'uso_consumo');
+  const afOnly = normalized.filter((r) => r.sheet === 'ativo_fixo');
+
   const subFamAmbiguity = parentCounts(
-    normalized,
+    ucOnly,
     (r) => r.subgroupResolved,
     (r) => r.familyResolved,
   );
   const grpSubAmbiguity = parentCounts(
-    normalized,
+    ucOnly,
     (r) => r.groupResolved,
     (r) => r.subgroupResolved,
   );
 
-  const { rows, hits } = applyDominantBranch(normalized);
-  normalized = rows;
+  const ucResolved = applyDominantBranch(ucOnly);
+  const afResolved = applyDominantBranch(afOnly);
+  normalized = [...ucResolved.rows, ...afResolved.rows];
+  const hits = [...ucResolved.hits, ...afResolved.hits];
 
-  const codes = buildHierarchyCodes(normalized);
+  const codesUc = buildHierarchyCodes(ucResolved.rows, {
+    family: 'FAM',
+    subgroup: 'SUB',
+    group: 'GRP',
+  });
+  const codesAf = buildHierarchyCodes(afResolved.rows, {
+    family: 'AFF',
+    subgroup: 'AFS',
+    group: 'AFG',
+  });
 
-  // Ensure hierarchy entities (canonical paths — upsert por nome SAP)
   const familyCache = new Map<string, string>();
   const subgroupCache = new Map<string, string>();
   const groupCache = new Map<string, string>();
 
-  async function resolvePath(family: string, subgroup: string, group: string) {
-    if (!familyCache.has(family)) {
+  async function resolvePath(
+    family: string,
+    subgroup: string,
+    group: string,
+    itemKind: ItemKind,
+  ) {
+    const codes = itemKind === ItemKind.FIXED_ASSET ? codesAf : codesUc;
+    const famKey = `${itemKind}||${family}`;
+    if (!familyCache.has(famKey)) {
       const code = codes.familyCode.get(family)!;
-      familyCache.set(family, (await upsertFamily(family, code)).id);
+      familyCache.set(famKey, (await upsertFamily(family, code, itemKind)).id);
     }
-    const familyId = familyCache.get(family)!;
-    const sgKey = `${family}||${subgroup}`;
+    const familyId = familyCache.get(famKey)!;
+    const sgKey = `${itemKind}||${family}||${subgroup}`;
     if (!subgroupCache.has(sgKey)) {
-      const code = codes.subgroupCode.get(sgKey)!;
+      const code = codes.subgroupCode.get(`${family}||${subgroup}`)!;
       subgroupCache.set(sgKey, (await upsertSubgroup(familyId, subgroup, code)).id);
     }
     const subgroupId = subgroupCache.get(sgKey)!;
-    const gKey = `${family}||${subgroup}||${group}`;
+    const gKey = `${itemKind}||${family}||${subgroup}||${group}`;
     if (!groupCache.has(gKey)) {
-      const code = codes.groupCode.get(gKey)!;
+      const code = codes.groupCode.get(`${family}||${subgroup}||${group}`)!;
       groupCache.set(gKey, (await upsertGroup(subgroupId, group, code)).id);
     }
     return { groupId: groupCache.get(gKey)! };
@@ -720,13 +867,34 @@ async function main() {
   let updated = 0;
   const ncmAt = new Date();
 
+  // Bootstrap ncm_codes com NCMs em uso (FK obrigatória antes do upsert de products)
+  const distinctNcms = [...new Set(normalized.map((r) => r.ncmCode).filter(Boolean))] as string[];
+  for (const code of distinctNcms) {
+    await prisma.ncmCode.upsert({
+      where: { code },
+      create: {
+        code,
+        description: formatNcmDisplay(code),
+        active: true,
+        source: 'SAP_USAGE',
+      },
+      update: {},
+    });
+  }
+
   for (const r of normalized) {
-    const pathIds = await resolvePath(r.familyResolved, r.subgroupResolved, r.groupResolved);
+    const pathIds = await resolvePath(
+      r.familyResolved,
+      r.subgroupResolved,
+      r.groupResolved,
+      r.itemKind,
+    );
     const existing = await prisma.product.findUnique({ where: { sapCode: r.sapCode } });
     const data = {
       descriptionShort: r.description,
       groupId: pathIds.groupId,
       measureUnitId: r.measureUnitCode ? umByCode[r.measureUnitCode] ?? null : null,
+      itemKind: r.itemKind,
       source: ProductSource.NATIONAL,
       fixedAsset: r.fixedAsset,
       legacyCode: r.legacyCode,
@@ -810,6 +978,24 @@ async function main() {
   fs.writeFileSync(REPORT_PATH, report, 'utf8');
 
   const sapCount = await prisma.product.count({ where: { sapCode: { not: null } } });
+
+  // Desativa nós de hierarquia não tocados neste import (órfãos TMP / árvores antigas).
+  const usedFamilyIds = [...familyCache.values()];
+  const usedSubgroupIds = [...subgroupCache.values()];
+  const usedGroupIds = [...groupCache.values()];
+  await prisma.family.updateMany({
+    where: { id: { notIn: usedFamilyIds }, active: true },
+    data: { active: false },
+  });
+  await prisma.subgroup.updateMany({
+    where: { id: { notIn: usedSubgroupIds }, active: true },
+    data: { active: false },
+  });
+  await prisma.group.updateMany({
+    where: { id: { notIn: usedGroupIds }, active: true },
+    data: { active: false },
+  });
+
   console.log(`OK  criados=${created} atualizados=${updated} produtos_com_sap_code=${sapCount}`);
   console.log(`    Relatório: ${REPORT_PATH}`);
 }

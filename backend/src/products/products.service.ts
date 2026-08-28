@@ -15,6 +15,8 @@ export type ProductSearchRow = {
   family_code: string;
   similarity: number;
   hotel_codes: string[];
+  active: boolean;
+  block_state: string;
 };
 
 const productHierarchyInclude = {
@@ -31,10 +33,11 @@ const productHierarchyInclude = {
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Busca por similaridade pg_trgm (ITM-02). */
+  /** Busca por similaridade pg_trgm (ITM-02). Filtra opcionalmente por item_kind. */
   async search(params: {
     q: string;
     hotelId?: string;
+    itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
     page?: number;
     pageSize?: number;
   }) {
@@ -46,7 +49,12 @@ export class ProductsService {
     const page = params.page ?? 1;
     const pageSize = params.pageSize ?? 20;
     const offset = (page - 1) * pageSize;
+    const kindFilter = params.itemKind
+      ? Prisma.sql`AND p.item_kind = ${params.itemKind}::"ItemKind"`
+      : Prisma.empty;
 
+    // Inclui inativos/bloqueados: trava de duplicidade CONSUMPTION não pode furar
+    // quando BLOQUEIO_TOTAL deixa active=false.
     const rows = await this.prisma.$queryRaw<ProductSearchRow[]>`
       SELECT
         p.id,
@@ -58,25 +66,27 @@ export class ProductsService {
         COALESCE(
           array_agg(DISTINCT h.code) FILTER (WHERE h.code IS NOT NULL),
           ARRAY[]::text[]
-        ) AS hotel_codes
+        ) AS hotel_codes,
+        p.active,
+        p.block_state::text AS block_state
       FROM products p
       JOIN groups g ON g.id = p.group_id
       JOIN subgroups sg ON sg.id = g.subgroup_id
       JOIN families f ON f.id = sg.family_id
       LEFT JOIN product_hotels ph ON ph.product_id = p.id
       LEFT JOIN hotels h ON h.id = ph.hotel_id
-      WHERE p.active = true
-        AND similarity(p.description_short, ${q}) > 0.08
+      WHERE similarity(p.description_short, ${q}) > 0.08
+        ${kindFilter}
       GROUP BY p.id, f.name, f.code
-      ORDER BY similarity DESC
+      ORDER BY similarity DESC, p.active DESC
       LIMIT ${pageSize} OFFSET ${offset}
     `;
 
     const countResult = await this.prisma.$queryRaw<{ count: bigint }[]>`
       SELECT COUNT(*)::bigint AS count
       FROM products p
-      WHERE p.active = true
-        AND similarity(p.description_short, ${q}) > 0.08
+      WHERE similarity(p.description_short, ${q}) > 0.08
+        ${kindFilter}
     `;
 
     const total = Number(countResult[0]?.count ?? 0);
@@ -89,6 +99,8 @@ export class ProductsService {
       familyCode: row.family_code,
       similarity: Number(row.similarity),
       hotelCodes: row.hotel_codes ?? [],
+      active: row.active,
+      blockState: row.block_state,
       similarTo: rows
         .filter(
           (other) =>
@@ -105,18 +117,55 @@ export class ProductsService {
   }
 
   /**
-   * Contagem global barata: produtos ativos com descrição idêntica a outro.
-   * Evita self-join O(n²) com similarity (inviável com ~4k itens).
+   * Conta produtos com description_short exatamente igual a `q` (ativos e inativos).
+   * Usado no fluxo de ativo fixo (não bloqueia inclusão — informa N unidades).
+   */
+  async exactCount(params: {
+    q: string;
+    itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+  }) {
+    const q = params.q.trim().toUpperCase();
+    if (!q) return { count: 0, sample: null };
+
+    const where: Prisma.ProductWhereInput = {
+      descriptionShort: q,
+      ...(params.itemKind ? { itemKind: params.itemKind } : {}),
+    };
+
+    const [count, sample] = await Promise.all([
+      this.prisma.product.count({ where }),
+      this.prisma.product.findFirst({
+        where,
+        select: {
+          id: true,
+          unifiedCode: true,
+          descriptionShort: true,
+          itemKind: true,
+          active: true,
+          blockState: true,
+        },
+        orderBy: [{ active: 'desc' }, { createdAt: 'asc' }],
+      }),
+    ]);
+
+    return { count, sample };
+  }
+
+  /**
+   * Contagem global barata: produtos CONSUMPTION ativos com descrição idêntica a outro.
+   * FIXED_ASSET fica de fora — instâncias iguais são legítimas.
    */
   private async countExactDuplicateProducts(): Promise<number> {
     const rows = await this.prisma.$queryRaw<{ count: bigint }[]>`
       SELECT COUNT(*)::bigint AS count
       FROM products p
       WHERE p.active = true
+        AND p.item_kind = 'CONSUMPTION'::"ItemKind"
         AND EXISTS (
           SELECT 1
           FROM products o
           WHERE o.active = true
+            AND o.item_kind = 'CONSUMPTION'::"ItemKind"
             AND o.id <> p.id
             AND o.description_short = p.description_short
         )
@@ -141,21 +190,35 @@ export class ProductsService {
         (
           SELECT COALESCE(o.unified_code, o.sap_code, o.id::text)
           FROM products o
-          WHERE o.active = true
+          WHERE o.item_kind = 'CONSUMPTION'::"ItemKind"
             AND o.id <> p.id
-            AND o.description_short = p.description_short
-          ORDER BY o.unified_code NULLS LAST
+            AND (
+              o.description_short = p.description_short
+              OR (
+                o.pdm_signature IS NOT NULL
+                AND o.pdm_signature = p.pdm_signature
+                AND o.pdm_family_id IS NOT DISTINCT FROM p.pdm_family_id
+              )
+            )
+          ORDER BY o.active DESC, o.unified_code NULLS LAST
           LIMIT 1
         ) AS similar_to
       FROM products p
       WHERE p.id IN (${idList})
-        AND p.active = true
+        AND p.item_kind = 'CONSUMPTION'::"ItemKind"
         AND EXISTS (
           SELECT 1
           FROM products o
-          WHERE o.active = true
+          WHERE o.item_kind = 'CONSUMPTION'::"ItemKind"
             AND o.id <> p.id
-            AND o.description_short = p.description_short
+            AND (
+              o.description_short = p.description_short
+              OR (
+                o.pdm_signature IS NOT NULL
+                AND o.pdm_signature = p.pdm_signature
+                AND o.pdm_family_id IS NOT DISTINCT FROM p.pdm_family_id
+              )
+            )
         )
     `;
     for (const row of exact) {
@@ -174,7 +237,7 @@ export class ProductsService {
       CROSS JOIN LATERAL (
         SELECT COALESCE(o.unified_code, o.sap_code, o.id::text) AS similar_to
         FROM products o
-        WHERE o.active = true
+        WHERE o.item_kind = 'CONSUMPTION'::"ItemKind"
           AND o.id <> p.id
           AND o.description_short % p.description_short
           AND similarity(o.description_short, p.description_short) > 0.5
@@ -182,7 +245,7 @@ export class ProductsService {
         LIMIT 1
       ) d
       WHERE p.id IN (${pendingList})
-        AND p.active = true
+        AND p.item_kind = 'CONSUMPTION'::"ItemKind"
     `;
     for (const row of near) {
       if (row.similar_to) byProduct.set(row.id, row.similar_to);

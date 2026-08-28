@@ -1,5 +1,5 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
-import { parsePage } from '../common/pagination';
+import { parseCatalogPage, parsePage } from '../common/pagination';
 import { CatalogService } from './catalog.service';
 
 @Controller('catalog')
@@ -14,10 +14,15 @@ export class CatalogController {
   @Get('families')
   families(
     @Query('search') search?: string,
+    @Query('item_kind') itemKind?: 'CONSUMPTION' | 'FIXED_ASSET',
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.catalog.families({ search, ...parsePage(page, pageSize) });
+    return this.catalog.families({
+      search,
+      itemKind,
+      ...parseCatalogPage(page, pageSize),
+    });
   }
 
   @Get('families/:id/attributes')
@@ -27,20 +32,34 @@ export class CatalogController {
 
   @Get('groups')
   groups(
+    @Query('search') search?: string,
     @Query('subgroup_id') subgroupId?: string,
+    @Query('item_kind') itemKind?: 'CONSUMPTION' | 'FIXED_ASSET',
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.catalog.groups({ subgroupId, ...parsePage(page, pageSize) });
+    return this.catalog.groups({
+      search,
+      subgroupId,
+      itemKind,
+      ...parseCatalogPage(page, pageSize),
+    });
   }
 
   @Get('subgroups')
   subgroups(
+    @Query('search') search?: string,
     @Query('family_id') familyId?: string,
+    @Query('item_kind') itemKind?: 'CONSUMPTION' | 'FIXED_ASSET',
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.catalog.subgroups({ familyId, ...parsePage(page, pageSize) });
+    return this.catalog.subgroups({
+      search,
+      familyId,
+      itemKind,
+      ...parseCatalogPage(page, pageSize),
+    });
   }
 
   @Get('measure-units')

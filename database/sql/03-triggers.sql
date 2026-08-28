@@ -167,3 +167,88 @@ CREATE TRIGGER trg_request_items_aiud_audit AFTER INSERT OR UPDATE OR DELETE ON 
 DROP TRIGGER IF EXISTS trg_suppliers_aiud_audit ON suppliers;
 CREATE TRIGGER trg_suppliers_aiud_audit AFTER INSERT OR UPDATE OR DELETE ON suppliers
   FOR EACH ROW EXECUTE FUNCTION fn_audit_row();
+
+-- ---------------------------------------------------------------------------
+-- PDM signature (CONSUMPTION uniqueness helpers)
+-- Fonte canônica também na migration products_pdm_signature_consumption_unique.
+-- ---------------------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+CREATE OR REPLACE FUNCTION fn_pdm_signature(raw text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+  SELECT trim(regexp_replace(
+    regexp_replace(
+      upper(unaccent(coalesce(raw, ''))),
+      '[[:punct:]]+',
+      '',
+      'g'
+    ),
+    '\s+',
+    ' ',
+    'g'
+  ));
+$$;
+
+CREATE OR REPLACE FUNCTION fn_products_pdm_fields()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_family_id UUID;
+BEGIN
+  NEW.pdm_signature := fn_pdm_signature(NEW.description_short);
+  SELECT sg.family_id INTO v_family_id
+  FROM groups g
+  JOIN subgroups sg ON sg.id = g.subgroup_id
+  WHERE g.id = NEW.group_id;
+  NEW.pdm_family_id := v_family_id;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_products_biu_pdm_fields ON products;
+CREATE TRIGGER trg_products_biu_pdm_fields
+  BEFORE INSERT OR UPDATE OF description_short, group_id, item_kind
+  ON products
+  FOR EACH ROW
+  EXECUTE FUNCTION fn_products_pdm_fields();
+
+CREATE OR REPLACE FUNCTION fn_products_prevent_consumption_pdm_dup()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.item_kind IS DISTINCT FROM 'CONSUMPTION'::"ItemKind" THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE'
+     AND NEW.pdm_signature IS NOT DISTINCT FROM OLD.pdm_signature
+     AND NEW.pdm_family_id IS NOT DISTINCT FROM OLD.pdm_family_id
+     AND NEW.item_kind IS NOT DISTINCT FROM OLD.item_kind THEN
+    RETURN NEW;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM products o
+    WHERE o.item_kind = 'CONSUMPTION'::"ItemKind"
+      AND o.pdm_family_id IS NOT DISTINCT FROM NEW.pdm_family_id
+      AND o.pdm_signature IS NOT DISTINCT FROM NEW.pdm_signature
+      AND o.id <> NEW.id
+  ) THEN
+    RAISE EXCEPTION
+      'Duplicidade CONSUMPTION: já existe item com a mesma assinatura PDM nesta família (pdm_signature).'
+      USING ERRCODE = 'unique_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_products_biu_prevent_consumption_pdm_dup ON products;
+CREATE TRIGGER trg_products_biu_prevent_consumption_pdm_dup
+  BEFORE INSERT OR UPDATE ON products
+  FOR EACH ROW
+  EXECUTE FUNCTION fn_products_prevent_consumption_pdm_dup();
+

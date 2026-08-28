@@ -5,6 +5,7 @@ import type { ProductSearchResult } from '../lib/types';
 type Options = {
   query: string;
   hotelId?: string;
+  itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
   enabled?: boolean;
   debounceMs?: number;
 };
@@ -13,6 +14,7 @@ type Options = {
 export function useSimilarProducts({
   query,
   hotelId,
+  itemKind,
   enabled = true,
   debounceMs = 300,
 }: Options) {
@@ -31,7 +33,7 @@ export function useSimilarProducts({
     const timer = setTimeout(() => {
       setLoading(true);
       void productsApi
-        .search({ q: query, hotelId })
+        .search({ q: query, hotelId, itemKind })
         .then((r) => {
           setResults(r.data);
           setSearched(true);
@@ -44,7 +46,7 @@ export function useSimilarProducts({
     }, debounceMs);
 
     return () => clearTimeout(timer);
-  }, [query, hotelId, enabled, debounceMs]);
+  }, [query, hotelId, itemKind, enabled, debounceMs]);
 
   return {
     results,

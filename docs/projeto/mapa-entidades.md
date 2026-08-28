@@ -30,7 +30,8 @@ requests ── request_items ── (products em rascunho)
 | Solicitação | `requests` | Fluxo aprovação cadastro |
 | Item da solicitação | `request_items` | Linhas / lote |
 | Estágios | `request_stages` | Histórico status + SLA |
-| Sugestão NCM | `ncm_suggestions` | Candidatos (≠ NCM confirmado) |
+| Sugestão NCM | `ncm_suggestions` | Candidatos (≠ NCM confirmado); score = similaridade real |
+| Catálogo NCM | `ncm_codes` | TIPI 8 dígitos; FK em `products` / `request_items` |
 
 ---
 

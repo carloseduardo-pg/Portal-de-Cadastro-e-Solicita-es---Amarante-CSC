@@ -12,6 +12,7 @@ Domínio em **inglês**. Campos: [`docs/projeto/mapa-entidades.md`](../../docs/p
 | `product_attributes`, `product_attribute_values` | Atributos PDM |
 | `requests`, `request_items` | Solicitações de cadastro |
 | `request_stages` | Timeline / SLA |
+| `ncm_codes` | TIPI/NCM (8 dígitos); FK de products/request_items |
 | `ncm_suggestions` | Candidatos NCM |
 | `suppliers` | Fornecedores |
 | `notifications` | Notificações usuário |

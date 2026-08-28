@@ -53,6 +53,35 @@
   letter-spacing: 0.02em;
   color: var(--brand-primary, #094111);
   margin-bottom: 8px !important;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.request-timeline-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--warning-bg, #fff8e8);
+  border: 1px solid var(--warning, #f8ab2b);
+  color: #5a4a1a;
+}
+
+.request-timeline-reclassify {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f7f9f5;
+  border: 1px solid #d5ddd0;
+}
+
+.request-timeline-reclassify-items {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 0.9rem;
 }
 
 .request-timeline-waiting {

@@ -45,6 +45,12 @@ enum ProductSource {
   FOREIGN
 }
 
+/** Tipo de item: consumo (tipo/estoque) vs ativo fixo (instância patrimonial). */
+enum ItemKind {
+  CONSUMPTION
+  FIXED_ASSET
+}
+
 enum SupplierOriginBase {
   SEMPLICE
   CM
@@ -110,6 +116,8 @@ model Hotel {
   warehouses    Warehouse[]
   costCenters   CostCenter[]
   productHotels ProductHotel[]
+  /** Localização patrimonial de ativo fixo (AF5 — nullable no produto). */
+  fixedAssetProducts Product[] @relation("ProductPhysicalHotel")
   requests      Request[]
   requestHotels RequestHotel[]
 
@@ -138,7 +146,9 @@ model Warehouse {
 model Family {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique @db.VarChar(64)
-  name      String   @unique
+  name      String
+  /** Árvore mercadológica (consumo) vs contábil (ativo fixo) — nomes podem colidir. */
+  itemKind  ItemKind @default(CONSUMPTION) @map("item_kind")
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
@@ -147,6 +157,7 @@ model Family {
   productAttributes ProductAttribute[]
   requests          Request[]
 
+  @@unique([name, itemKind])
   @@map("families")
 }
 
@@ -209,9 +220,31 @@ model CostCenter {
   hotel         Hotel          @relation(fields: [hotelId], references: [id])
   productHotels ProductHotel[]
   requestItems  RequestItem[]
+  /** Centro de custo patrimonial (AF5 — nullable no produto). */
+  fixedAssetProducts Product[] @relation("ProductAssetCostCenter")
 
   @@unique([hotelId, code])
   @@map("cost_centers")
+}
+
+/**
+ * Tabela TIPI / NCM.
+ * `code` = 8 dígitos sem pontuação. Bootstrap = NCMs em uso na base SAP;
+ * import Receita preenche/atualiza `description` em massa.
+ */
+model NcmCode {
+  code        String   @id @db.Char(8)
+  description String
+  active      Boolean  @default(true)
+  /** SAP_USAGE | RECEITA | MANUAL */
+  source      String   @default("SAP_USAGE")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  products     Product[]
+  requestItems RequestItem[]
+
+  @@map("ncm_codes")
 }
 
 model Product {
@@ -220,14 +253,20 @@ model Product {
   descriptionLong  String?        @map("description_long")
   /** Folha SAP (grupo de itens). Família/subgrupo derivam por FK. */
   groupId          String         @map("group_id") @db.Uuid
-  /** Nulo para ativo fixo e UM "Manual" da base SAP. */
+  /**
+   * Obrigatório para CONSUMPTION (CHECK no banco).
+   * Nulo para FIXED_ASSET (bem patrimonial não tem UM).
+   */
   measureUnitId    String?        @map("measure_unit_id") @db.Uuid
-  source           ProductSource  @default(NATIONAL)
+  itemKind         ItemKind       @default(CONSUMPTION) @map("item_kind")
+  /** @deprecated Preferir itemKind — mantido alinhado para roteamento legado. */
   fixedAsset       Boolean        @default(false) @map("fixed_asset")
+  source           ProductSource  @default(NATIONAL)
   unifiedCode      String?        @unique @map("unified_code")
   legacyCode       String?        @map("legacy_code")
   sapCode          String?        @unique @map("sap_code")
-  ncmCode          String?        @map("ncm_code")
+  /** FK → ncm_codes.code (8 dígitos). Null = sem classificação. */
+  ncmCode          String?        @map("ncm_code") @db.Char(8)
   ncmConfirmedById String?        @map("ncm_confirmed_by") @db.Uuid
   ncmConfirmedAt   DateTime?      @map("ncm_confirmed_at") @db.Timestamptz
   serviceType      String?        @map("service_type")
@@ -239,18 +278,58 @@ model Product {
   purchaseQtyTotal Decimal?       @map("purchase_qty_total") @db.Decimal(14, 3)
   active           Boolean           @default(true)
   blockState       ProductBlockState @default(NONE) @map("block_state")
+
+  /**
+   * Assinatura normalizada da descrição (anti-duplicidade).
+   * UNIQUE parcial com pdmFamilyId só para CONSUMPTION — ver migration.
+   */
+  pdmSignature String? @map("pdm_signature")
+  /**
+   * Família denormalizada só para UNIQUE(family, pdm_signature) em CONSUMPTION.
+   * Mantida por trigger a partir de group → subgroup → family.
+   */
+  pdmFamilyId String? @map("pdm_family_id") @db.Uuid
+
+  // --- AF5 / contabilidade — colunas preparadas, NULLABLE. Sem regra/default inventado. ---
+  /** TODO AF5: número de patrimônio (identifica a unidade física). */
+  assetTag            String?   @map("asset_tag")
+  /** TODO AF5: valor de aquisição. */
+  acquisitionValue    Decimal?  @map("acquisition_value") @db.Decimal(14, 2)
+  /** TODO AF5: data de aquisição. */
+  acquisitionDate     DateTime? @map("acquisition_date") @db.Date
+  /** TODO AF5: centro de custo patrimonial. */
+  costCenterId        String?   @map("cost_center_id") @db.Uuid
+  /** TODO AF5: hotel / unidade da localização física. */
+  hotelId             String?   @map("hotel_id") @db.Uuid
+  /** TODO AF5: localização física textual. */
+  physicalLocation    String?   @map("physical_location")
+  /** TODO AF5: vida útil em meses. */
+  usefulLifeMonths    Int?      @map("useful_life_months")
+  /** TODO AF5: taxa de depreciação. */
+  depreciationRate    Decimal?  @map("depreciation_rate") @db.Decimal(8, 4)
+  /** TODO AF5: CNPJ/documento do fornecedor. */
+  supplierDocument    String?   @map("supplier_document")
+  /** TODO AF5: número da nota fiscal. */
+  invoiceNumber       String?   @map("invoice_number")
+
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz
 
   group           Group            @relation(fields: [groupId], references: [id])
   measureUnit     MeasureUnit?     @relation(fields: [measureUnitId], references: [id])
+  ncm             NcmCode?         @relation(fields: [ncmCode], references: [code])
   ncmConfirmedBy  User?            @relation("NcmConfirmedBy", fields: [ncmConfirmedById], references: [id])
+  costCenter      CostCenter?      @relation("ProductAssetCostCenter", fields: [costCenterId], references: [id])
+  hotel           Hotel?           @relation("ProductPhysicalHotel", fields: [hotelId], references: [id])
   hotels          ProductHotel[]
   attributeValues ProductAttributeValue[]
   requestItems    RequestItem[]
   links           ProductLink[]
 
   @@index([descriptionShort])
+  @@index([itemKind])
+  @@index([pdmSignature])
+  @@index([ncmCode])
   @@map("products")
 }
 
@@ -317,6 +396,18 @@ model Request {
   state        RequestState @default(RASCUNHO)
   /** Flag de ativo fixo — inclui etapa IMOBILIZADO antes do Aprovador de cadastro. */
   fixedAsset   Boolean      @default(false) @map("fixed_asset")
+  /**
+   * Após reclassificar para AF: se true, Imobilizado devolve ao Aprovador CSC;
+   * se false, Imobilizado encerra sozinho ao aprovar.
+   */
+  returnToApprover Boolean @default(true) @map("return_to_approver")
+  /** Família/grupo merceológicos invalidados — Imobilizado deve reclassificar na árvore AF. */
+  classificationInvalidated Boolean @default(false) @map("classification_invalidated")
+  /**
+   * Vínculo de divisão de lote misto (consumo × AF).
+   * Preparado; divisão ainda não implementada — validar com operação.
+   */
+  parentRequestId String? @map("parent_request_id") @db.Uuid
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
   submittedAt  DateTime?    @map("submitted_at") @db.Timestamptz
   expiresAt    DateTime?    @map("expires_at") @db.Timestamptz
@@ -327,6 +418,8 @@ model Request {
   requester User           @relation("RequestRequester", fields: [requesterId], references: [id])
   hotel     Hotel          @relation(fields: [hotelId], references: [id])
   family    Family         @relation(fields: [familyId], references: [id])
+  parentRequest Request?   @relation("RequestSplit", fields: [parentRequestId], references: [id])
+  childRequests Request[]  @relation("RequestSplit")
   items     RequestItem[]
   stages    RequestStage[]
   hotels    RequestHotel[]
@@ -334,6 +427,7 @@ model Request {
   @@index([state])
   @@index([hotelId])
   @@index([fixedAsset])
+  @@index([parentRequestId])
   @@map("requests")
 }
 
@@ -354,6 +448,7 @@ model RequestItem {
   productId        String?       @map("product_id") @db.Uuid
   /** Folha SAP do item; deve pertencer à família do lote (ITM-11). */
   groupId          String?       @map("group_id") @db.Uuid
+  itemKind         ItemKind      @default(CONSUMPTION) @map("item_kind")
   descriptionShort String        @map("description_short")
   descriptionLong  String?       @map("description_long")
   measureUnitId    String?       @map("measure_unit_id") @db.Uuid
@@ -366,7 +461,30 @@ model RequestItem {
   law116           String?       @map("law_116")
   productLink      String?       @map("product_link")
   itemObservation  String?       @map("item_observation")
-  ncmCode          String?       @map("ncm_code")
+  /**
+   * Ativo fixo: quantas unidades físicas materializar na aprovação (N registros).
+   * Consumo: null (não se aplica — estoque é quantidade, não instância).
+   */
+  unitQuantity     Int?          @map("unit_quantity")
+  /** Ativo fixo: localização física (texto livre). */
+  physicalLocation String?       @map("physical_location")
+  // --- AF1 / contábeis no pedido — opcionais até Amarante definir (AF5). ---
+  /** TODO AF5: número de patrimônio (opcional na solicitação). */
+  assetTag            String?   @map("asset_tag")
+  /** TODO AF5: valor de aquisição. */
+  acquisitionValue    Decimal?  @map("acquisition_value") @db.Decimal(14, 2)
+  /** TODO AF5: data de aquisição. */
+  acquisitionDate     DateTime? @map("acquisition_date") @db.Date
+  /** TODO AF5: vida útil em meses. */
+  usefulLifeMonths    Int?      @map("useful_life_months")
+  /** TODO AF5: taxa de depreciação. */
+  depreciationRate    Decimal?  @map("depreciation_rate") @db.Decimal(8, 4)
+  /** TODO AF5: CNPJ/documento do fornecedor. */
+  supplierDocument    String?   @map("supplier_document")
+  /** TODO AF5: número da nota fiscal. */
+  invoiceNumber       String?   @map("invoice_number")
+  /** FK → ncm_codes.code (8 dígitos). */
+  ncmCode          String?       @map("ncm_code") @db.Char(8)
   ncmConfirmed     Boolean       @default(false) @map("ncm_confirmed")
   sortOrder        Int           @default(0) @map("sort_order")
 
@@ -375,10 +493,12 @@ model RequestItem {
   group           Group?           @relation(fields: [groupId], references: [id])
   measureUnit     MeasureUnit?     @relation(fields: [measureUnitId], references: [id])
   costCenter      CostCenter?      @relation(fields: [costCenterId], references: [id])
+  ncm             NcmCode?         @relation(fields: [ncmCode], references: [code])
   ncmSuggestions  NcmSuggestion[]
   links           RequestItemLink[]
 
   @@index([requestId])
+  @@index([ncmCode])
   @@map("request_items")
 }
 
@@ -403,6 +523,13 @@ model RequestStage {
   finishedAt DateTime? @map("finished_at") @db.Timestamptz
   isLate     Boolean   @default(false) @map("is_late")
   message    String?
+  /**
+   * Resultado estruturado da etapa (auditoria).
+   * Ex.: RECLASSIFY_FIXED_ASSET | RECLASSIFY_CONSUMPTION
+   */
+  outcome       String? @map("outcome")
+  /** Detalhe JSON: itens afetados, kind antes/depois, returnToApprover, etc. */
+  outcomeDetail Json?   @map("outcome_detail")
 
   request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id])
