@@ -83,12 +83,12 @@ export function findFamilyById(families: Family[], familyId: string) {
   return families.find((f) => f.id === familyId);
 }
 
-/** Preenche group/subgroup a partir da família selecionada. */
+/** Família do lote não determina subgrupo/grupo (N caminhos sob a mesma família SAP). */
 export function classificationFromFamily(fam: Family | undefined) {
   if (!fam) return { groupId: '', subgroupId: '', familyId: '' };
   return {
-    groupId: fam.groupId ?? '',
-    subgroupId: fam.subgroupId ?? '',
+    groupId: '',
+    subgroupId: '',
     familyId: fam.id,
   };
 }

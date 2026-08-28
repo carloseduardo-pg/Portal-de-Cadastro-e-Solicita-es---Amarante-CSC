@@ -122,10 +122,12 @@ export function CaixaDeEntradaPage() {
 
   const roleHint =
     effectiveRole === 'ADMIN'
-      ? 'Perfil Admin: fila unificada com badge de etapa em cada card (Solicitante, Aprovador).'
-      : effectiveRole === 'APROVADOR'
-        ? 'Perfil Aprovador: somente solicitações na sua etapa.'
-        : 'Perfil Solicitante: somente solicitações na sua etapa.';
+      ? 'Perfil Admin: fila unificada com badge de etapa (Solicitante, Imobilizado, Aprovador).'
+      : effectiveRole === 'APROVADOR_IMOBILIZADO'
+        ? 'Perfil Imobilizado: somente solicitações de ativo fixo na sua etapa.'
+        : effectiveRole === 'APROVADOR'
+          ? 'Perfil Aprovador: somente solicitações na sua etapa.'
+          : 'Perfil Solicitante: somente solicitações na sua etapa.';
 
   return (
     <section className="solicitacoes-page">

@@ -25,7 +25,7 @@ export type AuthUser = {
   id: string;
   email: string;
   name: string;
-  role: 'ADMIN' | 'SOLICITANTE' | 'APROVADOR' | 'COMPLIANCE';
+  role: 'ADMIN' | 'SOLICITANTE' | 'APROVADOR' | 'APROVADOR_IMOBILIZADO' | 'COMPLIANCE';
 };
 
 /**

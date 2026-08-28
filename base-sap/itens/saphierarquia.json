@@ -1,0 +1,1095 @@
+{
+  "uso_consumo": {
+    "tipo": "CONSUMO",
+    "total_itens": 3598,
+    "familias": 17,
+    "subgrupos": 58,
+    "grupos": 98,
+    "arvore": [
+      {
+        "familia": "ALIMENTOS",
+        "itens": 791,
+        "subgrupos": [
+          {
+            "subgrupo": "ACUCARES ADOCANTES DOCES",
+            "itens": 91,
+            "grupos": [
+              {
+                "grupo": "ACUCARES, ADOCANTES",
+                "itens": 8
+              },
+              {
+                "grupo": "GELEIA, GELATINAS E DOCES",
+                "itens": 83
+              }
+            ]
+          },
+          {
+            "subgrupo": "CARNES E PRODUTOS AVICOLAS",
+            "itens": 54,
+            "grupos": [
+              {
+                "grupo": "AVES",
+                "itens": 11
+              },
+              {
+                "grupo": "CARNES",
+                "itens": 43
+              }
+            ]
+          },
+          {
+            "subgrupo": "CEREAIS GRAOS E FARINACEOS",
+            "itens": 61,
+            "grupos": [
+              {
+                "grupo": "CEREAIS E GRAOS",
+                "itens": 26
+              },
+              {
+                "grupo": "CEREAIS MATINAIS",
+                "itens": 8
+              },
+              {
+                "grupo": "FARINACEOS",
+                "itens": 21
+              }
+            ]
+          },
+          {
+            "subgrupo": "CHAS, CAFE E INSUMOS MAQUINAS",
+            "itens": 20,
+            "grupos": [
+              {
+                "grupo": "CHAS, CAFE E INSUMOS MAQUINAS",
+                "itens": 20
+              }
+            ]
+          },
+          {
+            "subgrupo": "HORTIFRUTI",
+            "itens": 199,
+            "grupos": [
+              {
+                "grupo": "FRUTAS",
+                "itens": 56
+              },
+              {
+                "grupo": "HORTALICAS E OVOS",
+                "itens": 93
+              },
+              {
+                "grupo": "POLPAS E FRUTAS CONGELADAS",
+                "itens": 15
+              },
+              {
+                "grupo": "SEMENTE, OLEAGINOSA E DESIDRAT",
+                "itens": 35
+              }
+            ]
+          },
+          {
+            "subgrupo": "LATICINIOS E FRIOS",
+            "itens": 100,
+            "grupos": [
+              {
+                "grupo": "EMBUTIDOS E FRIOS",
+                "itens": 21
+              },
+              {
+                "grupo": "IOGURTES E COALHADAS",
+                "itens": 16
+              },
+              {
+                "grupo": "LATICINIOS PROCESSADOS",
+                "itens": 32
+              },
+              {
+                "grupo": "LEITE E COMPOSTOS LACTEO",
+                "itens": 23
+              },
+              {
+                "grupo": "MANTEIGA E GORDURA HIDROG",
+                "itens": 8
+              }
+            ]
+          },
+          {
+            "subgrupo": "MASSAS",
+            "itens": 15,
+            "grupos": [
+              {
+                "grupo": "MASSAS",
+                "itens": 15
+              }
+            ]
+          },
+          {
+            "subgrupo": "OLEOS E AZEITES",
+            "itens": 7,
+            "grupos": [
+              {
+                "grupo": "OLEOS E AZEITES",
+                "itens": 7
+              }
+            ]
+          },
+          {
+            "subgrupo": "PESCADOS",
+            "itens": 20,
+            "grupos": [
+              {
+                "grupo": "FRUTOS DO MAR",
+                "itens": 8
+              },
+              {
+                "grupo": "PEIXES",
+                "itens": 12
+              }
+            ]
+          },
+          {
+            "subgrupo": "PICOLES SORVETES",
+            "itens": 25,
+            "grupos": [
+              {
+                "grupo": "PICOLES E SORVETES",
+                "itens": 25
+              }
+            ]
+          },
+          {
+            "subgrupo": "PROD PADARIA CONFEITARIA",
+            "itens": 95,
+            "grupos": [
+              {
+                "grupo": "BOLACHAS E BISCOITOS",
+                "itens": 19
+              },
+              {
+                "grupo": "BOLOS E MISTURAS PRONTAS",
+                "itens": 22
+              },
+              {
+                "grupo": "PAES",
+                "itens": 10
+              },
+              {
+                "grupo": "SUP PROD CONFEITARIA E PADARIA",
+                "itens": 44
+              }
+            ]
+          },
+          {
+            "subgrupo": "SALGADOS PROCESSADOS E CONG",
+            "itens": 25,
+            "grupos": [
+              {
+                "grupo": "SALGADOS CONGELADOS",
+                "itens": 15
+              },
+              {
+                "grupo": "SALGADOS PROCESSADOS",
+                "itens": 10
+              }
+            ]
+          },
+          {
+            "subgrupo": "TEMPEROS E CONSERVANTES",
+            "itens": 78,
+            "grupos": [
+              {
+                "grupo": "CONSERVAS",
+                "itens": 16
+              },
+              {
+                "grupo": "ERVAS E TEMPEROS",
+                "itens": 41
+              },
+              {
+                "grupo": "MOLHOS E VINAGRES",
+                "itens": 21
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "BEBIDAS",
+        "itens": 90,
+        "subgrupos": [
+          {
+            "subgrupo": "BEBIDAS ALCOOLICAS",
+            "itens": 50,
+            "grupos": [
+              {
+                "grupo": "CERVEJA E CHOPP",
+                "itens": 17
+              },
+              {
+                "grupo": "DESTILADOS DIVERSOS",
+                "itens": 16
+              },
+              {
+                "grupo": "ESPUMANTES",
+                "itens": 5
+              },
+              {
+                "grupo": "VINHOS",
+                "itens": 12
+              }
+            ]
+          },
+          {
+            "subgrupo": "BEBIDAS NAO ALCOOLICAS",
+            "itens": 40,
+            "grupos": [
+              {
+                "grupo": "AGUA DE COCO E COCO",
+                "itens": 3
+              },
+              {
+                "grupo": "AGUAS",
+                "itens": 7
+              },
+              {
+                "grupo": "GELOS",
+                "itens": 2
+              },
+              {
+                "grupo": "REFRIGERANTES E GASEIFICADOS",
+                "itens": 13
+              },
+              {
+                "grupo": "SUCOS E XAROPES",
+                "itens": 15
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "COMBUSTIVEL E LUBRIFICANTE",
+        "itens": 28,
+        "subgrupos": [
+          {
+            "subgrupo": "COMBUSTIVEL E LUBRIFICANTE",
+            "itens": 28,
+            "grupos": [
+              {
+                "grupo": "COMBUSTIVEL",
+                "itens": 3
+              },
+              {
+                "grupo": "GAS",
+                "itens": 17
+              },
+              {
+                "grupo": "LUBRIFICANTE E ADITIVOS",
+                "itens": 10
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "EQUIPAMENTOS DE SEGURANCA",
+        "itens": 130,
+        "subgrupos": [
+          {
+            "subgrupo": "COMBATE A INCENDIO",
+            "itens": 6,
+            "grupos": [
+              {
+                "grupo": "MATERIAIS COMBATE A INCENDIO",
+                "itens": 6
+              }
+            ]
+          },
+          {
+            "subgrupo": "EPI EPC",
+            "itens": 125,
+            "grupos": [
+              {
+                "grupo": "EQUIP PROT COLETIVO",
+                "itens": 9
+              },
+              {
+                "grupo": "EQUIP PROT INDIVIDUAL",
+                "itens": 116
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "ESPORTE E LAZER",
+        "itens": 356,
+        "subgrupos": [
+          {
+            "subgrupo": "EVENTOS",
+            "itens": 227,
+            "grupos": [
+              {
+                "grupo": "ARTIGOS PARA EVENTOS",
+                "itens": 158
+              },
+              {
+                "grupo": "MAQUIAGENS E ADERECOS",
+                "itens": 69
+              }
+            ]
+          },
+          {
+            "subgrupo": "MATERIAL DE RECREACAO",
+            "itens": 93,
+            "grupos": [
+              {
+                "grupo": "MATERIAL DE RECREACAO",
+                "itens": 93
+              }
+            ]
+          },
+          {
+            "subgrupo": "MATERIAL ESPORTIVO",
+            "itens": 30,
+            "grupos": [
+              {
+                "grupo": "MATERIAL ESPORTIVO",
+                "itens": 30
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "HOSPEDAGEM",
+        "itens": 144,
+        "subgrupos": [
+          {
+            "subgrupo": "AMENITIES",
+            "itens": 14,
+            "grupos": [
+              {
+                "grupo": "AMENITIES",
+                "itens": 14
+              }
+            ]
+          },
+          {
+            "subgrupo": "ENXOVAL",
+            "itens": 36,
+            "grupos": [
+              {
+                "grupo": "ENXOVAL",
+                "itens": 36
+              }
+            ]
+          },
+          {
+            "subgrupo": "ORNAMENTOS E DECORACOES",
+            "itens": 93,
+            "grupos": [
+              {
+                "grupo": "ORNAMENTOS E DECORACOES",
+                "itens": 93
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "IMOBILIZADO",
+        "itens": 61,
+        "subgrupos": [
+          {
+            "subgrupo": "EQUIP INFORMATICA E TELEFONIA",
+            "itens": 54,
+            "grupos": [
+              {
+                "grupo": "EQUIP INFORMATICA E TELEFONIA",
+                "itens": 54
+              }
+            ]
+          },
+          {
+            "subgrupo": "MAQUINAS E EQUIPAMENTOS",
+            "itens": 3,
+            "grupos": [
+              {
+                "grupo": "MAQUINAS E EQUIPAMENTOS",
+                "itens": 3
+              }
+            ]
+          },
+          {
+            "subgrupo": "MOVEIS E UTENSILIOS",
+            "itens": 6,
+            "grupos": [
+              {
+                "grupo": "MOVEIS E UTENSILIOS",
+                "itens": 6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "JARDINAGEM",
+        "itens": 20,
+        "subgrupos": [
+          {
+            "subgrupo": "JARDINAGEM",
+            "itens": 20,
+            "grupos": [
+              {
+                "grupo": "PLANTAS TERRAS E ADUBOS",
+                "itens": 6
+              },
+              {
+                "grupo": "PRODUTOS PARA CONTROLE DE PRAG",
+                "itens": 8
+              },
+              {
+                "grupo": "UTENSILIOS PARA JARDINAGEM",
+                "itens": 7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "MANUTENCAO E OBRAS",
+        "itens": 1142,
+        "subgrupos": [
+          {
+            "subgrupo": "ACABAMENTO E REVESTIMENTO",
+            "itens": 86,
+            "grupos": [
+              {
+                "grupo": "PINTURA",
+                "itens": 70
+              },
+              {
+                "grupo": "REVESTIMENTOS",
+                "itens": 16
+              }
+            ]
+          },
+          {
+            "subgrupo": "ACESSORIOS DE FIXACAO",
+            "itens": 70,
+            "grupos": [
+              {
+                "grupo": "ACESSORIOS DE FIXACAO",
+                "itens": 70
+              }
+            ]
+          },
+          {
+            "subgrupo": "AGREGADOS E AGLOMERANTE",
+            "itens": 9,
+            "grupos": [
+              {
+                "grupo": "AGREGADOS E AGLOMERANTE",
+                "itens": 10
+              }
+            ]
+          },
+          {
+            "subgrupo": "BLOCOS E FECHAMENTOS",
+            "itens": 2,
+            "grupos": [
+              {
+                "grupo": "BLOCOS E FECHAMENTOS",
+                "itens": 2
+              }
+            ]
+          },
+          {
+            "subgrupo": "COMPENSADOS MADEIRAS ESCORAS",
+            "itens": 21,
+            "grupos": [
+              {
+                "grupo": "COMPENSADOS MADEIRAS ESCORAS",
+                "itens": 21
+              }
+            ]
+          },
+          {
+            "subgrupo": "ELETRICO",
+            "itens": 264,
+            "grupos": [
+              {
+                "grupo": "COMPONENTES ELETRICOS",
+                "itens": 111
+              },
+              {
+                "grupo": "ILUMINACAO",
+                "itens": 54
+              },
+              {
+                "grupo": "MATERIAL E ACESSORIO ELETRICO",
+                "itens": 114
+              }
+            ]
+          },
+          {
+            "subgrupo": "ESQUADRIAS AL/FE",
+            "itens": 9,
+            "grupos": [
+              {
+                "grupo": "ESQUADRIAS AL/FE",
+                "itens": 9
+              }
+            ]
+          },
+          {
+            "subgrupo": "ESTRUTURAS ARMAZENAMENTO",
+            "itens": 8,
+            "grupos": [
+              {
+                "grupo": "ESTRUTURAS ARMAZENAMENTO",
+                "itens": 8
+              }
+            ]
+          },
+          {
+            "subgrupo": "FERRAGENS",
+            "itens": 16,
+            "grupos": [
+              {
+                "grupo": "FERRAGENS",
+                "itens": 22
+              }
+            ]
+          },
+          {
+            "subgrupo": "FERRAMENTAS",
+            "itens": 101,
+            "grupos": [
+              {
+                "grupo": "FERRAMENTAS",
+                "itens": 101
+              }
+            ]
+          },
+          {
+            "subgrupo": "FILTROS E ELEMENTOS FILTRANTES",
+            "itens": 18,
+            "grupos": [
+              {
+                "grupo": "FILTROS E ELEMENTOS FILTRANTES",
+                "itens": 18
+              }
+            ]
+          },
+          {
+            "subgrupo": "FORROS DIVISORIAS E COBERTAS",
+            "itens": 24,
+            "grupos": [
+              {
+                "grupo": "FORROS DIVISORIAS E COBERTAS",
+                "itens": 23
+              }
+            ]
+          },
+          {
+            "subgrupo": "HIDRAULICO",
+            "itens": 171,
+            "grupos": [
+              {
+                "grupo": "LOUCAS E METAIS",
+                "itens": 19
+              },
+              {
+                "grupo": "MATERIAL E CONEXAO HIDRAULICA",
+                "itens": 150
+              }
+            ]
+          },
+          {
+            "subgrupo": "MAQUINAS E EQUIP SOLDA",
+            "itens": 8,
+            "grupos": [
+              {
+                "grupo": "UTENS. E CONSUMIVEIS SOLDA",
+                "itens": 8
+              }
+            ]
+          },
+          {
+            "subgrupo": "MATERIAL ADESIVO E VEDACAO",
+            "itens": 43,
+            "grupos": [
+              {
+                "grupo": "IMPERMEABILIZACAO",
+                "itens": 6
+              },
+              {
+                "grupo": "MATERIAL ADESIVO E VEDACAO",
+                "itens": 38
+              }
+            ]
+          },
+          {
+            "subgrupo": "MATERIAL E EQUIP PISCINA",
+            "itens": 32,
+            "grupos": [
+              {
+                "grupo": "EQUIP E UTENSILIOS DE PISCINA",
+                "itens": 12
+              },
+              {
+                "grupo": "MATERIAL LIMPEZA PARA PISCINA",
+                "itens": 20
+              }
+            ]
+          },
+          {
+            "subgrupo": "PECAS DE REPOSICAO",
+            "itens": 260,
+            "grupos": [
+              {
+                "grupo": "Itens",
+                "itens": 13
+              },
+              {
+                "grupo": "PECAS REPOS GERAIS",
+                "itens": 203
+              },
+              {
+                "grupo": "PECAS REPOS VEICULO/EMBARCACAO",
+                "itens": 29
+              }
+            ]
+          },
+          {
+            "subgrupo": "TRANSMISSAO MECANICA",
+            "itens": 4,
+            "grupos": [
+              {
+                "grupo": "ACOPLAMENTOS",
+                "itens": 1
+              },
+              {
+                "grupo": "ROLAMENTOS RODIZIOS E RODAS",
+                "itens": 3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "MATERIAL ADESIVO E VEDACAO",
+        "itens": 2,
+        "subgrupos": [
+          {
+            "subgrupo": "MANUTENCAO E OBRAS",
+            "itens": 2,
+            "grupos": []
+          }
+        ]
+      },
+      {
+        "familia": "MATERIAL DE ESCRITORIO",
+        "itens": 143,
+        "subgrupos": [
+          {
+            "subgrupo": "MATERIAL DE ESCRITORIO",
+            "itens": 141,
+            "grupos": [
+              {
+                "grupo": "MATERIAL DE ESCRITORIO",
+                "itens": 142
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "MATERIAL DE LIMPEZA",
+        "itens": 130,
+        "subgrupos": [
+          {
+            "subgrupo": "PRODUTOS DE LIMPEZA",
+            "itens": 84,
+            "grupos": [
+              {
+                "grupo": "PRODUTOS DE LIMPEZA",
+                "itens": 72
+              }
+            ]
+          },
+          {
+            "subgrupo": "UTENS. DE LIMPEZA",
+            "itens": 46,
+            "grupos": [
+              {
+                "grupo": "UTENSILIOS DE LIMPEZA",
+                "itens": 58
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "MATERIAL DESCARTAVEL",
+        "itens": 77,
+        "subgrupos": [
+          {
+            "subgrupo": "MATERIAL DESCARTAVEL",
+            "itens": 78,
+            "grupos": [
+              {
+                "grupo": "MATERIAL DESCARTAVEL",
+                "itens": 78
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "MATERIAL GRAFICO PERSONALIZADO",
+        "itens": 38,
+        "subgrupos": [
+          {
+            "subgrupo": "MATERIAL GRAFICO PERSONALIZADO",
+            "itens": 37,
+            "grupos": [
+              {
+                "grupo": "MATERIAL GRAFICO PERSONALIZADO",
+                "itens": 38
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "SUPRIMENTOS MEDICOS",
+        "itens": 12,
+        "subgrupos": [
+          {
+            "subgrupo": "REMEDIOS",
+            "itens": 2,
+            "grupos": [
+              {
+                "grupo": "REMEDIOS",
+                "itens": 2
+              }
+            ]
+          },
+          {
+            "subgrupo": "UTENS. MEDICOS",
+            "itens": 10,
+            "grupos": [
+              {
+                "grupo": "UTENSILIOS MEDICOS",
+                "itens": 10
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "UNIFORMES",
+        "itens": 173,
+        "subgrupos": [
+          {
+            "subgrupo": "ACESS UNIFORME",
+            "itens": 22,
+            "grupos": [
+              {
+                "grupo": "ACESS UNIFORME",
+                "itens": 22
+              }
+            ]
+          },
+          {
+            "subgrupo": "CALCADOS",
+            "itens": 42,
+            "grupos": [
+              {
+                "grupo": "CALCADOS",
+                "itens": 42
+              }
+            ]
+          },
+          {
+            "subgrupo": "UNIFORMES",
+            "itens": 110,
+            "grupos": [
+              {
+                "grupo": "UNIFORMES",
+                "itens": 110
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "UTENS. COZINHA/ELETROPORTATEIS",
+        "itens": 261,
+        "subgrupos": [
+          {
+            "subgrupo": "UTENS. COZINHA/ELETROPORTATEIS",
+            "itens": 261,
+            "grupos": [
+              {
+                "grupo": "ELETROPORTATEIS",
+                "itens": 44
+              },
+              {
+                "grupo": "UTENSILIOS DE COZINHA",
+                "itens": 217
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "ambiguidades_subgrupo": {
+      "EPI EPC": [
+        [
+          "EQUIPAMENTOS DE SEGURANCA",
+          124
+        ],
+        [
+          "ESPORTE E LAZER",
+          1
+        ]
+      ],
+      "EQUIP INFORMATICA E TELEFONIA": [
+        [
+          "IMOBILIZADO",
+          52
+        ],
+        [
+          "MATERIAL DE ESCRITORIO",
+          2
+        ]
+      ],
+      "ACESSORIOS DE FIXACAO": [
+        [
+          "MANUTENCAO E OBRAS",
+          66
+        ],
+        [
+          "ESPORTE E LAZER",
+          4
+        ]
+      ],
+      "ELETRICO": [
+        [
+          "MANUTENCAO E OBRAS",
+          263
+        ],
+        [
+          "ESPORTE E LAZER",
+          1
+        ]
+      ],
+      "MATERIAL DESCARTAVEL": [
+        [
+          "MATERIAL DESCARTAVEL",
+          77
+        ],
+        [
+          "ALIMENTOS",
+          1
+        ]
+      ],
+      "ACESS UNIFORME": [
+        [
+          "UNIFORMES",
+          21
+        ],
+        [
+          "HOSPEDAGEM",
+          1
+        ]
+      ]
+    },
+    "ambiguidades_grupo": {
+      "FERRAGENS": [
+        [
+          "FERRAGENS",
+          16
+        ],
+        [
+          "CEREAIS GRAOS E FARINACEOS",
+          6
+        ]
+      ],
+      "GAS": [
+        [
+          "COMBUSTIVEL E LUBRIFICANTE",
+          15
+        ],
+        [
+          "ELETRICO",
+          1
+        ],
+        [
+          "HIDRAULICO",
+          1
+        ]
+      ],
+      "UTENSILIOS PARA JARDINAGEM": [
+        [
+          "JARDINAGEM",
+          6
+        ],
+        [
+          "HIDRAULICO",
+          1
+        ]
+      ],
+      "AGREGADOS E AGLOMERANTE": [
+        [
+          "AGREGADOS E AGLOMERANTE",
+          9
+        ],
+        [
+          "FORROS DIVISORIAS E COBERTAS",
+          1
+        ]
+      ],
+      "COMPONENTES ELETRICOS": [
+        [
+          "ELETRICO",
+          95
+        ],
+        [
+          "PECAS DE REPOSICAO",
+          16
+        ]
+      ],
+      "MATERIAL ADESIVO E VEDACAO": [
+        [
+          "MATERIAL ADESIVO E VEDACAO",
+          36
+        ],
+        [
+          "MANUTENCAO E OBRAS",
+          2
+        ]
+      ],
+      "MATERIAL DE ESCRITORIO": [
+        [
+          "MATERIAL DE ESCRITORIO",
+          141
+        ],
+        [
+          "MATERIAL ADESIVO E VEDACAO",
+          1
+        ]
+      ],
+      "PECAS REPOS VEICULO/EMBARCACAO": [
+        [
+          "PECAS DE REPOSICAO",
+          28
+        ],
+        [
+          "ELETRICO",
+          1
+        ]
+      ],
+      "PRODUTOS DE LIMPEZA": [
+        [
+          "PRODUTOS DE LIMPEZA",
+          71
+        ],
+        [
+          "UTENS. DE LIMPEZA",
+          1
+        ]
+      ],
+      "UTENSILIOS DE LIMPEZA": [
+        [
+          "UTENS. DE LIMPEZA",
+          45
+        ],
+        [
+          "PRODUTOS DE LIMPEZA",
+          13
+        ]
+      ]
+    }
+  },
+  "ativo_fixo": {
+    "tipo": "ATIVO_FIXO",
+    "total_itens": 313,
+    "familias": 4,
+    "subgrupos": 4,
+    "grupos": 4,
+    "arvore": [
+      {
+        "familia": "EQUIP INFORMATICA E TELEFONIA",
+        "itens": 54,
+        "subgrupos": [
+          {
+            "subgrupo": "EQUIP INFORMATICA E TELEFONIA",
+            "itens": 54,
+            "grupos": [
+              {
+                "grupo": "EQUIP INFORMATICA E TELEFONIA",
+                "itens": 56
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "IMOBILIZADO",
+        "itens": 2,
+        "subgrupos": [
+          {
+            "subgrupo": "VEICULOS",
+            "itens": 2,
+            "grupos": [
+              {
+                "grupo": "VEICULOS",
+                "itens": 2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "MAQUINAS E EQUIPAMENTOS",
+        "itens": 136,
+        "subgrupos": [
+          {
+            "subgrupo": "MAQUINAS E EQUIPAMENTOS",
+            "itens": 136,
+            "grupos": [
+              {
+                "grupo": "MAQUINAS E EQUIPAMENTOS",
+                "itens": 139
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "familia": "MOVEIS E UTENSILIOS",
+        "itens": 95,
+        "subgrupos": [
+          {
+            "subgrupo": "MOVEIS E UTENSILIOS",
+            "itens": 95,
+            "grupos": [
+              {
+                "grupo": "MOVEIS E UTENSILIOS",
+                "itens": 113
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "ambiguidades_subgrupo": {},
+    "ambiguidades_grupo": {}
+  }
+}

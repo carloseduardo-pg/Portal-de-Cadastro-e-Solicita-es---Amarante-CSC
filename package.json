@@ -5,6 +5,7 @@
   "scripts": {
     "setup": "bash database/scripts/setup.sh && bash database/scripts/migrate.sh && bash database/scripts/check.sh",
     "migrate": "bash database/scripts/migrate.sh",
+    "import:sap": "npm run import:sap --prefix backend",
     "check:db": "bash database/scripts/check.sh",
     "dev:stop": "fuser -k 5180/tcp 3000/tcp 2>/dev/null || true",
     "dev": "npm run dev:stop && concurrently --kill-others-on-fail -n api,web -c green,cyan \"npm run dev:api\" \"npm run dev:web\"",

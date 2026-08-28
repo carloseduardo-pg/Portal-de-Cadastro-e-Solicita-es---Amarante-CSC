@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './SearchableSelect.css';
 
 export type SearchableOption = {
@@ -21,6 +21,7 @@ type SearchableSelectProps = {
 
 /**
  * Select com busca digitável — filtra opções em tempo real.
+ * Sempre mantém a opção selecionada na lista (evita select nativo inválido).
  */
 export function SearchableSelect({
   label,
@@ -36,17 +37,26 @@ export function SearchableSelect({
   const [query, setQuery] = useState('');
   const selected = options.find((o) => o.id === value);
 
+  /** Limpa filtro quando o valor controlado muda (ex.: troca de grupo). */
+  useEffect(() => {
+    setQuery('');
+  }, [value]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((o) =>
-      (o.searchText ?? o.label).toLowerCase().includes(q),
-    );
-  }, [options, query]);
+    const base = !q
+      ? options
+      : options.filter((o) => (o.searchText ?? o.label).toLowerCase().includes(q));
+
+    if (value && selected && !base.some((o) => o.id === value)) {
+      return [selected, ...base];
+    }
+    return base;
+  }, [options, query, value, selected]);
 
   return (
-    <label className={`searchable-select${disabled ? ' searchable-select--disabled' : ''}`}>
-      <span className="searchable-select-label">{label}</span>
+    <div className={`searchable-select${disabled ? ' searchable-select--disabled' : ''}`}>
+      {label ? <span className="searchable-select-label">{label}</span> : null}
       {hint ? <span className="searchable-select-hint">{hint}</span> : null}
       <input
         type="search"
@@ -55,7 +65,7 @@ export function SearchableSelect({
         onChange={(e) => setQuery(e.target.value)}
         placeholder={selected ? selected.label : placeholder}
         disabled={disabled}
-        aria-label={`Buscar ${label}`}
+        aria-label={label ? `Buscar ${label}` : placeholder}
       />
       <select
         className="searchable-select-native"
@@ -65,7 +75,7 @@ export function SearchableSelect({
           onChange(e.target.value);
           setQuery('');
         }}
-        aria-label={label}
+        aria-label={label || placeholder}
       >
         <option value="">{emptyLabel}</option>
         {filtered.map((o) => (
@@ -75,6 +85,6 @@ export function SearchableSelect({
         ))}
       </select>
       {error ? <span className="form-field-error">{error}</span> : null}
-    </label>
+    </div>
   );
 }

@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsIn,
   IsNotEmpty,
@@ -114,6 +115,11 @@ export class CreateRequestDto {
   @IsEnum(RequestType)
   type?: RequestType;
 
+  /** Flag de ativo fixo — inclui etapa Imobilizado antes do Aprovador. */
+  @IsOptional()
+  @IsBoolean()
+  fixedAsset?: boolean;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -165,6 +171,11 @@ export class UpdateRequestDto {
   @IsOptional()
   @IsEnum(RequestType)
   type?: RequestType;
+
+  /** Flag de ativo fixo — só alterável nas etapas do solicitante. */
+  @IsOptional()
+  @IsBoolean()
+  fixedAsset?: boolean;
 
   @IsOptional()
   @IsArray()

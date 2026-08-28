@@ -8,6 +8,7 @@ import {
   RequestRegistryStageBlocks,
   type RegistryStageTab,
 } from '../../components/requests/RequestRegistryStageBlocks';
+import { requestTitle } from '../../components/requests/RequestStageViews';
 import {
   formatRequestDate,
   REGISTRY_STAGE_FILTER_OPTIONS,
@@ -21,7 +22,12 @@ import '../../components/HotelCodeBadges.css';
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 
-const REGISTRY_TABS: RegistryStageTab[] = ['solicitante', 'aprovador', 'encerrado'];
+const REGISTRY_TABS: RegistryStageTab[] = [
+  'solicitante',
+  'imobilizado',
+  'aprovador',
+  'encerrado',
+];
 
 function parseStageTab(value: string | null): RegistryStageTab | '' {
   if (value && REGISTRY_TABS.includes(value as RegistryStageTab)) {
@@ -187,10 +193,7 @@ export function SolicitacoesPage() {
           {
             key: 'desc',
             header: 'Descrição / Lote',
-            render: (r) =>
-              r.items.length > 1
-                ? `${r.items.length} itens · ${r.family?.name ?? ''}`
-                : r.items[0]?.descriptionShort ?? r.requestDescription ?? '—',
+            render: (r) => requestTitle(r),
           },
           {
             key: 'hotel',

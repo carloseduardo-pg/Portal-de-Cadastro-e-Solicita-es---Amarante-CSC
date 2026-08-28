@@ -12,6 +12,7 @@ import { isBlockRequestType, isExistingProductRequestType } from './request-type
 
 const ACTIONABLE_STATES: RequestState[] = [
   RequestState.SOLICITANTE,
+  RequestState.IMOBILIZADO,
   RequestState.APROVADOR,
   RequestState.RETORNO_SOLICITANTE,
 ];
@@ -33,7 +34,14 @@ const EDITABLE_STATES: RequestState[] = [
 function inboxStatesForRole(role: UserRole): RequestState[] {
   switch (role) {
     case UserRole.ADMIN:
-      return [RequestState.SOLICITANTE, RequestState.APROVADOR];
+      return [
+        RequestState.SOLICITANTE,
+        RequestState.IMOBILIZADO,
+        RequestState.APROVADOR,
+        RequestState.RETORNO_SOLICITANTE,
+      ];
+    case UserRole.APROVADOR_IMOBILIZADO:
+      return [RequestState.IMOBILIZADO];
     case UserRole.APROVADOR:
       return [RequestState.APROVADOR];
     case UserRole.SOLICITANTE:
@@ -74,6 +82,8 @@ function resolveRegistryBucketFilter(bucket?: string): RequestState[] | undefine
   switch (bucket) {
     case 'solicitante':
       return SOLICITANTE_BUCKET_STATES;
+    case 'imobilizado':
+      return [RequestState.IMOBILIZADO];
     case 'aprovador':
       return [RequestState.APROVADOR];
     case 'encerrado':
@@ -135,6 +145,7 @@ function openStageBefore(before: Date): Prisma.RequestWhereInput {
 
 export type RegistryStageSummary = {
   solicitante: number;
+  imobilizado: number;
   aprovador: number;
   encerrado: number;
 };
@@ -207,7 +218,7 @@ export class RequestsService {
     return user?.role ?? UserRole.SOLICITANTE;
   }
 
-  /** Destino: rascunho → SOLICITANTE; envio → APROVADOR. */
+  /** Destino: rascunho → SOLICITANTE; envio → primeira etapa de aprovação. */
   private resolveTargetStage(
     dto: { targetStage?: string; submit?: boolean },
   ): 'SOLICITANTE' | 'APROVADOR' {
@@ -215,6 +226,14 @@ export class RequestsService {
       return dto.targetStage;
     }
     return dto.submit === true ? 'APROVADOR' : 'SOLICITANTE';
+  }
+
+  /**
+   * Primeira etapa de aprovação após o solicitante.
+   * Ativo fixo → Imobilizado; caso contrário → Aprovador de cadastro.
+   */
+  private firstApprovalState(fixedAsset: boolean): RequestState {
+    return fixedAsset ? RequestState.IMOBILIZADO : RequestState.APROVADOR;
   }
 
   /**
@@ -271,12 +290,13 @@ export class RequestsService {
 
   /** Contagens por etapa principal (blocos da tela Solicitações). */
   async registryStageSummary(): Promise<RegistryStageSummary> {
-    const [solicitante, aprovador, encerrado] = await Promise.all([
+    const [solicitante, imobilizado, aprovador, encerrado] = await Promise.all([
       this.prisma.request.count({ where: { state: { in: SOLICITANTE_BUCKET_STATES } } }),
+      this.prisma.request.count({ where: { state: RequestState.IMOBILIZADO } }),
       this.prisma.request.count({ where: { state: RequestState.APROVADOR } }),
       this.prisma.request.count({ where: { state: { in: ENCERRADO_BUCKET_STATES } } }),
     ]);
-    return { solicitante, aprovador, encerrado };
+    return { solicitante, imobilizado, aprovador, encerrado };
   }
 
   /** @deprecated alias — use findRegistry */
@@ -824,16 +844,20 @@ export class RequestsService {
     this.assertObservation(dto.observation, requestType);
     const items = this.normalizeItemInput(dto.items);
     const target = this.resolveTargetStage(dto);
+    const fixedAsset = Boolean(dto.fixedAsset);
     const strict = target === 'APROVADOR';
     await this.validateItems(items, hotelIds, strict, dto.type ?? RequestType.INCLUSAO, dto.observation);
 
     const now = new Date();
+    const approvalState = this.firstApprovalState(fixedAsset);
     const state =
-      target === 'APROVADOR' ? RequestState.APROVADOR : RequestState.SOLICITANTE;
+      target === 'APROVADOR' ? approvalState : RequestState.SOLICITANTE;
     const stageMessage =
       dto.observation?.trim() ||
       (target === 'APROVADOR'
-        ? 'Rascunho enviado direto ao aprovador'
+        ? fixedAsset
+          ? 'Rascunho enviado ao aprovador de imobilizado (ativo fixo)'
+          : 'Rascunho enviado direto ao aprovador'
         : 'Rascunho salvo na caixa do solicitante');
 
     const request = await this.prisma.request.create({
@@ -842,6 +866,7 @@ export class RequestsService {
         hotelId: hotelIds[0],
         familyId: dto.familyId,
         type: requestType,
+        fixedAsset,
         observation: dto.observation?.trim() || null,
         requestDescription: dto.requestDescription?.trim().toUpperCase() || null,
         state,
@@ -868,7 +893,7 @@ export class RequestsService {
                     message: stageMessage,
                   },
                   {
-                    stage: RequestState.APROVADOR,
+                    stage: approvalState,
                     userId,
                     startedAt: now,
                     message: null,
@@ -894,7 +919,9 @@ export class RequestsService {
       include: this.requestListInclude(),
     });
 
-    if (target === 'APROVADOR') await this.seedNcmSuggestions(request.id);
+    if (target === 'APROVADOR' && approvalState === RequestState.APROVADOR) {
+      await this.seedNcmSuggestions(request.id);
+    }
     return this.findOne(request.id);
   }
 
@@ -924,6 +951,11 @@ export class RequestsService {
       existing.state === RequestState.APROVADOR &&
       (role === UserRole.APROVADOR || role === UserRole.ADMIN);
     const target = isApproverEdit ? 'APROVADOR' : this.resolveTargetStage(dto);
+    const canChangeFixedAsset = requesterEditable.has(existing.state) || role === UserRole.ADMIN;
+    const fixedAsset =
+      dto.fixedAsset !== undefined && canChangeFixedAsset
+        ? Boolean(dto.fixedAsset)
+        : existing.fixedAsset;
     const strict = target === 'APROVADOR';
     const items = dto.items ? this.normalizeItemInput(dto.items) : undefined;
     const hotelIds = dto.hotelIds?.length || dto.hotelId
@@ -952,17 +984,20 @@ export class RequestsService {
     }
 
     const now = new Date();
+    const approvalState = this.firstApprovalState(fixedAsset);
     const nextState = isApproverEdit
       ? RequestState.APROVADOR
       : target === 'APROVADOR'
-        ? RequestState.APROVADOR
+        ? approvalState
         : RequestState.SOLICITANTE;
     const editNote = dto.editNote?.trim();
     const stageMessage =
       editNote ||
       (dto.observation !== undefined ? dto.observation : existing.observation)?.trim() ||
       (target === 'APROVADOR'
-        ? 'Rascunho enviado direto ao aprovador'
+        ? fixedAsset
+          ? 'Rascunho enviado ao aprovador de imobilizado (ativo fixo)'
+          : 'Rascunho enviado direto ao aprovador'
         : 'Rascunho salvo na caixa do solicitante');
 
     await this.prisma.$transaction(async (tx) => {
@@ -997,6 +1032,9 @@ export class RequestsService {
           hotelId: hotelIds[0] ?? existing.hotelId,
           familyId: dto.familyId,
           type: dto.type,
+          ...(canChangeFixedAsset && dto.fixedAsset !== undefined
+            ? { fixedAsset }
+            : {}),
           ...(dto.observation !== undefined
             ? { observation: dto.observation.trim() || null }
             : {}),
@@ -1021,7 +1059,7 @@ export class RequestsService {
         await tx.requestStage.create({
           data: {
             requestId: id,
-            stage: RequestState.APROVADOR,
+            stage: approvalState,
             userId,
             startedAt: now,
             message: null,
@@ -1031,6 +1069,7 @@ export class RequestsService {
         items ||
         dto.observation !== undefined ||
         dto.requestDescription !== undefined ||
+        (canChangeFixedAsset && dto.fixedAsset !== undefined) ||
         editNote
       ) {
         await tx.requestStage.updateMany({
@@ -1071,7 +1110,7 @@ export class RequestsService {
       }
     });
 
-    if (target === 'APROVADOR') {
+    if (target === 'APROVADOR' && !isApproverEdit && approvalState === RequestState.APROVADOR) {
       await this.prisma.ncmSuggestion.deleteMany({
         where: { requestItem: { requestId: id } },
       });
@@ -1149,7 +1188,7 @@ export class RequestsService {
   }
 
   /**
-   * Aprovador devolve solicitação ao solicitante — reinicia timer SLA na caixa.
+   * Aprovador (cadastro ou imobilizado) devolve ao solicitante — reinicia timer SLA.
    */
   async returnToRequester(requestId: string, userId: string, message: string) {
     const trimmed = message?.trim();
@@ -1161,13 +1200,21 @@ export class RequestsService {
 
     const request = await this.prisma.request.findUnique({ where: { id: requestId } });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
-    if (request.state !== RequestState.APROVADOR) {
+    if (
+      request.state !== RequestState.APROVADOR &&
+      request.state !== RequestState.IMOBILIZADO
+    ) {
       throw new BadRequestException(
-        'Só é possível devolver solicitações na etapa Aprovador.',
+        'Só é possível devolver solicitações nas etapas Imobilizado ou Aprovador.',
       );
     }
     const role = await this.resolveUserRole(userId);
-    if (role !== UserRole.ADMIN && role !== UserRole.APROVADOR) {
+    const allowed =
+      role === UserRole.ADMIN ||
+      (role === UserRole.APROVADOR && request.state === RequestState.APROVADOR) ||
+      (role === UserRole.APROVADOR_IMOBILIZADO &&
+        request.state === RequestState.IMOBILIZADO);
+    if (!allowed) {
       throw new ForbiddenException('Sem permissão para devolver esta solicitação.');
     }
 
@@ -1196,7 +1243,7 @@ export class RequestsService {
   }
 
   /**
-   * Solicitante revisa a caixa e envia ao aprovador — exige comentário de conclusão da etapa.
+   * Solicitante envia à primeira aprovação (Imobilizado se ativo fixo, senão Aprovador).
    */
   async sendToApprover(requestId: string, userId: string, message: string) {
     const trimmed = message?.trim();
@@ -1216,6 +1263,67 @@ export class RequestsService {
     const role = await this.resolveUserRole(userId);
     if (role !== UserRole.ADMIN && role !== UserRole.SOLICITANTE && request.requesterId !== userId) {
       throw new ForbiddenException('Sem permissão para enviar esta solicitação ao aprovador.');
+    }
+
+    const nextState = this.firstApprovalState(request.fixedAsset);
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.requestStage.updateMany({
+        where: { requestId, finishedAt: null },
+        data: { finishedAt: now, userId, message: trimmed },
+      });
+      await tx.request.update({
+        where: { id: requestId },
+        data: { state: nextState },
+      });
+      await tx.requestStage.create({
+        data: {
+          requestId,
+          stage: nextState,
+          userId,
+          startedAt: now,
+          message: null,
+        },
+      });
+    });
+
+    if (nextState === RequestState.APROVADOR) {
+      await this.prisma.ncmSuggestion.deleteMany({
+        where: { requestItem: { requestId } },
+      });
+      await this.seedNcmSuggestions(requestId);
+    }
+    return this.findOne(requestId);
+  }
+
+  /**
+   * Aprovador de imobilizado encaminha ao aprovador de cadastro (só ativo fixo).
+   */
+  async sendFromImobilizadoToApprover(requestId: string, userId: string, message: string) {
+    const trimmed = message?.trim();
+    if (!trimmed) {
+      throw new BadRequestException(
+        'Informe um comentário ao concluir a etapa de imobilizado.',
+      );
+    }
+
+    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    if (!request) throw new NotFoundException('Solicitação não encontrada');
+    if (request.state !== RequestState.IMOBILIZADO) {
+      throw new BadRequestException(
+        'Só é possível encaminhar ao aprovador solicitações na etapa Imobilizado.',
+      );
+    }
+    if (!request.fixedAsset) {
+      throw new BadRequestException(
+        'Esta solicitação não é de ativo fixo — etapa Imobilizado não se aplica.',
+      );
+    }
+    const role = await this.resolveUserRole(userId);
+    if (role !== UserRole.ADMIN && role !== UserRole.APROVADOR_IMOBILIZADO) {
+      throw new ForbiddenException(
+        'Sem permissão para concluir a etapa de imobilizado.',
+      );
     }
 
     const now = new Date();
@@ -1397,6 +1505,7 @@ export class RequestsService {
       familyId: string;
       hotelId: string;
       type: RequestType;
+      fixedAsset: boolean;
       items: {
         id: string;
         productId: string | null;
@@ -1477,6 +1586,7 @@ export class RequestsService {
         ncmConfirmedById: ncm ? userId : null,
         ncmConfirmedAt: ncm ? now : null,
         active: true,
+        fixedAsset: request.fixedAsset,
         blockState: ProductBlockState.NONE,
       };
 

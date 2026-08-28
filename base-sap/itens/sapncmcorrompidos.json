@@ -1,0 +1,482 @@
+[
+  {
+    "aba": "uso_consumo",
+    "item": "UC000209",
+    "bruto": "2101-11-10 00:00:00",
+    "corrigido": "2101.11.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC000210",
+    "bruto": "2101-11-10 00:00:00",
+    "corrigido": "2101.11.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC000418",
+    "bruto": "1901-10-10 00:00:00",
+    "corrigido": "1901.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC000612",
+    "bruto": "2102-10-10 00:00:00",
+    "corrigido": "2102.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC000706",
+    "bruto": "2103-10-10 00:00:00",
+    "corrigido": "2103.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC000970",
+    "bruto": "7018-10-20 00:00:00",
+    "corrigido": "7018.10.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001117",
+    "bruto": "4411-12-10 00:00:00",
+    "corrigido": "4411.12.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001369",
+    "bruto": "4202-12-10 00:00:00",
+    "corrigido": "4202.12.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001476",
+    "bruto": "3214-10-10 00:00:00",
+    "corrigido": "3214.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001477",
+    "bruto": "3214-10-10 00:00:00",
+    "corrigido": "3214.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001485",
+    "bruto": "3208-10-10 00:00:00",
+    "corrigido": "3208.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001498",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001499",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001500",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001501",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001502",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001504",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001505",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001506",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001508",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001509",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001513",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001528",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001618",
+    "bruto": "8531-10-10 00:00:00",
+    "corrigido": "8531.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001629",
+    "bruto": "8506-10-20 00:00:00",
+    "corrigido": "8506.10.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001636",
+    "bruto": "8531-10-10 00:00:00",
+    "corrigido": "8531.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001671",
+    "bruto": "9026-10-29 00:00:00",
+    "corrigido": "9026.10.29"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001684",
+    "bruto": "8537-10-20 00:00:00",
+    "corrigido": "8537.10.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001687",
+    "bruto": "8537-10-20 00:00:00",
+    "corrigido": "8537.10.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001718",
+    "bruto": "8537-10-30 00:00:00",
+    "corrigido": "8537.10.30"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001742",
+    "bruto": "8513-10-10 00:00:00",
+    "corrigido": "8513.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001743",
+    "bruto": "8513-10-10 00:00:00",
+    "corrigido": "8513.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001778",
+    "bruto": "8506-10-20 00:00:00",
+    "corrigido": "8506.10.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001779",
+    "bruto": "8506-10-20 00:00:00",
+    "corrigido": "8506.10.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001821",
+    "bruto": "9026-10-19 00:00:00",
+    "corrigido": "9026.10.19"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001861",
+    "bruto": "7604-10-29 00:00:00",
+    "corrigido": "7604.10.29"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001876",
+    "bruto": "3923-10-10 00:00:00",
+    "corrigido": "3923.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC001936",
+    "bruto": "8203-10-10 00:00:00",
+    "corrigido": "8203.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002031",
+    "bruto": "3917-10-29 00:00:00",
+    "corrigido": "3917.10.29"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002060",
+    "bruto": "3917-10-29 00:00:00",
+    "corrigido": "3917.10.29"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002090",
+    "bruto": "3917-10-29 00:00:00",
+    "corrigido": "3917.10.29"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002091",
+    "bruto": "3917-10-29 00:00:00",
+    "corrigido": "3917.10.29"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002105",
+    "bruto": "3917-10-29 00:00:00",
+    "corrigido": "3917.10.29"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002113",
+    "bruto": "3917-10-29 00:00:00",
+    "corrigido": "3917.10.29"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002118",
+    "bruto": "9026-10-19 00:00:00",
+    "corrigido": "9026.10.19"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002130",
+    "bruto": "7411-10-10 00:00:00",
+    "corrigido": "7411.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002132",
+    "bruto": "7411-10-10 00:00:00",
+    "corrigido": "7411.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002156",
+    "bruto": "3810-10-20 00:00:00",
+    "corrigido": "3810.10.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002159",
+    "bruto": "3810-10-10 00:00:00",
+    "corrigido": "3810.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002165",
+    "bruto": "3214-10-10 00:00:00",
+    "corrigido": "3214.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002167",
+    "bruto": "3214-10-10 00:00:00",
+    "corrigido": "3214.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002173",
+    "bruto": "3214-10-10 00:00:00",
+    "corrigido": "3214.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002174",
+    "bruto": "3214-10-10 00:00:00",
+    "corrigido": "3214.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002187",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002194",
+    "bruto": "3214-10-10 00:00:00",
+    "corrigido": "3214.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002269",
+    "bruto": "9032-10-10 00:00:00",
+    "corrigido": "9032.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002283",
+    "bruto": "4013-10-10 00:00:00",
+    "corrigido": "4013.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002317",
+    "bruto": "9026-10-29 00:00:00",
+    "corrigido": "9026.10.29"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002366",
+    "bruto": "8501-10-19 00:00:00",
+    "corrigido": "8501.10.19"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002402",
+    "bruto": "8482-10-10 00:00:00",
+    "corrigido": "8482.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002421",
+    "bruto": "9032-10-10 00:00:00",
+    "corrigido": "9032.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002422",
+    "bruto": "9032-10-10 00:00:00",
+    "corrigido": "9032.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002423",
+    "bruto": "9032-10-10 00:00:00",
+    "corrigido": "9032.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002497",
+    "bruto": "5204-11-20 00:00:00",
+    "corrigido": "5204.11.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002550",
+    "bruto": "4202-12-10 00:00:00",
+    "corrigido": "4202.12.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002582",
+    "bruto": "2905-12-20 00:00:00",
+    "corrigido": "2905.12.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002640",
+    "bruto": "3401-11-10 00:00:00",
+    "corrigido": "3401.11.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002776",
+    "bruto": "4202-12-10 00:00:00",
+    "corrigido": "4202.12.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002816",
+    "bruto": "6115-10-19 00:00:00",
+    "corrigido": "6115.10.19"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC002817",
+    "bruto": "6115-10-19 00:00:00",
+    "corrigido": "6115.10.19"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC003302",
+    "bruto": "2905-12-20 00:00:00",
+    "corrigido": "2905.12.20"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC039304",
+    "bruto": "7411-10-10 00:00:00",
+    "corrigido": "7411.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC039305",
+    "bruto": "7411-10-10 00:00:00",
+    "corrigido": "7411.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC039383",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "uso_consumo",
+    "item": "UC039384",
+    "bruto": "3209-10-10 00:00:00",
+    "corrigido": "3209.10.10"
+  },
+  {
+    "aba": "ativo_fixo",
+    "item": "AT000032",
+    "bruto": "8415-10-11 00:00:00",
+    "corrigido": "8415.10.11"
+  },
+  {
+    "aba": "ativo_fixo",
+    "item": "AT000033",
+    "bruto": "8415-10-11 00:00:00",
+    "corrigido": "8415.10.11"
+  },
+  {
+    "aba": "ativo_fixo",
+    "item": "AT000034",
+    "bruto": "8415-10-11 00:00:00",
+    "corrigido": "8415.10.11"
+  },
+  {
+    "aba": "ativo_fixo",
+    "item": "AT000035",
+    "bruto": "8415-10-19 00:00:00",
+    "corrigido": "8415.10.19"
+  },
+  {
+    "aba": "ativo_fixo",
+    "item": "AT000095",
+    "bruto": "9026-10-19 00:00:00",
+    "corrigido": "9026.10.19"
+  }
+]

@@ -4,6 +4,7 @@ export const REQUEST_STATE_LABELS: Record<string, string> = {
   /** Etapa histórica de preenchimento — exibida como Rascunho (mesmo conceito). */
   FORMULARIO: 'Rascunho',
   SOLICITANTE: 'Solicitante',
+  IMOBILIZADO: 'Imobilizado',
   APROVADOR: 'Aprovador',
   COMPLIANCE: 'Compliance',
   ENCERRADO: 'Encerrada — Aprovada',
@@ -18,6 +19,7 @@ export const REQUEST_STATE_LABELS: Record<string, string> = {
 export const REGISTRY_STAGE_FILTER_OPTIONS = [
   { value: '', label: 'Etapa (todas)' },
   { value: 'SOLICITANTE', label: 'Solicitante' },
+  { value: 'IMOBILIZADO', label: 'Imobilizado' },
   { value: 'APROVADOR', label: 'Aprovador' },
   { value: 'RETORNO_SOLICITANTE', label: 'Retorno solicitante' },
   { value: 'ENCERRADA', label: 'Encerrada (todas)' },
@@ -28,9 +30,10 @@ export const REGISTRY_STAGE_FILTER_OPTIONS = [
   { value: 'EXPIRADA', label: 'Expirada' },
 ] as const;
 
-/** Etapa principal do fluxo (4 blocos da tela Solicitações). */
+/** Etapa principal do fluxo (blocos da tela Solicitações). */
 export const REQUEST_MAIN_STAGE_LABELS: Record<string, string> = {
   solicitante: 'Solicitante',
+  imobilizado: 'Imobilizado',
   aprovador: 'Aprovador',
   encerrado: 'Encerrado',
 };
@@ -68,12 +71,13 @@ const ENCERRADO_STATES = new Set([
 /** Mapeia `request.state` para a etapa principal exibida na listagem. */
 export function requestMainStageKey(state: string): keyof typeof REQUEST_MAIN_STAGE_LABELS | null {
   if (SOLICITANTE_STATES.has(state)) return 'solicitante';
+  if (state === 'IMOBILIZADO') return 'imobilizado';
   if (state === 'APROVADOR') return 'aprovador';
   if (ENCERRADO_STATES.has(state)) return 'encerrado';
   return null;
 }
 
-/** Rótulo da etapa principal (Solicitante / Aprovador / Compliance / Encerrado). */
+/** Rótulo da etapa principal. */
 export function requestMainStageLabel(state: string) {
   const key = requestMainStageKey(state);
   return key ? REQUEST_MAIN_STAGE_LABELS[key] : requestStateLabel(state);

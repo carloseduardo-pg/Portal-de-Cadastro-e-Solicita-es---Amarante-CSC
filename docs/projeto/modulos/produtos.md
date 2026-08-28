@@ -32,11 +32,13 @@ Substitui o Semplice. Prioridade máxima do projeto.
 - **ITM-11** Lote mesma família
 - Busca: `pg_trgm`, mínimo 3 caracteres
 - Produto 1×N hotéis via `product_hotels`
-- Hierarquia derivada do código família (6→3→1 dígitos)
+- Hierarquia SAP B1: Família → Subgrupo → Grupo (texto + FK; sem códigos 1/3/6 Semplice)
 
 ## Estados da solicitação
 
 Pipeline principal (Produtos): `FORMULARIO` → `SOLICITANTE` ↔ `APROVADOR` (devolução) → `ENCERRADO`
+
+Com **ativo fixo** (`requests.fixed_asset = true`): `SOLICITANTE` → `IMOBILIZADO` → `APROVADOR` → `ENCERRADO`
 
 **Compliance não faz parte do fluxo de Produtos** — etapa reservada ao módulo Fornecedores.
 
@@ -44,10 +46,12 @@ Também: `RASCUNHO` · `RETORNO_SOLICITANTE` · `REPROVADO` · `ERRO_INTEGRACAO`
 
 Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQUEIO_TOTAL`
 
+- Flag **Ativo fixo** na classificação da solicitação (pré-formulário)
 - Match 100% na base bloqueia inclusão (UI + API)
-- Devolução ao solicitante reinicia SLA (`POST /api/requests/:id/return-to-requester`)
+- Devolução ao solicitante reinicia SLA (`POST /api/requests/:id/return-to-requester`) — Imobilizado ou Aprovador
+- Imobilizado encaminha ao cadastro: `POST /api/requests/:id/send-from-imobilizado`
 - Aprovador pode editar campos na etapa Aprovador; edições registradas na timeline
-- Caixa de entrada = etapas operacionais (Solicitante / Aprovador)
+- Caixa de entrada = etapas operacionais (Solicitante / Imobilizado / Aprovador)
 - Ao concluir cada etapa: comentário obrigatório em `request_stages.message`
 
 ## API
@@ -62,6 +66,7 @@ Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQ
 | `POST /api/requests` | Criar rascunho ou enviar solicitação |
 | `PATCH /api/requests/:id` | Atualizar rascunho |
 | `POST /api/requests/:id/return-to-requester` | Devolver ao solicitante (reset SLA) |
+| `POST /api/requests/:id/send-from-imobilizado` | Imobilizado → Aprovador (ativo fixo) |
 | `PATCH /api/requests/items/:itemId/ncm` | Confirmação NCM (ITM-09) |
 | `GET /api/catalog/hotels` · `families` · `groups` | Formulário / filtros |
 

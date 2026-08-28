@@ -1,43 +1,37 @@
 import type { CatalogGroup, CatalogSubgroup, Family } from './types';
 
-/** Subgrupos pertencentes a um grupo PDM. */
-export function filterSubgroupsForGroup(subgroups: CatalogSubgroup[], groupId: string) {
-  if (!groupId) return [];
-  return subgroups.filter((sg) => sg.groupId === groupId || sg.group?.id === groupId);
+/** Subgrupos pertencentes a uma família SAP. */
+export function filterSubgroupsForFamily(subgroups: CatalogSubgroup[], familyId: string) {
+  if (!familyId) return [];
+  return subgroups.filter((sg) => sg.familyId === familyId || sg.family?.id === familyId);
 }
 
-/** Famílias pertencentes a um subgrupo PDM. */
-export function filterFamiliesForSubgroup(families: Family[], subgroupId: string) {
+/** Grupos de itens pertencentes a um subgrupo SAP. */
+export function filterGroupsForSubgroup(groups: CatalogGroup[], subgroupId: string) {
   if (!subgroupId) return [];
-  return families.filter((f) => f.subgroupId === subgroupId);
+  return groups.filter((g) => g.subgroupId === subgroupId);
 }
 
-/** Grupo derivado da família selecionada (ITM-11). */
+/** @deprecated Preferir filterSubgroupsForFamily — mantido para chamadas legadas. */
+export function filterSubgroupsForGroup(subgroups: CatalogSubgroup[], _groupId: string) {
+  return subgroups;
+}
+
+/** @deprecated Preferir filterGroupsForSubgroup. */
 export function filterGroupsForFamily(groups: CatalogGroup[], family: Family | undefined) {
-  if (!family?.groupId) return [];
-  return groups.filter((g) => g.id === family.groupId);
+  if (!family?.id) return [];
+  return groups.filter((g) => g.familyId === family.id);
 }
 
-/** Subgrupo derivado da família selecionada (ITM-11). */
-export function filterSubgroupsForFamily(subgroups: CatalogSubgroup[], family: Family | undefined) {
-  if (!family?.subgroupId) return [];
-  return subgroups.filter((sg) => sg.id === family.subgroupId);
-}
-
-/** Resolve família pelo código de 6 dígitos e retorna trilha PDM completa. */
+/** @deprecated Códigos 6 dígitos Semplice — SAP usa texto. */
 export function resolveFamilyByCode(families: Family[], code: string) {
   const normalized = code.replace(/\D/g, '');
   if (normalized.length !== 6) return null;
   return families.find((f) => f.code === normalized) ?? null;
 }
 
-/** Rótulo hierárquico Grupo › Subgrupo › Família. */
+/** Rótulo hierárquico Família › Subgrupo › Grupo. */
 export function pdmTrailLabel(family: Family | undefined) {
   if (!family) return '';
-  const parts = [
-    family.groupCode ? `${family.groupCode} — ${family.groupName}` : family.groupName,
-    family.subgroupCode ? `${family.subgroupCode} — ${family.subgroupName}` : family.subgroupName,
-    `${family.code} — ${family.name}`,
-  ].filter(Boolean);
-  return parts.join(' › ');
+  return `${family.code} — ${family.name}`;
 }

@@ -56,23 +56,24 @@ export type Family = {
   id: string;
   code: string;
   name: string;
-  groupId?: string;
-  subgroupId?: string;
-  groupCode?: string;
-  groupName?: string;
-  subgroupCode?: string;
-  subgroupName?: string;
   attributesCount?: number;
+  subgroupsCount?: number;
 };
 
-export type CatalogGroup = { id: string; code: string; name: string };
+export type CatalogGroup = {
+  id: string;
+  code: string;
+  name: string;
+  subgroupId?: string;
+  familyId?: string;
+};
 
 export type CatalogSubgroup = {
   id: string;
   code: string;
   name: string;
-  groupId?: string;
-  group?: { id: string; code: string; name: string };
+  familyId?: string;
+  family?: { id: string; code: string; name: string };
 };
 
 export type ProductAttribute = {
@@ -116,6 +117,7 @@ export type Request = {
   id: string;
   state: string;
   type: string;
+  fixedAsset?: boolean;
   observation?: string | null;
   requestDescription?: string | null;
   createdAt: string;
@@ -181,6 +183,7 @@ export type DashboardProductsSummary = {
 
 export type RegistryStageSummary = {
   solicitante: number;
+  imobilizado: number;
   aprovador: number;
   encerrado: number;
 };

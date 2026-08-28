@@ -86,7 +86,7 @@ export const requestsApi = {
     closedFrom?: string;
     closedTo?: string;
     mine?: boolean;
-    bucket?: 'solicitante' | 'aprovador' | 'compliance' | 'encerrado';
+    bucket?: 'solicitante' | 'imobilizado' | 'aprovador' | 'compliance' | 'encerrado';
     page?: number;
     pageSize?: number;
   }) =>
@@ -162,6 +162,7 @@ export const requestsApi = {
     hotelIds: string[];
     familyId: string;
     type?: 'INCLUSAO' | 'ALTERACAO' | 'BLOQUEIO_PARCIAL' | 'BLOQUEIO_TOTAL';
+    fixedAsset?: boolean;
     items: {
       productId?: string;
       descriptionShort: string;
@@ -194,6 +195,7 @@ export const requestsApi = {
       hotelIds?: string[];
       familyId?: string;
       type?: 'INCLUSAO' | 'ALTERACAO' | 'BLOQUEIO_PARCIAL' | 'BLOQUEIO_TOTAL';
+      fixedAsset?: boolean;
       items?: {
         productId?: string;
         descriptionShort: string;
@@ -231,6 +233,11 @@ export const requestsApi = {
       method: 'POST',
       body: JSON.stringify({ message }),
     }),
+  sendFromImobilizado: (id: string, message: string) =>
+    apiFetch<Request>(`/requests/${id}/send-from-imobilizado`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
   returnToRequester: (id: string, message: string) =>
     apiFetch<Request>(`/requests/${id}/return-to-requester`, {
       method: 'POST',
@@ -250,23 +257,32 @@ export const requestsApi = {
 
 export const catalogApi = {
   hotels: () => apiFetch<Hotel[]>('/catalog/hotels'),
-  families: (opts?: { search?: string; subgroupId?: string; page?: number; pageSize?: number }) =>
+  families: (opts?: { search?: string; page?: number; pageSize?: number }) =>
     apiFetch<PageResult<Family>>(
       `/catalog/families${qs({
         search: opts?.search,
-        subgroup_id: opts?.subgroupId,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 50,
       })}`,
     ),
   familyAttributes: (familyId: string) =>
     apiFetch<ProductAttribute[]>(`/catalog/families/${familyId}/attributes`),
-  groups: (page = 1, pageSize = 200) =>
-    apiFetch<PageResult<CatalogGroup>>(`/catalog/groups${qs({ page, pageSize })}`),
-  subgroups: (opts?: { groupId?: string; page?: number; pageSize?: number }) =>
+  groups: (opts?: { subgroupId?: string; page?: number; pageSize?: number } | number, pageSize = 200) => {
+    if (typeof opts === 'number') {
+      return apiFetch<PageResult<CatalogGroup>>(`/catalog/groups${qs({ page: opts, pageSize })}`);
+    }
+    return apiFetch<PageResult<CatalogGroup>>(
+      `/catalog/groups${qs({
+        subgroup_id: opts?.subgroupId,
+        page: opts?.page ?? 1,
+        pageSize: opts?.pageSize ?? 200,
+      })}`,
+    );
+  },
+  subgroups: (opts?: { familyId?: string; page?: number; pageSize?: number }) =>
     apiFetch<PageResult<CatalogSubgroup>>(
       `/catalog/subgroups${qs({
-        group_id: opts?.groupId,
+        family_id: opts?.familyId,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 200,
       })}`,

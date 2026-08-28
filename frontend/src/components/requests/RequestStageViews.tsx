@@ -77,6 +77,8 @@ export function groupRequestsByPriority(rows: Request[]) {
 /** Etapas ativas da caixa de entrada (badge nos cards). */
 export const INBOX_STAGE_COLUMNS: StageColumn[] = [
   { state: 'SOLICITANTE', label: 'Solicitante', color: '#F8AB2B' },
+  { state: 'RETORNO_SOLICITANTE', label: 'Retorno', color: '#D97706' },
+  { state: 'IMOBILIZADO', label: 'Imobilizado', color: '#B45309' },
   { state: 'APROVADOR', label: 'Aprovador', color: '#7E975B' },
 ];
 
@@ -86,9 +88,11 @@ export function inboxColumnsForRole(role?: string, inboxStages?: string[]) {
     ? inboxStages.filter((s) => s !== 'COMPLIANCE')
     : role === 'ADMIN'
       ? INBOX_STAGE_COLUMNS.map((c) => c.state)
-      : role === 'APROVADOR'
-        ? ['APROVADOR']
-        : ['SOLICITANTE', 'RETORNO_SOLICITANTE'];
+      : role === 'APROVADOR_IMOBILIZADO'
+        ? ['IMOBILIZADO']
+        : role === 'APROVADOR'
+          ? ['APROVADOR']
+          : ['SOLICITANTE', 'RETORNO_SOLICITANTE'];
   return INBOX_STAGE_COLUMNS.filter((c) => allowed.includes(c.state));
 }
 
@@ -97,10 +101,23 @@ export function stageTint(color: string, pct: number) {
   return `color-mix(in srgb, ${color} ${pct}%, white)`;
 }
 
+/**
+ * Título do card/listagem:
+ * - 1 item → descrição curta do item
+ * - 2+ itens → descrição da solicitação (lote)
+ */
 export function requestTitle(r: Request) {
-  const main = r.items[0]?.descriptionShort ?? 'Sem descrição';
-  if (r.items.length > 1) return `${main} (+${r.items.length - 1})`;
-  return main;
+  const count = r.items?.length ?? 0;
+  if (count > 1) {
+    const lote = r.requestDescription?.trim();
+    if (lote) return `${lote} (${count} itens)`;
+    return `Lote com ${count} itens — atualize a descrição da solicitação`;
+  }
+  return (
+    r.items[0]?.descriptionShort?.trim() ||
+    r.requestDescription?.trim() ||
+    'Sem descrição'
+  );
 }
 
 function typeLabel(type: string) {

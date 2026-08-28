@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ItemClassificationFields } from '../../components/ItemClassificationFields';
 import { ItemPrimaryFields } from '../../components/ItemPrimaryFields';
 import { ItemCompletionSection } from '../../components/ItemCompletionSection';
@@ -37,6 +38,7 @@ import '../../components/RequestDescriptionBlock.css';
 import '../../components/ItemCompletionSection.css';
 import '../../components/RequestTimeline.css';
 import '../../components/requests/RequestItemCompareTable.css';
+import '../../components/ConfirmDialog.css';
 
 type ViewItem = {
   id: string;
@@ -90,19 +92,19 @@ export function DetalhesSolicitacaoPage() {
   const [busy, setBusy] = useState(false);
   const [baseProduct, setBaseProduct] = useState<ProductBase | null>(null);
   const [baseLoading, setBaseLoading] = useState(false);
+  const [editHotelIds, setEditHotelIds] = useState<string[]>([]);
+  const [editFamilyId, setEditFamilyId] = useState('');
+  const [editFixedAsset, setEditFixedAsset] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+  const [confirmSendDirty, setConfirmSendDirty] = useState(false);
 
   useEffect(() => {
     void Promise.all([
       catalogApi.hotels().then(setHotels),
-      catalogApi.groups(1, 200).then((r) => setGroups(r.data)),
-      catalogApi.subgroups({ pageSize: 500 }).then((r) =>
-        setSubgroups(
-          r.data.map((sg) => ({
-            ...sg,
-            groupId: sg.groupId ?? sg.group?.id,
-          })),
-        ),
-      ),
+      catalogApi.groups({ pageSize: 500 }).then((r) => setGroups(r.data)),
+      catalogApi.subgroups({ pageSize: 500 }).then((r) => setSubgroups(r.data)),
       catalogApi.families({ pageSize: 500 }).then((r) => setFamilies(r.data)),
       catalogApi.measureUnits().then((r) => setMeasureUnits(r.data)),
     ]).catch(console.error);
@@ -130,26 +132,19 @@ export function DetalhesSolicitacaoPage() {
             id: request.family.id,
             code: request.family.code,
             name: request.family.name,
-            groupId: '',
-            subgroupId: '',
           } as Family)
         : undefined);
+    void fam;
     const { groupId, subgroupId } = classificationFromFamily(
-      fam && fam.groupId
-        ? fam
-        : families.find((f) => f.id === request.family?.id),
+      families.find((f) => f.id === request.family?.id),
     );
-
-    const resolved = families.find((f) => f.id === request.family?.id);
-    const gId = resolved?.groupId ?? groupId;
-    const sgId = resolved?.subgroupId ?? subgroupId;
 
     setItems(
       request.items.map((it) => ({
         id: it.id,
         productId: it.productId,
-        groupId: gId,
-        subgroupId: sgId,
+        groupId,
+        subgroupId,
         descriptionShort: it.descriptionShort,
         descriptionLong: it.descriptionLong ?? '',
         measureUnitId: it.measureUnit?.id ?? '',
@@ -168,14 +163,17 @@ export function DetalhesSolicitacaoPage() {
         ncmConfirmed: it.ncmConfirmed,
       })),
     );
+    const ids =
+      request.hotels?.map((rh) => rh.hotel.id) ??
+      (request.hotel?.id ? [request.hotel.id] : []);
+    setEditHotelIds(ids);
+    setEditFamilyId(request.family?.id ?? '');
+    setEditFixedAsset(Boolean(request.fixedAsset));
+    setDirty(false);
     setCurrentItem(0);
   }, [request, families]);
 
-  const hotelIds = useMemo(() => {
-    if (!request) return [];
-    if (request.hotels?.length) return request.hotels.map((rh) => rh.hotel.id);
-    return request.hotel?.id ? [request.hotel.id] : [];
-  }, [request]);
+  const hotelIds = editHotelIds;
 
   useEffect(() => {
     if (!hotelIds.length) {
@@ -187,8 +185,8 @@ export function DetalhesSolicitacaoPage() {
 
   const item = items[currentItem] ?? items[0];
   const requestItem = request?.items[currentItem] ?? request?.items[0];
-  const selectedFamily = findFamilyById(families, request?.family?.id ?? '');
-  const familyId = request?.family?.id ?? '';
+  const selectedFamily = findFamilyById(families, editFamilyId || request?.family?.id || '');
+  const familyId = editFamilyId || request?.family?.id || '';
 
   const folderItems = useMemo(
     () =>
@@ -208,8 +206,11 @@ export function DetalhesSolicitacaoPage() {
   const isSolicitante = request?.state === 'SOLICITANTE';
   const isReturnToRequester = request?.state === 'RETORNO_SOLICITANTE';
   const isApprover = request?.state === 'APROVADOR';
+  const isImobilizado = request?.state === 'IMOBILIZADO';
   const canSendToApprover = isSolicitante || isReturnToRequester;
-  const canConcludeStage = canSendToApprover || isApprover;
+  const canConcludeStage = canSendToApprover || isApprover || isImobilizado;
+  const draftEditable = Boolean(isDraft);
+  const fieldsEditable = draftEditable || isApprover;
   const approverEditable = isApprover;
 
   useEffect(() => {
@@ -226,10 +227,35 @@ export function DetalhesSolicitacaoPage() {
       .finally(() => setBaseLoading(false));
   }, [requestItem?.productId, isApprover]);
 
+  function markDirty() {
+    if (draftEditable || isApprover) setDirty(true);
+  }
+
   function patchCurrentItem(patch: Partial<ViewItem>) {
+    markDirty();
     setItems((prev) =>
       prev.map((it, idx) => (idx === currentItem ? { ...it, ...patch } : it)),
     );
+  }
+
+  function buildItemsPayload() {
+    return items.map((it, idx) => ({
+      productId: it.productId ?? undefined,
+      descriptionShort: it.descriptionShort,
+      descriptionLong: it.descriptionLong || undefined,
+      measureUnitId: it.measureUnitId || undefined,
+      costCenterId: it.costCenterId || undefined,
+      source: it.source,
+      itemValue: it.itemValue ? Number(it.itemValue) : undefined,
+      purchaseQtyTotal: it.purchaseQtyTotal ? Number(it.purchaseQtyTotal) : undefined,
+      unifiedCode: it.unifiedCode.trim() || undefined,
+      legacyCode: it.legacyCode.trim() || undefined,
+      law116: it.law116.trim() || undefined,
+      productLink: it.productLink.trim() || it.productLinks[0]?.trim() || undefined,
+      productLinks: it.productLinks.map((l) => l.trim()).filter(Boolean),
+      itemObservation: it.itemObservation.trim() || undefined,
+      sortOrder: idx,
+    }));
   }
 
   async function reloadRequest() {
@@ -238,31 +264,58 @@ export function DetalhesSolicitacaoPage() {
     setRequest(r);
   }
 
+  /** Persiste descrição/observação do rascunho e registra na timeline. */
+  async function persistHeaderField(
+    field: 'requestDescription' | 'observation',
+    nextValue: string,
+  ) {
+    if (!request) return;
+    const trimmed = nextValue.trim();
+    if (!trimmed) {
+      throw new Error(
+        field === 'requestDescription'
+          ? 'A descrição da solicitação não pode ficar vazia.'
+          : 'A observação da solicitação não pode ficar vazia.',
+      );
+    }
+
+    const prev =
+      field === 'requestDescription'
+        ? (request.requestDescription ?? '').trim()
+        : (request.observation ?? '').trim();
+
+    const editNote =
+      field === 'requestDescription'
+        ? prev
+          ? `Descrição da solicitação alterada de "${prev}" para "${trimmed}".`
+          : `Descrição da solicitação definida: "${trimmed}".`
+        : prev
+          ? `Observação da solicitação alterada.`
+          : `Observação da solicitação definida.`;
+
+    try {
+      await requestsApi.update(request.id, {
+        [field]: trimmed,
+        editNote,
+        targetStage: 'SOLICITANTE',
+      });
+      await reloadRequest();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Falha ao salvar alteração.');
+      throw e;
+    }
+  }
+
   async function saveApproverChanges() {
     if (!request) return;
     setBusy(true);
     try {
       await requestsApi.update(request.id, {
         editNote: editNote.trim() || 'Aprovador alterou campos da solicitação.',
-        items: items.map((it, idx) => ({
-          productId: it.productId ?? undefined,
-          descriptionShort: it.descriptionShort,
-          descriptionLong: it.descriptionLong || undefined,
-          measureUnitId: it.measureUnitId || undefined,
-          costCenterId: it.costCenterId || undefined,
-          source: it.source,
-          itemValue: it.itemValue ? Number(it.itemValue) : undefined,
-          purchaseQtyTotal: it.purchaseQtyTotal ? Number(it.purchaseQtyTotal) : undefined,
-          unifiedCode: it.unifiedCode.trim() || undefined,
-          legacyCode: it.legacyCode.trim() || undefined,
-          law116: it.law116.trim() || undefined,
-          productLink: it.productLink.trim() || it.productLinks[0]?.trim() || undefined,
-          productLinks: it.productLinks.map((l) => l.trim()).filter(Boolean),
-          itemObservation: it.itemObservation.trim() || undefined,
-          sortOrder: idx,
-        })),
+        items: buildItemsPayload(),
       });
       setEditNote('');
+      setDirty(false);
       await reloadRequest();
       alert('Alterações salvas e registradas na timeline.');
     } catch (e) {
@@ -272,7 +325,69 @@ export function DetalhesSolicitacaoPage() {
     }
   }
 
-  async function sendToApprover() {
+  /** Persiste edições do rascunho (solicitante) na API + timeline. */
+  async function persistDraftEdits(): Promise<boolean> {
+    if (!request) return false;
+    if (!editHotelIds.length) {
+      alert('Selecione ao menos uma unidade (hotel).');
+      return false;
+    }
+    if (!editFamilyId) {
+      alert('Selecione a família da solicitação.');
+      return false;
+    }
+    for (const it of items) {
+      if (!it.descriptionShort.trim()) {
+        alert('Preencha a descrição de todos os itens.');
+        return false;
+      }
+      if (!it.groupId || !it.subgroupId) {
+        alert('Informe grupo e subgrupo de todos os itens.');
+        return false;
+      }
+      if (!it.measureUnitId || !it.costCenterId) {
+        alert('Informe unidade de medida e centro de custo de todos os itens.');
+        return false;
+      }
+    }
+
+    setBusy(true);
+    try {
+      await requestsApi.update(request.id, {
+        hotelIds: editHotelIds,
+        familyId: editFamilyId,
+        fixedAsset: editFixedAsset,
+        items: buildItemsPayload(),
+        targetStage: 'SOLICITANTE',
+        editNote: editNote.trim() || 'Solicitante atualizou o rascunho da solicitação.',
+      });
+      setEditNote('');
+      setDirty(false);
+      await reloadRequest();
+      return true;
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Falha ao salvar o rascunho.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function discardDraftEdits() {
+    if (!request) return;
+    // Recarrega do servidor — o effect de `request` restaura itens / hotéis.
+    setDirty(false);
+    setConfirmDiscardOpen(false);
+    void reloadRequest();
+  }
+
+  async function confirmSaveDraft() {
+    setConfirmSaveOpen(false);
+    const ok = await persistDraftEdits();
+    if (ok) alert('Rascunho salvo e alteração registrada na timeline.');
+  }
+
+  async function doSendToApprover() {
     if (!request) return;
     if (!stageComment.trim()) {
       alert('Escreva um comentário sobre a conclusão desta etapa antes de prosseguir.');
@@ -281,10 +396,62 @@ export function DetalhesSolicitacaoPage() {
     setBusy(true);
     try {
       await requestsApi.sendToApprover(request.id, stageComment.trim());
-      alert('Solicitação enviada ao aprovador.');
+      alert(
+        request.fixedAsset
+          ? 'Solicitação enviada ao aprovador de imobilizado (ativo fixo).'
+          : 'Solicitação enviada ao aprovador.',
+      );
       navigate('/produtos/caixa-de-entrada');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Falha ao enviar ao aprovador.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function requestSendToApprover() {
+    if (!request) return;
+    if (!stageComment.trim()) {
+      alert('Escreva um comentário sobre a conclusão desta etapa antes de prosseguir.');
+      return;
+    }
+    if (dirty) {
+      setConfirmSendDirty(true);
+      return;
+    }
+    void doSendToApprover();
+  }
+
+  async function sendDirtySaveThenSend() {
+    setConfirmSendDirty(false);
+    const ok = await persistDraftEdits();
+    if (ok) await doSendToApprover();
+  }
+
+  async function sendDirtyDiscardThenSend() {
+    setConfirmSendDirty(false);
+    setDirty(false);
+    // Envia a versão já gravada no servidor (descarta edições locais).
+    await doSendToApprover();
+  }
+
+  async function sendToApprover() {
+    requestSendToApprover();
+  }
+
+  async function sendFromImobilizado() {
+    if (!request) return;
+    if (!stageComment.trim()) {
+      alert('Escreva um comentário sobre a conclusão da etapa de imobilizado.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await requestsApi.sendFromImobilizado(request.id, stageComment.trim());
+      alert('Etapa de imobilizado concluída. Solicitação enviada ao aprovador de cadastro.');
+      navigate('/produtos/caixa-de-entrada');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Falha ao encaminhar ao aprovador.');
     } finally {
       setBusy(false);
     }
@@ -363,6 +530,7 @@ export function DetalhesSolicitacaoPage() {
 
       <p className="derived-field detalhes-meta">
         {requestTypeLabel(request.type)}
+        {request.fixedAsset ? ' · Ativo fixo' : ''}
         {request.family ? ` · ${request.family.code} — ${request.family.name}` : ''}
         {` · ${request.items.length} item(ns)`}
         {request.requester?.name ? ` · ${request.requester.name}` : ''}
@@ -373,24 +541,46 @@ export function DetalhesSolicitacaoPage() {
             : ''}
       </p>
 
-      {(request.requestDescription?.trim() || request.observation?.trim()) ? (
+      {(request.requestDescription?.trim() ||
+        request.observation?.trim() ||
+        isDraft) ? (
         <div className="solicitacao-resumo">
           <div className="solicitacao-resumo-cell">
             <p className="solicitacao-resumo-label">Descrição da solicitação</p>
             <RequestDescriptionBlock
               value={request.requestDescription ?? ''}
-              readOnly
+              readOnly={!isDraft}
+              confirmTitle="Alterar descrição da solicitação"
+              confirmMessage="Deseja alterar a descrição? Em rascunho, a mudança será registrada na timeline ao salvar."
+              saveConfirmTitle="Salvar descrição"
+              saveConfirmMessage="Salvar a nova descrição? A alteração será registrada na timeline deste rascunho."
               onChange={() => undefined}
+              onPersist={
+                isDraft
+                  ? (next) => persistHeaderField('requestDescription', next)
+                  : undefined
+              }
             />
           </div>
           <div className="solicitacao-resumo-cell">
             <p className="solicitacao-resumo-label">Observação da solicitação</p>
             <RequestDescriptionBlock
               value={request.observation ?? ''}
-              readOnly
+              readOnly={!isDraft}
               uppercase={false}
               multiline
+              emptyPlaceholder="Motivo da inclusão ou atualização deste produto"
+              editAriaLabel="Alterar observação da solicitação"
+              confirmTitle="Alterar observação da solicitação"
+              confirmMessage="Deseja alterar a observação? Em rascunho, a mudança será registrada na timeline ao salvar."
+              saveConfirmTitle="Salvar observação"
+              saveConfirmMessage="Salvar a nova observação? A alteração será registrada na timeline deste rascunho."
               onChange={() => undefined}
+              onPersist={
+                isDraft
+                  ? (next) => persistHeaderField('observation', next)
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -399,11 +589,32 @@ export function DetalhesSolicitacaoPage() {
       <SolicitacaoPreForm
         hotels={hotels}
         families={families}
-        hotelIds={hotelIds}
-        familyId={familyId}
-        readOnly
-        onHotelChange={() => undefined}
-        onFamilyChange={() => undefined}
+        hotelIds={editHotelIds}
+        familyId={editFamilyId}
+        fixedAsset={editFixedAsset}
+        readOnly={!draftEditable}
+        familyLocked={draftEditable && items.length > 0}
+        onHotelChange={(ids) => {
+          markDirty();
+          setEditHotelIds(ids);
+        }}
+        onFamilyChange={(nextId) => {
+          markDirty();
+          setEditFamilyId(nextId);
+          const fam = findFamilyById(families, nextId);
+          const { groupId, subgroupId } = classificationFromFamily(fam);
+          setItems((prev) =>
+            prev.map((it) => ({
+              ...it,
+              groupId: groupId || it.groupId,
+              subgroupId: subgroupId || it.subgroupId,
+            })),
+          );
+        }}
+        onFixedAssetChange={(v) => {
+          markDirty();
+          setEditFixedAsset(v);
+        }}
       />
 
       <ItemFolderStrip
@@ -416,7 +627,11 @@ export function DetalhesSolicitacaoPage() {
         onRemove={() => undefined}
         allowAdd={false}
         allowRemove={false}
-        addLockedLabel="Visualização — use as pastas para navegar entre itens"
+        addLockedLabel={
+          draftEditable
+            ? 'Para incluir ou remover itens, use “Editar itens do lote”'
+            : 'Visualização — use as pastas para navegar entre itens'
+        }
       />
 
       {showCompare && requestItem ? (
@@ -439,7 +654,7 @@ export function DetalhesSolicitacaoPage() {
           <div className="pdm-classification">
             <p className="form-section-title">Classificação do item</p>
             <ItemPrimaryFields
-              readOnly={!approverEditable}
+              readOnly={!fieldsEditable}
               value={{
                 descriptionShort: item.descriptionShort,
                 costCenterId: item.costCenterId,
@@ -453,7 +668,7 @@ export function DetalhesSolicitacaoPage() {
               costCenters={costCenters}
               measureUnits={measureUnits}
               onChange={
-                approverEditable
+                fieldsEditable
                   ? (patch) => {
                       if (patch.descriptionShort !== undefined) {
                         patch.descriptionShort = toFormUppercase(patch.descriptionShort);
@@ -471,7 +686,7 @@ export function DetalhesSolicitacaoPage() {
 
             <ItemClassificationFields
               hideTitle
-              readOnly={!approverEditable}
+              readOnly={!fieldsEditable}
               familyContext={selectedFamily}
               value={{
                 groupId: item.groupId,
@@ -480,12 +695,12 @@ export function DetalhesSolicitacaoPage() {
               }}
               groups={groups}
               subgroups={subgroups}
-              onChange={approverEditable ? (patch) => patchCurrentItem(patch) : undefined}
+              onChange={fieldsEditable ? (patch) => patchCurrentItem(patch) : undefined}
             />
           </div>
 
           <ItemCompletionSection
-            readOnly={!approverEditable}
+            readOnly={!fieldsEditable}
             value={{
               productLink: item.productLink,
               productLinks: item.productLinks.length
@@ -498,7 +713,7 @@ export function DetalhesSolicitacaoPage() {
               attachments: [],
             }}
             onChange={
-              approverEditable
+              fieldsEditable
                 ? (patch) => {
                     const next: Partial<ViewItem> = { ...patch };
                     if (patch.descriptionLong !== undefined) {
@@ -577,6 +792,27 @@ export function DetalhesSolicitacaoPage() {
         </div>
       </article>
 
+      {draftEditable && dirty ? (
+        <p className="info-banner" role="status">
+          Há alterações não salvas neste rascunho. Salve para registrar na timeline ou descarte para
+          voltar à última versão gravada.
+        </p>
+      ) : null}
+
+      {draftEditable ? (
+        <div className="stage-conclude-block">
+          <label className="form-field">
+            <span>Nota da edição (timeline)</span>
+            <textarea
+              rows={2}
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="Opcional — descreva o que foi alterado (registrado na timeline ao salvar)"
+            />
+          </label>
+        </div>
+      ) : null}
+
       {approverEditable ? (
         <div className="stage-conclude-block">
           <label className="form-field">
@@ -591,7 +827,7 @@ export function DetalhesSolicitacaoPage() {
           <button
             type="button"
             className="btn btn-outline"
-            disabled={busy}
+            disabled={busy || !dirty}
             onClick={() => void saveApproverChanges()}
           >
             Salvar alterações do aprovador
@@ -614,16 +850,35 @@ export function DetalhesSolicitacaoPage() {
       ) : null}
 
       <div className="search-actions">
-        {isDraft ? (
-          <button
-            type="button"
-            className="btn btn-outline"
-            onClick={() =>
-              navigate('/produtos/dados-do-item', { state: { requestId: request.id } })
-            }
-          >
-            Continuar edição
-          </button>
+        {draftEditable ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-outline"
+              disabled={busy || !dirty}
+              onClick={() => setConfirmSaveOpen(true)}
+            >
+              Salvar alterações
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={busy || !dirty}
+              onClick={() => setConfirmDiscardOpen(true)}
+            >
+              Descartar alterações
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() =>
+                navigate('/produtos/dados-do-item', { state: { requestId: request.id } })
+              }
+            >
+              Editar itens do lote
+            </button>
+          </>
         ) : null}
         {canSendToApprover ? (
           <button
@@ -632,8 +887,30 @@ export function DetalhesSolicitacaoPage() {
             disabled={busy}
             onClick={() => void sendToApprover()}
           >
-            Enviar formulário para aprovador
+            {request.fixedAsset
+              ? 'Enviar ao imobilizado'
+              : 'Enviar formulário para aprovador'}
           </button>
+        ) : null}
+        {isImobilizado ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => void returnToRequester()}
+            >
+              Devolver ao solicitante
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() => void sendFromImobilizado()}
+            >
+              Encaminhar ao aprovador de cadastro
+            </button>
+          </>
         ) : null}
         {isApprover ? (
           <>
@@ -658,7 +935,7 @@ export function DetalhesSolicitacaoPage() {
             </button>
           </>
         ) : null}
-        {!isDraft && !canSendToApprover && !isApprover ? (
+        {!isDraft && !canSendToApprover && !isApprover && !isImobilizado ? (
           <button
             type="button"
             className="btn btn-outline"
@@ -670,6 +947,68 @@ export function DetalhesSolicitacaoPage() {
       </div>
 
       <RequestTimeline stages={request.stages ?? []} />
+
+      <ConfirmDialog
+        open={confirmSaveOpen}
+        title="Salvar alterações do rascunho"
+        message="Deseja salvar as alterações? Elas serão registradas na timeline e o rascunho continuará na etapa Solicitante."
+        confirmLabel="Salvar"
+        cancelLabel="Continuar editando"
+        onConfirm={() => void confirmSaveDraft()}
+        onCancel={() => setConfirmSaveOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmDiscardOpen}
+        title="Descartar alterações"
+        message="Deseja descartar as alterações não salvas e voltar à última versão gravada?"
+        confirmLabel="Descartar"
+        cancelLabel="Continuar editando"
+        onConfirm={discardDraftEdits}
+        onCancel={() => setConfirmDiscardOpen(false)}
+      />
+
+      {confirmSendDirty ? (
+        <div className="confirm-overlay" style={{ zIndex: 1001 }} role="presentation">
+          <div
+            className="confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="confirm-title">Alterações não salvas</h2>
+            <p className="confirm-message">
+              Há alterações neste rascunho que ainda não foram salvas. Escolha como deseja
+              prosseguir com o envio:
+            </p>
+            <div className="confirm-actions confirm-actions--triple">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setConfirmSendDirty(false)}
+              >
+                Voltar à edição
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={busy}
+                onClick={() => void sendDirtyDiscardThenSend()}
+              >
+                Descartar e enviar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => void sendDirtySaveThenSend()}
+              >
+                Salvar e enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

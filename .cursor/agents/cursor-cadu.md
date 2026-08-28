@@ -1,7 +1,7 @@
 # Sessões — Cadu (Portal Amarante CSC)
 
 **Repositório:** Portal Amarante CSC — Cadastro & Solicitação  
-**Atualizado:** 2026-08-24
+**Atualizado:** 2026-08-28
 
 ---
 
@@ -18,17 +18,19 @@
 
 ## Entregas recentes
 
-- Roles: ADMIN / SOLICITANTE / APROVADOR / COMPLIANCE — caixa por etapa; Admin vê todas
-- Rascunho = etapa Solicitante; envio direto ao aprovador com modal (cancelar / rascunho / enviar)
-- Fluxo de etapas: Formulário → Solicitante → Aprovador → Compliance → Encerrado; timeline + comentário
+- **Import SAP B1:** `npm run import:sap` (`backend/prisma/import-sap.ts`) — 3.598 UC + 313 AF; hierarquia Família→Subgrupo→Grupo; relatório `base-sap/relatorio-importacao.md`
+- **Ativo fixo:** flag `requests.fixed_asset` + etapa `IMOBILIZADO` + role `APROVADOR_IMOBILIZADO`; fluxo Solicitante → Imobilizado → Aprovador → Encerrado
+- Roles: ADMIN / SOLICITANTE / APROVADOR / APROVADOR_IMOBILIZADO / COMPLIANCE — caixa por etapa; Admin vê todas
+- Rascunho = etapa Solicitante; envio com modal (cancelar / rascunho / enviar)
+- Fluxo padrão: Formulário → Solicitante → Aprovador → Encerrado (Compliance só Fornecedores)
 - Atributos PDM de protótipo por família para testar o formulário até a base real Amarante
-- Caixa de entrada: blocos Todas / Novas / Do dia / Atrasadas; filtros tipo, itens e etapa (admin)
+- Caixa de entrada: blocos Novas / Do dia / Atrasadas; filtros tipo e etapa
 - Adaptação completa do template Prottus web para domínio Amarante
-- Schema `amarante`, seed ~320 solicitações, módulos products/requests/catalog
+- Schema `amarante`, seed catálogo, módulos products/requests/catalog
 - UI marca Amarante (tokens, logos vazados, AppShell colapsável)
 - Produtos remodelado: Solicitações unificado + Base unificado
 - **POST/PATCH solicitações** — rascunho e envio real com UM, centro de custo, origem e valor
-- Kanban: ocultar vazias, filtro tipo, auto-expand lista, cores por etapa
+- Lapidação Produtos: match 100%, devolução+SLA, bloqueios, SAP, typeahead, multi-links
 - Documentação Amarante vigente em `docs/projeto/` (índice: README)
 - Skills Cursor: `amarante-*`
 - SQL de triggers Distac substituído por invariantes Amarante (ITM-01, ITM-09, audit, pg_trgm)

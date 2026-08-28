@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { AlertDialog } from '../../components/AlertDialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SendRequestDialog } from '../../components/SendRequestDialog';
 import {
@@ -142,6 +143,7 @@ export function DadosDoItemPage() {
     nav.hotelIds?.length ? nav.hotelIds : nav.hotelId ? [nav.hotelId] : [],
   );
   const [familyId, setFamilyId] = useState('');
+  const [fixedAsset, setFixedAsset] = useState(false);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
   const [currentItem, setCurrentItem] = useState(0);
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
@@ -163,6 +165,8 @@ export function DadosDoItemPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [validationAlert, setValidationAlert] = useState<string | null>(null);
+  const [multiItemAlertOpen, setMultiItemAlertOpen] = useState(false);
 
   const item = items[currentItem] ?? items[0];
   const selectedFamily = findFamilyById(families, familyId);
@@ -209,15 +213,8 @@ export function DadosDoItemPage() {
   useEffect(() => {
     void Promise.all([
       catalogApi.hotels().then(setHotels),
-      catalogApi.groups(1, 200).then((r) => setGroups(r.data)),
-      catalogApi.subgroups({ pageSize: 500 }).then((r) =>
-        setSubgroups(
-          r.data.map((sg) => ({
-            ...sg,
-            groupId: sg.groupId ?? sg.group?.id,
-          })),
-        ),
-      ),
+      catalogApi.groups({ pageSize: 500 }).then((r) => setGroups(r.data)),
+      catalogApi.subgroups({ pageSize: 500 }).then((r) => setSubgroups(r.data)),
       catalogApi.families({ pageSize: 500 }).then((r) => setFamilies(r.data)),
       catalogApi.measureUnits().then((r) => setMeasureUnits(r.data)),
     ]).catch(console.error);
@@ -240,17 +237,6 @@ export function DadosDoItemPage() {
   }, [familyId]);
 
   useEffect(() => {
-    const fam = findFamilyById(families, familyId);
-    if (!fam?.groupId) return;
-    const { groupId, subgroupId } = classificationFromFamily(fam);
-    setItems((prev) =>
-      prev.map((it) =>
-        !it.groupId && !it.subgroupId ? { ...it, groupId, subgroupId } : it,
-      ),
-    );
-  }, [familyId, families]);
-
-  useEffect(() => {
     if (nav.requestId) {
       void requestsApi.get(nav.requestId).then((req) => {
         setRequestId(req.id);
@@ -258,6 +244,7 @@ export function DadosDoItemPage() {
         const ids = req.hotels?.map((rh) => rh.hotel.id) ?? (req.hotel?.id ? [req.hotel.id] : []);
         setHotelIds(ids);
         setFamilyId(req.family?.id ?? '');
+        setFixedAsset(Boolean(req.fixedAsset));
         setObservation(req.observation ?? '');
         setRequestDescription(req.requestDescription ?? '');
         setItems(
@@ -302,8 +289,8 @@ export function DadosDoItemPage() {
           {
             ...emptyItem(),
             productId: p.id,
-            groupId: fam?.groupId ?? '',
-            subgroupId: fam?.subgroupId ?? '',
+            groupId: '',
+            subgroupId: '',
             descriptionShort: p.descriptionShort,
             descriptionLong: p.descriptionLong ?? '',
             measureUnitId: mu?.id ?? '',
@@ -396,6 +383,7 @@ export function DadosDoItemPage() {
       }));
       return;
     }
+    const becomingMulti = items.length === 1;
     const cur = items[currentItem];
     const fam = findFamilyById(families, familyId);
     const defaults = classificationFromFamily(fam);
@@ -411,6 +399,9 @@ export function DadosDoItemPage() {
     ]);
     setCurrentItem(nextIndex);
     setError(null);
+    if (becomingMulti) {
+      setMultiItemAlertOpen(true);
+    }
   }
 
   function confirmRemoveItem() {
@@ -495,10 +486,42 @@ export function DadosDoItemPage() {
     return errors;
   }
 
+  /** Mensagem legível dos campos com erro para o popup de alerta. */
+  function validationAlertMessage(
+    errors: DadosFieldErrors,
+    action: 'enviar' | 'salvar',
+  ): string {
+    const labels: Record<keyof DadosFieldErrors, string> = {
+      familyId: 'Família',
+      hotelIds: 'Unidades (hotéis)',
+      requestDescription: 'Descrição da solicitação',
+      observation: 'Observação da solicitação',
+      descriptionShort: 'Descrição do produto',
+      descriptionLong: 'Descrição longa',
+      measureUnitId: 'Unidade de medida',
+      costCenterId: 'Centro de custo',
+      groupId: 'Grupo de itens',
+      subgroupId: 'Subgrupo',
+      duplicate: 'Duplicidade na base',
+    };
+
+    const lines = (Object.keys(errors) as (keyof DadosFieldErrors)[])
+      .filter((k) => errors[k])
+      .map((k) => `• ${labels[k] ?? k}: ${errors[k]}`);
+
+    const intro =
+      action === 'enviar'
+        ? 'A solicitação não foi enviada. Corrija os campos abaixo (também destacados em vermelho):'
+        : 'O rascunho não foi salvo. Corrija os campos abaixo (também destacados em vermelho):';
+
+    return [intro, '', ...lines].join('\n');
+  }
+
   function buildPayload(targetStage: 'SOLICITANTE' | 'APROVADOR') {
     return {
       hotelIds,
       familyId,
+      fixedAsset,
       type: requestType,
       observation: observation.trim() || undefined,
       requestDescription: requestDescription.trim() || undefined,
@@ -530,6 +553,9 @@ export function DadosDoItemPage() {
       setFieldErrors(errors);
       setError(null);
       setSendDialogOpen(false);
+      setValidationAlert(
+        validationAlertMessage(errors, strict ? 'enviar' : 'salvar'),
+      );
       return;
     }
     setFieldErrors({});
@@ -540,14 +566,16 @@ export function DadosDoItemPage() {
         if (it.productId) continue;
         if (await findExactDuplicateInBase(it.descriptionShort)) {
           if (i !== currentItem) setCurrentItem(i);
-          setFieldErrors({
+          const dupErrors: DadosFieldErrors = {
             duplicate:
               'Produto já existe na base unificada (match 100%). Use Alteração ou Bloqueio.',
             descriptionShort:
               'Descrição idêntica a item já cadastrado na base unificada.',
-          });
+          };
+          setFieldErrors(dupErrors);
           setError(null);
           setSendDialogOpen(false);
+          setValidationAlert(validationAlertMessage(dupErrors, strict ? 'enviar' : 'salvar'));
           return;
         }
       }
@@ -575,7 +603,14 @@ export function DadosDoItemPage() {
         },
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao salvar solicitação.');
+      const msg = e instanceof Error ? e.message : 'Falha ao salvar solicitação.';
+      setError(msg);
+      setSendDialogOpen(false);
+      setValidationAlert(
+        strict
+          ? `A solicitação não foi enviada.\n\n${msg}`
+          : `O rascunho não foi salvo.\n\n${msg}`,
+      );
     } finally {
       setSaving(false);
     }
@@ -629,11 +664,13 @@ export function DadosDoItemPage() {
         families={families}
         hotelIds={hotelIds}
         familyId={familyId}
+        fixedAsset={fixedAsset}
         familyLocked={familyLocked}
         hotelError={fieldErrors.hotelIds}
         familyError={fieldErrors.familyId}
         onHotelChange={setHotelIds}
         onFamilyChange={handleFamilyChange}
+        onFixedAssetChange={setFixedAsset}
         onClearHotelError={() => clearFieldError('hotelIds')}
         onClearFamilyError={() => clearFieldError('familyId')}
       />
@@ -729,11 +766,7 @@ export function DadosDoItemPage() {
                   subgroups={subgroups}
                   errors={classificationErrors}
                   onChange={(patch) => {
-                    patchClassification({
-                      groupId: patch.groupId,
-                      subgroupId: patch.subgroupId,
-                      source: patch.source,
-                    });
+                    patchClassification(patch);
                   }}
                   onClearError={(key) => clearFieldError(key)}
                 />
@@ -822,13 +855,36 @@ export function DadosDoItemPage() {
       <SendRequestDialog
         open={sendDialogOpen}
         title="Enviar solicitação"
-        message="Tem certeza de que deseja enviar direto ao aprovador? A etapa irá para a caixa de entrada do aprovador e você não poderá mais alterar nada nesta solicitação. Se preferir revisar depois, salve como rascunho (etapa Solicitante)."
+        message={
+          fixedAsset
+            ? 'Tem certeza de que deseja enviar? Como é ativo fixo, a solicitação irá primeiro à caixa do Imobilizado; após a aprovação deles, segue ao aprovador de cadastro. Você não poderá mais alterar nesta etapa. Se preferir revisar depois, salve como rascunho.'
+            : 'Tem certeza de que deseja enviar direto ao aprovador? A etapa irá para a caixa de entrada do aprovador e você não poderá mais alterar nada nesta solicitação. Se preferir revisar depois, salve como rascunho (etapa Solicitante).'
+        }
         cancelLabel="Cancelar"
         draftLabel="Salvar como rascunho"
-        confirmLabel="Enviar ao aprovador"
+        confirmLabel={fixedAsset ? 'Enviar ao imobilizado' : 'Enviar ao aprovador'}
         onCancel={() => setSendDialogOpen(false)}
         onDraft={() => void persist('SOLICITANTE')}
         onConfirm={() => void persist('APROVADOR')}
+      />
+
+      <AlertDialog
+        open={Boolean(validationAlert)}
+        title="Não foi possível continuar"
+        message={validationAlert ?? ''}
+        onClose={() => setValidationAlert(null)}
+      />
+
+      <AlertDialog
+        open={multiItemAlertOpen}
+        title="Atualize a descrição da solicitação"
+        message={
+          'Esta solicitação passou a ter mais de um item.\n\n' +
+          'Na caixa de entrada e nas listagens, o título deixa de ser o nome de um único produto e passa a usar a descrição da solicitação.\n\n' +
+          'Revise e atualize a “Descrição da solicitação” para refletir o lote (ex.: o que esses itens têm em comum).'
+        }
+        confirmLabel="Entendi"
+        onClose={() => setMultiItemAlertOpen(false)}
       />
     </section>
   );

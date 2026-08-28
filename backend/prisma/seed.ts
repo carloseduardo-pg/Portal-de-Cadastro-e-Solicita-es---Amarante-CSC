@@ -77,6 +77,25 @@ async function main() {
   });
 
   await prisma.user.upsert({
+    where: { email: 'imobilizado@amarante.local' },
+    update: {
+      name: 'Aprovador Imobilizado',
+      passwordHash,
+      active: true,
+      hotelId: hotelByCode.MGI.id,
+      role: 'APROVADOR_IMOBILIZADO',
+    },
+    create: {
+      email: 'imobilizado@amarante.local',
+      name: 'Aprovador Imobilizado',
+      passwordHash,
+      active: true,
+      hotelId: hotelByCode.MGI.id,
+      role: 'APROVADOR_IMOBILIZADO',
+    },
+  });
+
+  await prisma.user.upsert({
     where: { email: 'compliance@amarante.local' },
     update: { name: 'Compliance CSC', passwordHash, active: true, hotelId: hotelByCode.MGI.id, role: 'COMPLIANCE' },
     create: {
@@ -109,36 +128,42 @@ async function main() {
 
   const muByCode: Record<string, { id: string }> = { UN: un, LT: lt, KG: kg };
 
-  const groups = [];
-  for (const g of PDM_GROUPS) {
-    groups.push(
-      await prisma.group.upsert({
-        where: { code: g.code },
-        update: { name: g.name, active: true },
-        create: { code: g.code, name: g.name, active: true },
-      }),
-    );
-  }
-
-  const subgroups: Record<string, { id: string; code: string }> = {};
-  for (const sg of PDM_SUBGROUPS) {
-    const group = groups.find((g) => g.code === sg.groupCode)!;
-    const row = await prisma.subgroup.upsert({
-      where: { code: sg.code },
-      update: { name: sg.name, groupId: group.id, active: true },
-      create: { code: sg.code, name: sg.name, groupId: group.id, active: true },
-    });
-    subgroups[sg.code] = row;
-  }
-
+  /** Seed PDM legado: Família → Subgrupo → Grupo (folha), alinhado ao SAP B1. */
   const families: Record<string, { id: string; code: string; name: string }> = {};
   for (const f of PDM_FAMILIES) {
     const row = await prisma.family.upsert({
       where: { code: f.code },
-      update: { name: f.name, subgroupId: subgroups[f.sg].id, active: true },
-      create: { code: f.code, name: f.name, subgroupId: subgroups[f.sg].id, active: true },
+      update: { name: f.name, active: true },
+      create: { code: f.code, name: f.name, active: true },
     });
     families[f.code] = row;
+  }
+
+  const subgroups: Record<string, { id: string; code: string }> = {};
+  for (const f of PDM_FAMILIES) {
+    const sgDef = PDM_SUBGROUPS.find((s) => s.code === f.sg)!;
+    const family = families[f.code];
+    const sgCode = `${f.code}-${sgDef.code}`;
+    const row = await prisma.subgroup.upsert({
+      where: { familyId_name: { familyId: family.id, name: sgDef.name } },
+      update: { code: sgCode, active: true },
+      create: { code: sgCode, name: sgDef.name, familyId: family.id, active: true },
+    });
+    subgroups[f.code] = row;
+  }
+
+  const leafGroups: Record<string, { id: string }> = {};
+  for (const f of PDM_FAMILIES) {
+    const sgDef = PDM_SUBGROUPS.find((s) => s.code === f.sg)!;
+    const gDef = PDM_GROUPS.find((g) => g.code === sgDef.groupCode)!;
+    const subgroup = subgroups[f.code];
+    const gCode = `${f.code}-${gDef.code}`;
+    const row = await prisma.group.upsert({
+      where: { subgroupId_name: { subgroupId: subgroup.id, name: gDef.name } },
+      update: { code: gCode, active: true },
+      create: { code: gCode, name: gDef.name, subgroupId: subgroup.id, active: true },
+    });
+    leafGroups[f.code] = row;
   }
 
   /** Atributos PDM de protótipo (todas as famílias) — base real Amarante substitui depois. */
@@ -190,6 +215,7 @@ async function main() {
         descriptionShort: p.short,
         descriptionLong: p.long,
         familyId: families[p.family].id,
+        groupId: leafGroups[p.family].id,
         measureUnitId: measureUnit.id,
         ncmCode: 'ncm' in p ? p.ncm : null,
         ncmConfirmedById: admin.id,
@@ -201,6 +227,7 @@ async function main() {
         descriptionShort: p.short,
         descriptionLong: p.long,
         familyId: families[p.family].id,
+        groupId: leafGroups[p.family].id,
         measureUnitId: measureUnit.id,
         source: ProductSource.NATIONAL,
         ncmCode: 'ncm' in p ? p.ncm : null,
@@ -265,7 +292,7 @@ async function main() {
   };
 
   console.log('OK  Amarante seed complete (somente catálogo)');
-  console.log(`    PDM: ${counts.groups} grupos · ${counts.subgroups} subgrupos · ${counts.families} famílias`);
+  console.log(`    PDM: ${counts.families} famílias · ${counts.subgroups} subgrupos · ${counts.groups} grupos`);
   console.log(`    Atributos PDM (protótipo): ${counts.attributes} (sincronizados ${attributeCount} defs)`);
   console.log(`    Base: ${counts.products} produtos · ${counts.hotels} hotéis · ${counts.requests} solicitações`);
   console.log('    admin@amarante.local / amarante123');

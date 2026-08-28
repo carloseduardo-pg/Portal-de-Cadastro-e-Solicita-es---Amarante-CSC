@@ -11,12 +11,14 @@ type Props = {
   families: Family[];
   hotelIds: string[];
   familyId: string;
+  fixedAsset?: boolean;
   familyLocked?: boolean;
   hotelError?: string;
   familyError?: string;
   readOnly?: boolean;
   onHotelChange: (ids: string[]) => void;
   onFamilyChange: (familyId: string) => void;
+  onFixedAssetChange?: (fixedAsset: boolean) => void;
   onClearHotelError?: () => void;
   onClearFamilyError?: () => void;
 };
@@ -33,12 +35,14 @@ export function SolicitacaoPreForm({
   families,
   hotelIds,
   familyId,
+  fixedAsset = false,
   familyLocked = false,
   hotelError,
   familyError,
   readOnly = false,
   onHotelChange,
   onFamilyChange,
+  onFixedAssetChange,
   onClearHotelError,
   onClearFamilyError,
 }: Props) {
@@ -144,6 +148,21 @@ export function SolicitacaoPreForm({
             Família selecionada: <strong>{familyLabel(selectedFamily)}</strong>
           </p>
         ) : null}
+
+        <label className={`pre-form-fixed-asset${readOnly ? ' pre-form-fixed-asset--readonly' : ''}`}>
+          <input
+            type="checkbox"
+            checked={fixedAsset}
+            disabled={readOnly}
+            onChange={(e) => onFixedAssetChange?.(e.target.checked)}
+          />
+          <span>
+            <strong>Ativo fixo</strong>
+            <span className="pre-form-fixed-asset-hint">
+              Inclui etapa de aprovação do Imobilizado antes do aprovador de cadastro.
+            </span>
+          </span>
+        </label>
 
         {!readOnly && familyLocked && familyId ? (
           <p className="family-lock-note">

@@ -10,9 +10,11 @@ export class CatalogService {
     return this.prisma.hotel.findMany({ where: { active: true }, orderBy: { code: 'asc' } });
   }
 
-  async families(params: { search?: string; subgroupId?: string } & PageParams) {
+  /**
+   * Famílias SAP (nível mais amplo). Opcionalmente filtra por texto.
+   */
+  async families(params: { search?: string } & PageParams) {
     const where = {
-      ...(params.subgroupId ? { subgroupId: params.subgroupId } : {}),
       ...(params.search
         ? {
             OR: [
@@ -28,8 +30,7 @@ export class CatalogService {
       this.prisma.family.findMany({
         where,
         include: {
-          subgroup: { include: { group: true } },
-          _count: { select: { productAttributes: true } },
+          _count: { select: { productAttributes: true, subgroups: true } },
         },
         orderBy: [{ name: 'asc' }, { code: 'asc' }],
         skip,
@@ -41,13 +42,8 @@ export class CatalogService {
         id: f.id,
         code: f.code,
         name: f.name,
-        subgroupId: f.subgroupId,
-        groupId: f.subgroup.group.id,
-        groupCode: f.subgroup.group.code,
-        groupName: f.subgroup.group.name,
-        subgroupCode: f.subgroup.code,
-        subgroupName: f.subgroup.name,
         attributesCount: f._count.productAttributes,
+        subgroupsCount: f._count.subgroups,
       })),
       total,
       params,
@@ -61,36 +57,71 @@ export class CatalogService {
     });
   }
 
-  async groups(params: PageParams) {
+  /** Grupos de itens (folha). Filtra por subgrupo quando informado. */
+  async groups(params: { subgroupId?: string } & PageParams) {
+    const where = params.subgroupId ? { subgroupId: params.subgroupId } : {};
     const { skip, take } = skipTake(params);
     const [total, data] = await this.prisma.$transaction([
-      this.prisma.group.count(),
-      this.prisma.group.findMany({ orderBy: [{ name: 'asc' }, { code: 'asc' }], skip, take }),
-    ]);
-    return pageResult(data, total, params);
-  }
-
-  async subgroups(params: { groupId?: string } & PageParams) {
-    const where = params.groupId ? { groupId: params.groupId } : {};
-    const { skip, take } = skipTake(params);
-    const [total, data] = await this.prisma.$transaction([
-      this.prisma.subgroup.count({ where }),
-      this.prisma.subgroup.findMany({
+      this.prisma.group.count({ where }),
+      this.prisma.group.findMany({
         where,
-        include: { group: true },
+        include: { subgroup: { select: { id: true, code: true, name: true, familyId: true } } },
         orderBy: [{ name: 'asc' }, { code: 'asc' }],
         skip,
         take,
       }),
     ]);
-    return pageResult(data, total, params);
+    return pageResult(
+      data.map((g) => ({
+        id: g.id,
+        code: g.code,
+        name: g.name,
+        subgroupId: g.subgroupId,
+        familyId: g.subgroup.familyId,
+        subgroup: g.subgroup,
+      })),
+      total,
+      params,
+    );
+  }
+
+  /** Subgrupos. Filtra por família (SAP) quando informado. */
+  async subgroups(params: { familyId?: string } & PageParams) {
+    const where = params.familyId ? { familyId: params.familyId } : {};
+    const { skip, take } = skipTake(params);
+    const [total, data] = await this.prisma.$transaction([
+      this.prisma.subgroup.count({ where }),
+      this.prisma.subgroup.findMany({
+        where,
+        include: { family: { select: { id: true, code: true, name: true } } },
+        orderBy: [{ name: 'asc' }, { code: 'asc' }],
+        skip,
+        take,
+      }),
+    ]);
+    return pageResult(
+      data.map((sg) => ({
+        id: sg.id,
+        code: sg.code,
+        name: sg.name,
+        familyId: sg.familyId,
+        family: sg.family,
+      })),
+      total,
+      params,
+    );
   }
 
   async measureUnits(params: PageParams) {
     const { skip, take } = skipTake(params);
     const [total, data] = await this.prisma.$transaction([
       this.prisma.measureUnit.count(),
-      this.prisma.measureUnit.findMany({ where: { active: true }, orderBy: [{ name: 'asc' }, { code: 'asc' }], skip, take }),
+      this.prisma.measureUnit.findMany({
+        where: { active: true },
+        orderBy: [{ name: 'asc' }, { code: 'asc' }],
+        skip,
+        take,
+      }),
     ]);
     return pageResult(data, total, params);
   }

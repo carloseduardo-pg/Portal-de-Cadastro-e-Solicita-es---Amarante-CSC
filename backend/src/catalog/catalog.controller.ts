@@ -14,11 +14,10 @@ export class CatalogController {
   @Get('families')
   families(
     @Query('search') search?: string,
-    @Query('subgroup_id') subgroupId?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.catalog.families({ search, subgroupId, ...parsePage(page, pageSize) });
+    return this.catalog.families({ search, ...parsePage(page, pageSize) });
   }
 
   @Get('families/:id/attributes')
@@ -27,17 +26,21 @@ export class CatalogController {
   }
 
   @Get('groups')
-  groups(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
-    return this.catalog.groups(parsePage(page, pageSize));
+  groups(
+    @Query('subgroup_id') subgroupId?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.catalog.groups({ subgroupId, ...parsePage(page, pageSize) });
   }
 
   @Get('subgroups')
   subgroups(
-    @Query('group_id') groupId?: string,
+    @Query('family_id') familyId?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.catalog.subgroups({ groupId, ...parsePage(page, pageSize) });
+    return this.catalog.subgroups({ familyId, ...parsePage(page, pageSize) });
   }
 
   @Get('measure-units')

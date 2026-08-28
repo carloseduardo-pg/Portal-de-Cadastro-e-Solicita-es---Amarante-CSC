@@ -28,6 +28,8 @@ enum RequestState {
   RASCUNHO
   FORMULARIO
   SOLICITANTE
+  /** Aprovação de imobilizado — só quando `requests.fixed_asset` = true. */
+  IMOBILIZADO
   APROVADOR
   COMPLIANCE
   ENCERRADO
@@ -70,6 +72,8 @@ enum UserRole {
   ADMIN
   SOLICITANTE
   APROVADOR
+  /** Aprovador da área de Imobilizado (ativo fixo). */
+  APROVADOR_IMOBILIZADO
   COMPLIANCE
 }
 
@@ -127,49 +131,56 @@ model Warehouse {
   @@map("warehouses")
 }
 
-model Group {
+/**
+ * Hierarquia SAP B1 (texto + FK): Família → Subgrupo → Grupo (mais específico).
+ * Códigos são gerados na importação — o SAP não traz prefixos 1/3/6 do Semplice.
+ */
+model Family {
   id        String   @id @default(uuid()) @db.Uuid
-  code      String   @unique @db.VarChar(1)
-  name      String
+  code      String   @unique @db.VarChar(64)
+  name      String   @unique
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  subgroups Subgroup[]
+  subgroups         Subgroup[]
+  products          Product[]
+  productAttributes ProductAttribute[]
+  requests          Request[]
 
-  @@map("groups")
+  @@map("families")
 }
 
 model Subgroup {
   id        String   @id @default(uuid()) @db.Uuid
-  code      String   @unique @db.VarChar(3)
-  groupId   String   @map("group_id") @db.Uuid
+  code      String   @unique @db.VarChar(64)
+  familyId  String   @map("family_id") @db.Uuid
   name      String
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  group    Group    @relation(fields: [groupId], references: [id])
-  families Family[]
+  family Family  @relation(fields: [familyId], references: [id])
+  groups Group[]
 
+  @@unique([familyId, name])
   @@map("subgroups")
 }
 
-model Family {
+model Group {
   id         String   @id @default(uuid()) @db.Uuid
-  code       String   @unique @db.VarChar(6)
+  code       String   @unique @db.VarChar(64)
   subgroupId String   @map("subgroup_id") @db.Uuid
   name       String
   active     Boolean  @default(true)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  subgroup           Subgroup            @relation(fields: [subgroupId], references: [id])
-  products           Product[]
-  productAttributes  ProductAttribute[]
-  requests           Request[]
+  subgroup Subgroup  @relation(fields: [subgroupId], references: [id])
+  products Product[]
 
-  @@map("families")
+  @@unique([subgroupId, name])
+  @@map("groups")
 }
 
 model MeasureUnit {
@@ -208,12 +219,15 @@ model Product {
   descriptionShort String         @map("description_short")
   descriptionLong  String?        @map("description_long")
   familyId         String         @map("family_id") @db.Uuid
-  measureUnitId    String         @map("measure_unit_id") @db.Uuid
+  /** Folha SAP (grupo de itens). Opcional em legado pré-SAP. */
+  groupId          String?        @map("group_id") @db.Uuid
+  /** Nulo para ativo fixo e UM "Manual" da base SAP. */
+  measureUnitId    String?        @map("measure_unit_id") @db.Uuid
   source           ProductSource  @default(NATIONAL)
   fixedAsset       Boolean        @default(false) @map("fixed_asset")
   unifiedCode      String?        @unique @map("unified_code")
   legacyCode       String?        @map("legacy_code")
-  sapCode          String?        @map("sap_code")
+  sapCode          String?        @unique @map("sap_code")
   ncmCode          String?        @map("ncm_code")
   ncmConfirmedById String?        @map("ncm_confirmed_by") @db.Uuid
   ncmConfirmedAt   DateTime?      @map("ncm_confirmed_at") @db.Timestamptz
@@ -229,13 +243,14 @@ model Product {
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz
 
-  family         Family          @relation(fields: [familyId], references: [id])
-  measureUnit    MeasureUnit     @relation(fields: [measureUnitId], references: [id])
-  ncmConfirmedBy User?           @relation("NcmConfirmedBy", fields: [ncmConfirmedById], references: [id])
-  hotels         ProductHotel[]
+  family          Family           @relation(fields: [familyId], references: [id])
+  group           Group?           @relation(fields: [groupId], references: [id])
+  measureUnit     MeasureUnit?     @relation(fields: [measureUnitId], references: [id])
+  ncmConfirmedBy  User?            @relation("NcmConfirmedBy", fields: [ncmConfirmedById], references: [id])
+  hotels          ProductHotel[]
   attributeValues ProductAttributeValue[]
-  requestItems   RequestItem[]
-  links          ProductLink[]
+  requestItems    RequestItem[]
+  links           ProductLink[]
 
   @@index([descriptionShort])
   @@map("products")
@@ -302,6 +317,8 @@ model Request {
   familyId     String       @map("family_id") @db.Uuid
   type         RequestType  @default(INCLUSAO)
   state        RequestState @default(RASCUNHO)
+  /** Flag de ativo fixo — inclui etapa IMOBILIZADO antes do Aprovador de cadastro. */
+  fixedAsset   Boolean      @default(false) @map("fixed_asset")
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
   submittedAt  DateTime?    @map("submitted_at") @db.Timestamptz
   expiresAt    DateTime?    @map("expires_at") @db.Timestamptz
@@ -318,6 +335,7 @@ model Request {
 
   @@index([state])
   @@index([hotelId])
+  @@index([fixedAsset])
   @@map("requests")
 }
 

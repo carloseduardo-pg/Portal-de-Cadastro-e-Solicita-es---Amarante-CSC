@@ -195,6 +195,20 @@ export class RequestsController {
     return this.requests.sendToApprover(id, req.user?.id ?? '', body.message ?? '');
   }
 
+  /** Imobilizado → Aprovador de cadastro (ativo fixo). */
+  @Post(':id/send-from-imobilizado')
+  sendFromImobilizado(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { message?: string },
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    return this.requests.sendFromImobilizadoToApprover(
+      id,
+      req.user?.id ?? '',
+      body.message ?? '',
+    );
+  }
+
   @Post(':id/submit')
   submit(
     @Param('id', ParseUUIDPipe) id: string,

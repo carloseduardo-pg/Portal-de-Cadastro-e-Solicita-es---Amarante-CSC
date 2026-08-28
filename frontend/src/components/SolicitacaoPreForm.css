@@ -71,6 +71,47 @@
   color: var(--brand-primary);
 }
 
+.pre-form-fixed-asset {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--brand-accent) 10%, var(--surface));
+  cursor: pointer;
+}
+
+.pre-form-fixed-asset input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-primary);
+  flex-shrink: 0;
+}
+
+.pre-form-fixed-asset strong {
+  display: block;
+  font-size: var(--font-size-body);
+  color: var(--brand-ink);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pre-form-fixed-asset-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.pre-form-fixed-asset--readonly {
+  cursor: default;
+  opacity: 0.95;
+}
+
 @media (max-width: 960px) {
   .pre-form-pdm-span-4,
   .pre-form-pdm-span-2 {

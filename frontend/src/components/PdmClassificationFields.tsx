@@ -33,8 +33,7 @@ const SOURCE_OPTIONS: { value: PdmClassificationValue['source']; label: string }
 ];
 
 /**
- * Classificação PDM por item — Grupo → Subgrupo → Família (estilo Semplice).
- * Códigos derivados são somente leitura.
+ * Classificação SAP — Família → Subgrupo → Grupo de itens.
  */
 export function PdmClassificationFields({
   value,
@@ -46,44 +45,36 @@ export function PdmClassificationFields({
   onChange,
   onClearError,
 }: Props) {
-  const filteredSubgroups = value.groupId
-    ? subgroups.filter((sg) => sg.groupId === value.groupId || sg.group?.id === value.groupId)
+  const filteredSubgroups = value.familyId
+    ? subgroups.filter((sg) => sg.familyId === value.familyId || sg.family?.id === value.familyId)
     : [];
 
-  const filteredFamilies = value.subgroupId
-    ? families.filter((f) => f.subgroupId === value.subgroupId)
+  const filteredGroups = value.subgroupId
+    ? groups.filter((g) => g.subgroupId === value.subgroupId)
     : [];
 
-  const selectedGroup = groups.find((g) => g.id === value.groupId);
-  const selectedSubgroup = subgroups.find((sg) => sg.id === value.subgroupId);
   const selectedFamily = families.find((f) => f.id === value.familyId);
+  const selectedSubgroup = subgroups.find((sg) => sg.id === value.subgroupId);
+  const selectedGroup = groups.find((g) => g.id === value.groupId);
   const familyLocked = Boolean(lockedFamilyId);
 
-  function handleGroupChange(groupId: string) {
-    onChange({ groupId, subgroupId: '', familyId: familyLocked ? lockedFamilyId! : '' });
-    onClearError?.('groupId');
-    onClearError?.('subgroupId');
+  function handleFamilyChange(familyId: string) {
+    if (familyLocked) return;
+    onChange({ familyId, subgroupId: '', groupId: '' });
     onClearError?.('familyId');
+    onClearError?.('subgroupId');
+    onClearError?.('groupId');
   }
 
   function handleSubgroupChange(subgroupId: string) {
-    onChange({ subgroupId, familyId: familyLocked ? lockedFamilyId! : '' });
+    onChange({ subgroupId, groupId: '' });
     onClearError?.('subgroupId');
-    onClearError?.('familyId');
+    onClearError?.('groupId');
   }
 
-  function handleFamilyChange(familyId: string) {
-    const fam = families.find((f) => f.id === familyId);
-    if (fam) {
-      onChange({
-        familyId,
-        groupId: fam.groupId ?? value.groupId,
-        subgroupId: fam.subgroupId ?? value.subgroupId,
-      });
-    } else {
-      onChange({ familyId });
-    }
-    onClearError?.('familyId');
+  function handleGroupChange(groupId: string) {
+    onChange({ groupId });
+    onClearError?.('groupId');
   }
 
   return (
@@ -104,97 +95,76 @@ export function PdmClassificationFields({
         </FormField>
 
         <FormField
-          label="Família produto"
+          label="Família"
           required
           error={errors?.familyId}
-          errorPosition="below"
-          variant="semplice"
           className="pdm-span-4"
         >
           <select
             value={value.familyId}
-            onChange={(e) => handleFamilyChange(e.target.value)}
-            disabled={!value.subgroupId || familyLocked}
-          >
-            <option value="">
-              {value.subgroupId ? 'Selecione a família…' : 'Selecione o subgrupo primeiro'}
-            </option>
-            {(familyLocked
-              ? families.filter((f) => f.id === lockedFamilyId)
-              : filteredFamilies
-            ).map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </FormField>
-
-        <FormField label="Código da família" className="pdm-span-4">
-          <input readOnly value={selectedFamily?.code ?? ''} placeholder="—" className="pdm-readonly" />
-        </FormField>
-
-        <FormField
-          label="Grupo produto"
-          required
-          error={errors?.groupId}
-          errorPosition="below"
-          variant="semplice"
-          className="pdm-span-3"
-        >
-          <select
-            value={value.groupId}
-            onChange={(e) => handleGroupChange(e.target.value)}
             disabled={familyLocked}
+            onChange={(e) => handleFamilyChange(e.target.value)}
           >
-            <option value="">Selecione o grupo…</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
+            <option value="">Selecione a família…</option>
+            {families.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.code} — {f.name}
               </option>
             ))}
           </select>
-        </FormField>
-
-        <FormField label="Código do grupo" className="pdm-span-3">
-          <input readOnly value={selectedGroup?.code ?? ''} placeholder="—" className="pdm-readonly" />
+          {selectedFamily && familyLocked ? (
+            <span className="pdm-hint">Família do lote (ITM-11)</span>
+          ) : null}
         </FormField>
 
         <FormField
-          label="SubGrupo produto"
+          label="Subgrupo"
           required
           error={errors?.subgroupId}
-          errorPosition="below"
-          variant="semplice"
-          className="pdm-span-3"
+          className="pdm-span-4"
         >
           <select
             value={value.subgroupId}
+            disabled={!value.familyId}
             onChange={(e) => handleSubgroupChange(e.target.value)}
-            disabled={!value.groupId || familyLocked}
           >
             <option value="">
-              {value.groupId ? 'Selecione o subgrupo…' : 'Selecione o grupo primeiro'}
+              {value.familyId ? 'Selecione o subgrupo…' : 'Selecione a família primeiro'}
             </option>
             {filteredSubgroups.map((sg) => (
               <option key={sg.id} value={sg.id}>
-                {sg.name}
+                {sg.code} — {sg.name}
               </option>
             ))}
           </select>
+          {selectedSubgroup ? (
+            <span className="pdm-hint">{selectedSubgroup.name}</span>
+          ) : null}
         </FormField>
 
-        <FormField label="Código do SubGrupo" className="pdm-span-3">
-          <input readOnly value={selectedSubgroup?.code ?? ''} placeholder="—" className="pdm-readonly" />
+        <FormField
+          label="Grupo de itens"
+          required
+          error={errors?.groupId}
+          className="pdm-span-4"
+        >
+          <select
+            value={value.groupId}
+            disabled={!value.subgroupId}
+            onChange={(e) => handleGroupChange(e.target.value)}
+          >
+            <option value="">
+              {value.subgroupId ? 'Selecione o grupo…' : 'Selecione o subgrupo primeiro'}
+            </option>
+            {filteredGroups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.code} — {g.name}
+              </option>
+            ))}
+          </select>
+          {selectedGroup ? <span className="pdm-hint">{selectedGroup.name}</span> : null}
         </FormField>
       </div>
-
-      {familyLocked ? (
-        <p className="pdm-lock-note">
-          <strong>ITM-11:</strong> a família deste lote já foi definida por outro item. Grupo e subgrupo
-          seguem a classificação da família escolhida.
-        </p>
-      ) : null}
     </div>
   );
 }
