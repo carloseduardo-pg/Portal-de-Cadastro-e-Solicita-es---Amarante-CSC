@@ -24,9 +24,15 @@ export type MeasureUnit = {
 export type ProductSearchResult = {
   id: string;
   unifiedCode: string | null;
+  /** Código legado da planilha SAP (coluna "Código Legado"). */
+  legacyCode?: string | null;
   descriptionShort: string;
   familyName: string;
   familyCode: string;
+  subgroupName?: string | null;
+  groupName?: string | null;
+  ncmCode?: string | null;
+  measureUnitCode?: string | null;
   similarity: number;
   hotelCodes: string[];
   similarTo: (string | null)[];

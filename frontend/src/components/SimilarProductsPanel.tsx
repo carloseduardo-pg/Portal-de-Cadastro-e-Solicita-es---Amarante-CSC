@@ -1,5 +1,6 @@
 import { DataTable } from './DataTable';
 import { HotelCodeBadges } from './HotelCodeBadges';
+import { formatNcmDisplay } from '../lib/ncm';
 import type { ProductSearchResult } from '../lib/types';
 import './SimilarProductsPanel.css';
 import './HotelCodeBadges.css';
@@ -99,7 +100,11 @@ export function SimilarProductsPanel({
         selectedRowKey={selectable ? selectedId ?? undefined : undefined}
         onRowClick={selectable ? onSelect : undefined}
         columns={[
-          { key: 'code', header: 'Código Unificado', render: (r) => r.unifiedCode ?? '—' },
+          {
+            key: 'code',
+            header: 'Código',
+            render: (r) => r.legacyCode?.trim() || '—',
+          },
           {
             key: 'desc',
             header: 'Descrição',
@@ -112,7 +117,27 @@ export function SimilarProductsPanel({
               </span>
             ),
           },
-          { key: 'family', header: 'Família', render: (r) => r.familyName },
+          { key: 'family', header: 'Família', render: (r) => r.familyName || '—' },
+          {
+            key: 'subgroup',
+            header: 'Subgrupo',
+            render: (r) => r.subgroupName?.trim() || '—',
+          },
+          {
+            key: 'group',
+            header: 'Grupo',
+            render: (r) => r.groupName?.trim() || '—',
+          },
+          {
+            key: 'ncm',
+            header: 'Código NCM',
+            render: (r) => formatNcmDisplay(r.ncmCode) || '—',
+          },
+          {
+            key: 'uom',
+            header: 'Unidade de medida',
+            render: (r) => r.measureUnitCode?.trim() || '—',
+          },
           {
             key: 'hotels',
             header: 'Unidades',

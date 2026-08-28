@@ -17,29 +17,28 @@
 }
 
 .similar-products-panel .data-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   table-layout: auto;
 }
 
 .similar-products-panel .data-table th,
 .similar-products-panel .data-table td {
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
+  vertical-align: top;
 }
 
 .similar-products-panel .data-table th:nth-child(2),
 .similar-products-panel .data-table td:nth-child(2) {
-  min-width: 8rem;
-}
-
-.similar-products-panel .data-table th:nth-child(4),
-.similar-products-panel .data-table td:nth-child(4) {
-  min-width: 6rem;
+  white-space: normal;
+  min-width: 14rem;
+  max-width: 22rem;
+  word-break: break-word;
 }
 
 @media (min-width: 768px) {
   .similar-products-panel .data-table-wrapper {
-    overflow-x: visible;
+    overflow-x: auto;
   }
 }
 

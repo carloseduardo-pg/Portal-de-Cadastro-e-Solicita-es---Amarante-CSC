@@ -18,6 +18,7 @@
 
 ## Entregas recentes
 
+- **Itens parecidos (Nova Solicitação):** colunas alinhadas ao Excel SAP — Código (legado), Descrição, Família, Subgrupo, Grupo, Código NCM, Unidade de medida (+ Unidades/Match). API `/products/search` passa a devolver `legacyCode`, hierarquia e UM.
 - **Limpeza pós-SAP:** removidos 7 produtos de protótipo (sem `sap_code`), 11 solicitações de teste e hierarquia PDM legada (códigos 101001/MIG-*). Base restante: **3911** produtos SAP. Script: `backend/prisma/cleanup-prototype-products.ts`
 - **Parametrizações — catálogo SAP real:** abas Famílias → Subgrupos → Grupos (amplo→específico); busca no servidor; `pageSize` catálogo até 500; colunas tipo (consumo/AF), pai e contagens; badges quarentena / TMP_* / grupo "Itens". **Cadastrar** desabilitado até decisão de política (árvore SAP).
 - **NCM tipado (`ncm_codes`):** tabela CHAR(8) + FK em `products`/`request_items`; bootstrap **1.098** NCMs em uso; canônico sem pontuação, UI `9999.99.99`; import Receita preparado (`npm run import:ncm-receita`); score de sugestão = **similaridade real** (fim da escada sintética). Passivo fiscal: **176** ativos sem NCM na base carregada (análise oficial 225) — `base-sap/ncm-missing-active.md`

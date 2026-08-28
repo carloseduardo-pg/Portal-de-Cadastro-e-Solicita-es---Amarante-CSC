@@ -471,10 +471,16 @@ export function NovaSolicitacaoPage() {
             <p className="info-banner form-success">
               Produto selecionado:{' '}
               <strong>
-                {selectedProduct.unifiedCode ? `${selectedProduct.unifiedCode} — ` : ''}
+                {selectedProduct.legacyCode
+                  ? `${selectedProduct.legacyCode} — `
+                  : selectedProduct.unifiedCode
+                    ? `${selectedProduct.unifiedCode} — `
+                    : ''}
                 {selectedProduct.descriptionShort}
               </strong>
               {selectedProduct.familyName ? ` · ${selectedProduct.familyName}` : ''}
+              {selectedProduct.subgroupName ? ` / ${selectedProduct.subgroupName}` : ''}
+              {selectedProduct.groupName ? ` / ${selectedProduct.groupName}` : ''}
             </p>
           ) : null}
 

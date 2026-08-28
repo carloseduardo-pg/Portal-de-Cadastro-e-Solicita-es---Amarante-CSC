@@ -10,9 +10,14 @@ import { PrismaService } from '../prisma/prisma.service';
 export type ProductSearchRow = {
   id: string;
   unified_code: string | null;
+  legacy_code: string | null;
   description_short: string;
   family_name: string;
   family_code: string;
+  subgroup_name: string;
+  group_name: string;
+  ncm_code: string | null;
+  measure_unit_code: string | null;
   similarity: number;
   hotel_codes: string[];
   active: boolean;
@@ -59,9 +64,14 @@ export class ProductsService {
       SELECT
         p.id,
         p.unified_code,
+        p.legacy_code,
         p.description_short,
         f.name AS family_name,
         f.code AS family_code,
+        sg.name AS subgroup_name,
+        g.name AS group_name,
+        p.ncm_code,
+        mu.code AS measure_unit_code,
         similarity(p.description_short, ${q}) AS similarity,
         COALESCE(
           array_agg(DISTINCT h.code) FILTER (WHERE h.code IS NOT NULL),
@@ -73,11 +83,13 @@ export class ProductsService {
       JOIN groups g ON g.id = p.group_id
       JOIN subgroups sg ON sg.id = g.subgroup_id
       JOIN families f ON f.id = sg.family_id
+      LEFT JOIN measure_units mu ON mu.id = p.measure_unit_id
       LEFT JOIN product_hotels ph ON ph.product_id = p.id
       LEFT JOIN hotels h ON h.id = ph.hotel_id
       WHERE similarity(p.description_short, ${q}) > 0.08
         ${kindFilter}
-      GROUP BY p.id, f.name, f.code
+      GROUP BY
+        p.id, f.name, f.code, sg.name, g.name, mu.code
       ORDER BY similarity DESC, p.active DESC
       LIMIT ${pageSize} OFFSET ${offset}
     `;
@@ -94,9 +106,14 @@ export class ProductsService {
     const data = rows.map((row) => ({
       id: row.id,
       unifiedCode: row.unified_code,
+      legacyCode: row.legacy_code,
       descriptionShort: row.description_short,
       familyName: row.family_name,
       familyCode: row.family_code,
+      subgroupName: row.subgroup_name,
+      groupName: row.group_name,
+      ncmCode: row.ncm_code,
+      measureUnitCode: row.measure_unit_code,
       similarity: Number(row.similarity),
       hotelCodes: row.hotel_codes ?? [],
       active: row.active,
@@ -108,7 +125,7 @@ export class ProductsService {
             Number(other.similarity) > 0.5 &&
             Math.abs(Number(other.similarity) - Number(row.similarity)) < 0.15,
         )
-        .map((o) => o.unified_code)
+        .map((o) => o.legacy_code ?? o.unified_code)
         .filter(Boolean)
         .slice(0, 1),
     }));
