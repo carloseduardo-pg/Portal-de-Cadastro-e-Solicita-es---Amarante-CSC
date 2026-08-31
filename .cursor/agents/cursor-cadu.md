@@ -18,6 +18,7 @@
 
 ## Entregas recentes
 
+- **NCM no Imobilizado (FLX-01):** semeadura de sugestões alinhada ao fluxo — `create`/`update`/`sendToApprover` semeiam ao chegar em `IMOBILIZADO`; `markAsFixedAsset` reseia contra base AF; `seedNcmSuggestions` filtra por `item_kind`.
 - **FLX-01 (Imobilizado-first):** solicitante nunca envia direto ao Administrativo — botão/labels e `sendToApprover` sempre → Imobilizado (também após rascunho). Regra gravada em `.cursor/rules/projeto/amarante.mdc`.
 - **Fluxo Imobilizado-first + bases separadas:** Base de produtos com abas **Uso e consumo | Ativo fixo**. Solicitante não escolhe kind. Toda solicitação → Aprovador - Imobilizado. Se AF: permanece no Imobilizado e aprovação final registra na base AF (sem Administrativo). Se UC: encaminha ao Administrativo. API `POST …/mark-fixed-asset` + `send-from-imobilizado` reescrito.
 - **Encerrar solicitação:** `POST /api/requests/:id/close` → `REPROVADO`. Solicitante (rascunho/solicitante/retorno): motivo opcional + confirmação. Aprovador - Imobilizado / Administrativo: motivo pré-definido + observação obrigatória. Aviso de não-reabertura. UI: `CloseRequestDialog`.

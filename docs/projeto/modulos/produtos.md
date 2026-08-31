@@ -35,7 +35,22 @@ Substitui o Semplice. Prioridade máxima do projeto.
 - Produto 1×N hotéis via `product_hotels`
 - Hierarquia SAP B1: Família → Subgrupo → Grupo (texto + FK; sem códigos 1/3/6 Semplice); AF usa códigos AFF/AFS/AFG
 - Campos patrimoniais AF5 (`asset_tag`, depreciação, etc.) — colunas nullable, sem regra inventada
-- Sugestão NCM: score = **similaridade real** (`pg_trgm`) no histórico classificado — não escada sintética
+- Sugestão NCM: score = **similaridade real** (`pg_trgm`) no histórico classificado — não escada sintética; filtro por `item_kind` do item (UC e AF separados)
+
+## Sugestões de NCM — quando são geradas
+
+`seedNcmSuggestions` apaga e reseia **fora** da transação (após commit). Momentos:
+
+| Momento | Disparo |
+|---------|---------|
+| Criar já enviando à aprovação | `create` com `targetStage=APROVADOR` → chega em `IMOBILIZADO` |
+| Atualizar rascunho e enviar | `update` com envio (não edição de aprovador) → `IMOBILIZADO` |
+| Enviar da etapa Solicitante / Retorno | `POST …/send-to-approver` |
+| Imobilizado marca como ativo fixo | `POST …/mark-fixed-asset` (recalcula contra base AF) |
+| Imobilizado encaminha UC ao Administrativo | `send-from-imobilizado` (recalcula contra base UC) |
+| Reclassificações AF ↔ UC | `reclassify-fixed-asset` / `reclassify-consumption` (já existentes) |
+
+ITM-09 permanece: sugestão não preenche NCM automaticamente — confirmação humana obrigatória.
 
 ## Estados da solicitação
 

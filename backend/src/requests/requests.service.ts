@@ -1012,6 +1012,7 @@ export class RequestsService {
     const items = await this.prisma.requestItem.findMany({ where: { requestId } });
     for (const item of items) {
       // Score = similaridade real (pg_trgm) no histórico classificado — não escada sintética.
+      // Filtra pelo item_kind do item (UC e AF são bases distintas).
       const rows = await this.prisma.$queryRaw<
         { ncm: string; usage_count: bigint; score: number }[]
       >`
@@ -1022,6 +1023,7 @@ export class RequestsService {
         FROM products p
         WHERE p.ncm_code IS NOT NULL
           AND length(trim(p.ncm_code)) = 8
+          AND p.item_kind = ${item.itemKind}::"ItemKind"
           AND similarity(p.description_short, ${item.descriptionShort}) > 0.15
         GROUP BY trim(p.ncm_code)
         ORDER BY score DESC, usage_count DESC
@@ -1135,7 +1137,7 @@ export class RequestsService {
       include: this.requestListInclude(),
     });
 
-    if (target === 'APROVADOR' && approvalState === RequestState.APROVADOR) {
+    if (target === 'APROVADOR' && approvalState === RequestState.IMOBILIZADO) {
       await this.seedNcmSuggestions(request.id);
     }
     return this.findOne(request.id);
@@ -1386,7 +1388,7 @@ export class RequestsService {
       }
     });
 
-    if (target === 'APROVADOR' && !isApproverEdit && !isImobilizadoEdit && approvalState === RequestState.APROVADOR) {
+    if (target === 'APROVADOR' && !isApproverEdit && !isImobilizadoEdit && approvalState === RequestState.IMOBILIZADO) {
       await this.prisma.ncmSuggestion.deleteMany({
         where: { requestItem: { requestId: id } },
       });
@@ -1685,6 +1687,11 @@ export class RequestsService {
         },
       });
     });
+
+    await this.prisma.ncmSuggestion.deleteMany({
+      where: { requestItem: { requestId } },
+    });
+    await this.seedNcmSuggestions(requestId);
 
     return this.findOne(requestId);
   }
@@ -2480,6 +2487,11 @@ export class RequestsService {
         },
       });
     });
+
+    await this.prisma.ncmSuggestion.deleteMany({
+      where: { requestItem: { requestId } },
+    });
+    await this.seedNcmSuggestions(requestId);
 
     return this.findOne(requestId);
   }
