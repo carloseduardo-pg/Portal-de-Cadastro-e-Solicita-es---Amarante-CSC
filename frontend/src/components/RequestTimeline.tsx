@@ -1,4 +1,9 @@
-import { formatRequestDate, requestStateLabel } from '../lib/requestLabels';
+import {
+  formatRequestDate,
+  requestStateColor,
+  requestStateLabel,
+  stageTint,
+} from '../lib/requestLabels';
 import type { RequestStage, RequestStageOutcomeDetail } from '../lib/types';
 import './RequestTimeline.css';
 
@@ -24,15 +29,26 @@ function reclassifySummary(outcome: string, detail?: RequestStageOutcomeDetail |
   return fromTo;
 }
 
+/** Momento do acontecimento: conclusão se houver; senão início da etapa. */
+function eventAt(stage: RequestStage) {
+  return stage.finishedAt ?? stage.startedAt;
+}
+
 /**
- * Log visual das etapas da solicitação (rascunho → … → encerrado).
+ * Log visual das etapas — mais recente primeiro.
+ * Data/hora amarela na linha do bullet; bloco tingido com a cor da tag da etapa.
  */
 export function RequestTimeline({ stages }: RequestTimelineProps) {
   if (!stages.length) return null;
 
-  const ordered = [...stages].sort(
-    (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime(),
-  );
+  const ordered = [...stages].sort((a, b) => {
+    const tb = new Date(eventAt(b)).getTime();
+    const ta = new Date(eventAt(a)).getTime();
+    if (tb !== ta) return tb - ta;
+    if (!a.finishedAt && b.finishedAt) return -1;
+    if (a.finishedAt && !b.finishedAt) return 1;
+    return new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime();
+  });
 
   return (
     <section className="request-timeline" aria-label="Timeline da solicitação">
@@ -43,15 +59,48 @@ export function RequestTimeline({ stages }: RequestTimelineProps) {
           const isReclassify =
             s.outcome === 'RECLASSIFY_FIXED_ASSET' ||
             s.outcome === 'RECLASSIFY_CONSUMPTION';
+          const isClosed = s.outcome === 'CLOSED';
           const detail = s.outcomeDetail;
+          const when = formatRequestDate(eventAt(s));
+          const color = requestStateColor(s.stage);
           return (
             <li key={s.id} className="request-timeline-item">
-              <span className="request-timeline-dot" aria-hidden />
-              <div className="request-timeline-card">
-                <p className="request-timeline-stage">
+              <div className="request-timeline-marker">
+                <span
+                  className="request-timeline-dot"
+                  aria-hidden
+                  style={{
+                    background: color,
+                    boxShadow: `0 0 0 1px ${color}`,
+                  }}
+                />
+                <time
+                  className="request-timeline-when"
+                  dateTime={eventAt(s)}
+                  title={
+                    waiting
+                      ? `Iniciado em ${formatRequestDate(s.startedAt)}`
+                      : `Concluído em ${formatRequestDate(s.finishedAt)}`
+                  }
+                >
+                  {when}
+                </time>
+              </div>
+              <div
+                className="request-timeline-card"
+                style={{
+                  borderColor: color,
+                  borderTopColor: color,
+                  background: stageTint(color, 12),
+                }}
+              >
+                <p className="request-timeline-stage" style={{ color }}>
                   {requestStateLabel(s.stage)}
                   {isReclassify ? (
                     <span className="request-timeline-badge">Reclassificação</span>
+                  ) : null}
+                  {isClosed ? (
+                    <span className="request-timeline-badge">Encerramento</span>
                   ) : null}
                 </p>
                 {s.user?.name ? (
@@ -59,19 +108,29 @@ export function RequestTimeline({ stages }: RequestTimelineProps) {
                     <strong>Usuário:</strong> {s.user.name}
                   </p>
                 ) : null}
-                <p>
-                  <strong>Iniciado em:</strong> {formatRequestDate(s.startedAt)}
-                </p>
                 {waiting ? (
-                  <p className="request-timeline-waiting">Aguardando conclusão</p>
+                  <p className="request-timeline-waiting" style={{ color }}>
+                    Aguardando conclusão
+                  </p>
                 ) : (
                   <>
                     <p>
-                      <strong>Concluído em:</strong> {formatRequestDate(s.finishedAt)}
-                    </p>
-                    <p>
                       <strong>Houve atraso:</strong> {s.isLate ? 'Sim' : 'Não'}
                     </p>
+                    {isClosed && (detail?.reasonLabel || detail?.observation) ? (
+                      <div className="request-timeline-reclassify">
+                        {detail.reasonLabel ? (
+                          <p>
+                            <strong>Motivo:</strong> {detail.reasonLabel}
+                          </p>
+                        ) : null}
+                        {detail.observation ? (
+                          <p>
+                            <strong>Observação:</strong> {detail.observation}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {isReclassify ? (
                       <div className="request-timeline-reclassify">
                         <p>
@@ -97,10 +156,10 @@ export function RequestTimeline({ stages }: RequestTimelineProps) {
                         {s.outcome === 'RECLASSIFY_FIXED_ASSET' &&
                         detail?.returnToApprover !== undefined ? (
                           <p>
-                            <strong>Retorno ao aprovador:</strong>{' '}
+                            <strong>Retorno ao aprovador - administrativo:</strong>{' '}
                             {detail.returnToApprover
-                              ? 'Sim — volta ao Aprovador após o Imobilizado'
-                              : 'Não — Imobilizado conclui sozinho'}
+                              ? 'Sim — volta ao Aprovador - Administrativo após o Aprovador - Imobilizado'
+                              : 'Não — Aprovador - Imobilizado conclui sozinho'}
                           </p>
                         ) : null}
                       </div>

@@ -705,7 +705,7 @@ export function DadosDoItemPage() {
     return {
       hotelIds,
       familyId,
-      fixedAsset,
+      fixedAsset: false,
       type: requestType,
       observation: observation.trim() || undefined,
       requestDescription: requestDescription.trim() || undefined,
@@ -811,7 +811,7 @@ export function DadosDoItemPage() {
         state: {
           flash:
             targetStage === 'APROVADOR'
-              ? `Solicitação enviada ao aprovador — ${result.items.length} item(ns).`
+              ? `Solicitação enviada ao aprovador - imobilizado — ${result.items.length} item(ns).`
               : `Rascunho na caixa do solicitante — ${result.items.length} item(ns).`,
         },
       });
@@ -878,6 +878,7 @@ export function DadosDoItemPage() {
         hotelIds={hotelIds}
         familyId={familyId}
         fixedAsset={fixedAsset}
+        hideKind
         familyLocked={familyLocked}
         hotelError={fieldErrors.hotelIds}
         familyError={fieldErrors.familyId}
@@ -1140,14 +1141,10 @@ export function DadosDoItemPage() {
       <SendRequestDialog
         open={sendDialogOpen}
         title="Enviar solicitação"
-        message={
-          fixedAsset
-            ? 'Tem certeza de que deseja enviar? Como é ativo fixo, a solicitação irá primeiro à caixa do Imobilizado; após a aprovação deles, segue ao aprovador de cadastro. Você não poderá mais alterar nesta etapa. Se preferir revisar depois, salve como rascunho.'
-            : 'Tem certeza de que deseja enviar direto ao aprovador? A etapa irá para a caixa de entrada do aprovador e você não poderá mais alterar nada nesta solicitação. Se preferir revisar depois, salve como rascunho (etapa Solicitante).'
-        }
+        message="Tem certeza de que deseja enviar? Toda solicitação vai primeiro à caixa do aprovador - imobilizado, que decide se o item é ativo fixo ou uso e consumo. Você não poderá mais alterar nesta etapa. Se preferir revisar depois, salve como rascunho."
         cancelLabel="Cancelar"
         draftLabel="Salvar como rascunho"
-        confirmLabel={fixedAsset ? 'Enviar ao imobilizado' : 'Enviar ao aprovador'}
+        confirmLabel="Enviar ao aprovador - imobilizado"
         onCancel={() => setSendDialogOpen(false)}
         onDraft={() => void persist('SOLICITANTE')}
         onConfirm={() => void persist('APROVADOR')}

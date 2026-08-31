@@ -39,9 +39,16 @@ Substitui o Semplice. Prioridade máxima do projeto.
 
 ## Estados da solicitação
 
-Pipeline principal (Produtos): `FORMULARIO` → `SOLICITANTE` ↔ `APROVADOR` (devolução) → `ENCERRADO`
+Pipeline (Produtos) — **toda solicitação** passa primeiro pelo Imobilizado (**FLX-01**):
 
-Com **ativo fixo** (`requests.fixed_asset = true`): `SOLICITANTE` → `IMOBILIZADO` → `APROVADOR` → `ENCERRADO`
+`SOLICITANTE` → `IMOBILIZADO` (**Aprovador - Imobilizado**, triagem) →
+
+- Se **não** for ativo fixo → `APROVADOR` (**Aprovador - Administrativo**) → `ENCERRADO` (base uso e consumo)
+- Se **for** ativo fixo → permanece no Imobilizado → `ENCERRADO` (registro na base de ativos fixos; **não** passa pelo Administrativo)
+
+O solicitante **não** escolhe uso e consumo × ativo fixo e **nunca** envia direto ao Administrativo (inclusive após rascunho ou retorno). Bases na UI: abas separadas em `/produtos/base`.
+
+Rótulos de UI (nunca só “Aprovador”): ver `frontend/src/lib/requestLabels.ts`.
 
 **Compliance não faz parte do fluxo de Produtos** — etapa reservada ao módulo Fornecedores.
 
@@ -49,15 +56,17 @@ Também: `RASCUNHO` · `RETORNO_SOLICITANTE` · `REPROVADO` · `ERRO_INTEGRACAO`
 
 Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQUEIO_TOTAL`
 
-- Segmented control **Uso e consumo | Ativo fixo** (nova solicitação + pré-formulário); famílias filtradas por `item_kind`
-- Match 100% / `pdm_signature`: **só CONSUMPTION** — bloqueia inclusão (ativos **e** inativos/bloqueados; msg própria se bloqueado). **FIXED_ASSET** não trava — vira atalho AF2 (N unidades + cadastrar mais / bem diferente)
+- Solicitante cria sempre como consumo; famílias filtradas por `item_kind` na triagem
+- Match 100% / `pdm_signature`: **só CONSUMPTION** — bloqueia inclusão (ativos **e** inativos/bloqueados; msg própria se bloqueado)
 - Constraint `UNIQUE(pdm_family_id, pdm_signature)` parcial para CONSUMPTION: migration detecta colisões antes; com legado sujo (41 dups) a unique fica **adiada** e o trigger impede **novas** duplicatas. Relatório: `base-sap/pdm-signature-collisions.md` + tabela `_pdm_signature_collisions`
-- Formulário AF: sem UM / qty compra / atributos PDM; obrigatórios `unitQuantity` + `physicalLocation`; contábeis opcionais (nullable)
-- `GET /api/products/exact-count?q=&item_kind=` e filtro `item_kind` em `/products/search` (busca inclui inativos)
-- Devolução ao solicitante reinicia SLA (`POST /api/requests/:id/return-to-requester`) — Imobilizado ou Aprovador
-- Imobilizado encaminha ao cadastro: `POST /api/requests/:id/send-from-imobilizado`
-- Aprovador pode editar campos na etapa Aprovador; edições registradas na timeline
-- Caixa de entrada = etapas operacionais (Solicitante / Imobilizado / Aprovador)
+- Formulário AF (após triagem): sem UM / qty compra / atributos PDM; obrigatórios `unitQuantity` + `physicalLocation`; contábeis opcionais (nullable)
+- `GET /api/products/exact-count?q=&item_kind=` e filtro `item_kind` em `/products/search` e `/products/base`
+- Devolução ao solicitante reinicia SLA (`POST /api/requests/:id/return-to-requester`) — Aprovador - Imobilizado ou Aprovador - Administrativo
+- Encerrar sem promover à base (`POST /api/requests/:id/close` → `REPROVADO`): solicitante (rascunho/retorno, motivo opcional) ou aprovadores (motivo pré + observação obrigatória). Não reabre.
+- Imobilizado classifica AF: `POST /api/requests/:id/mark-fixed-asset`
+- Imobilizado conclui: `POST /api/requests/:id/send-from-imobilizado` (AF → base AF + encerra; UC → Administrativo)
+- Aprovador - Administrativo pode editar campos na sua etapa; edições registradas na timeline
+- Caixa de entrada = etapas operacionais (Solicitante / Aprovador - Imobilizado / Aprovador - Administrativo)
 - Ao concluir cada etapa: comentário obrigatório em `request_stages.message`
 
 ## API
@@ -66,14 +75,16 @@ Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQ
 |----------|-----|
 | `GET /api/products/search` | Busca similaridade (tela 1); opcional `item_kind` |
 | `GET /api/products/exact-count` | Contagem por descrição exata (ativo fixo) |
-| `GET /api/products/base` | Base ativos/inativos/todos |
+| `GET /api/products/base` | Base ativos/inativos/todos; filtro `item_kind` (abas UC \| AF) |
 | `GET /api/requests/kanban` | Board + lista unificada |
 | `GET /api/requests/queue` | Caixa de entrada / fila |
 | `GET /api/requests/:id` | Detalhe |
 | `POST /api/requests` | Criar rascunho ou enviar solicitação |
 | `PATCH /api/requests/:id` | Atualizar rascunho |
 | `POST /api/requests/:id/return-to-requester` | Devolver ao solicitante (reset SLA) |
-| `POST /api/requests/:id/send-from-imobilizado` | Imobilizado → Aprovador (ativo fixo) |
+| `POST /api/requests/:id/close` | Encerrar sem base (`REPROVADO`; motivo pré + obs.) |
+| `POST /api/requests/:id/mark-fixed-asset` | Imobilizado marca como AF (permanece na etapa) |
+| `POST /api/requests/:id/send-from-imobilizado` | Imobilizado: AF → base AF; UC → Administrativo |
 | `PATCH /api/requests/items/:itemId/ncm` | Confirmação NCM (ITM-09) |
 | `GET /api/catalog/hotels` · `families` · `groups` | Formulário / filtros |
 

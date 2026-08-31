@@ -45,6 +45,7 @@ export type ProductBase = {
   id: string;
   unifiedCode: string | null;
   sapCode?: string | null;
+  legacyCode?: string | null;
   descriptionShort: string;
   descriptionLong: string | null;
   ncmCode: string | null;
@@ -211,6 +212,11 @@ export type RequestStageOutcomeDetail = {
   childRequestId?: string;
   itemIds?: string[];
   remainingItemIds?: string[];
+  /** Encerramento voluntário (CLOSED). */
+  reasonCode?: string | null;
+  reasonLabel?: string | null;
+  observation?: string | null;
+  closedBy?: 'solicitante' | 'aprovador' | string;
   itemsBefore?: {
     id: string;
     descriptionShort: string;

@@ -19,15 +19,15 @@ export const REGISTRY_STAGE_BLOCKS: BlockDef[] = [
   },
   {
     id: 'imobilizado',
-    label: 'Imobilizado',
+    label: 'Aprovador - Imobilizado',
     color: '#B45309',
-    hint: 'Ativo fixo — aguardando aprovação do imobilizado',
+    hint: 'Ativo fixo — aguardando o aprovador - imobilizado',
   },
   {
     id: 'aprovador',
-    label: 'Aprovador',
+    label: 'Aprovador - Administrativo',
     color: '#7E975B',
-    hint: 'Aguardando aprovação de cadastro',
+    hint: 'Aguardando o aprovador - administrativo (grava na base)',
   },
   {
     id: 'encerrado',

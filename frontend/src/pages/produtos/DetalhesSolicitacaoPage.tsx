@@ -8,6 +8,10 @@ import { ItemFolderStrip } from '../../components/ItemFolderStrip';
 import { PageStageHeader } from '../../components/PageStageHeader';
 import { ReclassifyRequestDialog } from '../../components/ReclassifyRequestDialog';
 import type { ReclassifyDirection } from '../../components/ReclassifyRequestDialog';
+import {
+  CloseRequestDialog,
+  type CloseRequestActor,
+} from '../../components/CloseRequestDialog';
 import { RequestDescriptionBlock } from '../../components/RequestDescriptionBlock';
 import { RequestItemCompareTable } from '../../components/requests/RequestItemCompareTable';
 import { RequestTimeline } from '../../components/RequestTimeline';
@@ -114,6 +118,7 @@ export function DetalhesSolicitacaoPage() {
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const [confirmSendDirty, setConfirmSendDirty] = useState(false);
   const [reclassifyOpen, setReclassifyOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
   const [reclassifyDirection, setReclassifyDirection] =
     useState<ReclassifyDirection>('fixed-asset');
 
@@ -242,6 +247,10 @@ export function DetalhesSolicitacaoPage() {
   const isImobilizado = request?.state === 'IMOBILIZADO';
   const canSendToApprover = isSolicitante || isReturnToRequester;
   const canConcludeStage = canSendToApprover || isApprover || isImobilizado;
+  /** Rascunho direto, solicitante ou retorno — pode encerrar. */
+  const canCloseAsSolicitante = Boolean(isDraft);
+  const canCloseAsAprovador = isApprover || isImobilizado;
+  const closeActor: CloseRequestActor = canCloseAsAprovador ? 'aprovador' : 'solicitante';
   const draftEditable = Boolean(isDraft);
   const fieldsEditable = draftEditable || isApprover || isImobilizado;
   const approverEditable = isApprover;
@@ -371,7 +380,7 @@ export function DetalhesSolicitacaoPage() {
         ...(request.classificationInvalidated && editFamilyId
           ? { familyId: editFamilyId }
           : {}),
-        editNote: editNote.trim() || 'Aprovador alterou campos da solicitação.',
+        editNote: editNote.trim() || 'Aprovador - Administrativo alterou campos da solicitação.',
         items: buildItemsPayload(),
       });
       setEditNote('');
@@ -403,7 +412,8 @@ export function DetalhesSolicitacaoPage() {
       await requestsApi.update(request.id, {
         familyId: editFamilyId,
         editNote:
-          editNote.trim() || 'Imobilizado atualizou a classificação (árvore de ativo fixo).',
+          editNote.trim() ||
+            'Aprovador - Imobilizado atualizou a classificação (árvore de ativo fixo).',
         items: buildItemsPayload(),
       });
       setEditNote('');
@@ -492,11 +502,7 @@ export function DetalhesSolicitacaoPage() {
     setBusy(true);
     try {
       await requestsApi.sendToApprover(request.id, stageComment.trim());
-      alert(
-        request.fixedAsset
-          ? 'Solicitação enviada ao aprovador de imobilizado (ativo fixo).'
-          : 'Solicitação enviada ao aprovador.',
-      );
+      alert('Solicitação enviada ao aprovador - imobilizado (triagem inicial).');
       navigate('/produtos/caixa-de-entrada');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Falha ao enviar ao aprovador.');
@@ -538,25 +544,25 @@ export function DetalhesSolicitacaoPage() {
   async function sendFromImobilizado() {
     if (!request) return;
     if (!stageComment.trim()) {
-      alert('Escreva um comentário sobre a conclusão da etapa de imobilizado.');
+      alert('Escreva um comentário sobre a conclusão da etapa Aprovador - Imobilizado.');
       return;
     }
-    if (request.classificationInvalidated) {
+    if (request.fixedAsset && request.classificationInvalidated) {
       alert(
-        'Classificação invalidada: escolha a família e os grupos de Ativo Fixo e salve antes de encaminhar.',
+        'Classificação invalidada: escolha a família e os grupos de Ativo Fixo e salve antes de registrar na base.',
       );
       return;
     }
 
-    const concludesAlone = request.returnToApprover === false;
+    const concludesAsAf = request.fixedAsset === true;
     let itemNcms: { itemId: string; ncm: string }[] | undefined;
-    if (concludesAlone) {
+    if (concludesAsAf) {
       itemNcms = [];
       for (const it of request.items) {
         const ncm = selectedNcm[it.id] || customNcm[it.id] || it.ncmCode;
         if (!ncm) {
           alert(
-            'ITM-09: confirme o NCM de todos os itens antes que o Imobilizado encerre sozinho.',
+            'ITM-09: confirme o NCM de todos os itens antes de registrar na base de ativos fixos.',
           );
           return;
         }
@@ -572,13 +578,35 @@ export function DetalhesSolicitacaoPage() {
         itemNcms,
       );
       alert(
-        concludesAlone
-          ? 'Imobilizado encerrou a solicitação. Itens promovidos à Base de Produtos.'
-          : 'Etapa de imobilizado concluída. Solicitação enviada ao aprovador de cadastro.',
+        concludesAsAf
+          ? 'Item(ns) registrados na base de ativos fixos. Solicitação encerrada.'
+          : 'Não é ativo fixo — encaminhado ao aprovador - administrativo.',
       );
-      navigate(concludesAlone ? '/produtos/base' : '/produtos/caixa-de-entrada');
+      navigate(concludesAsAf ? '/produtos/base' : '/produtos/caixa-de-entrada');
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao encaminhar ao aprovador.');
+      alert(e instanceof Error ? e.message : 'Falha ao concluir a etapa de imobilizado.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function markAsFixedAsset() {
+    if (!request) return;
+    if (!stageComment.trim()) {
+      alert('Escreva um comentário ao classificar como ativo fixo.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const updated = await requestsApi.markFixedAsset(request.id, stageComment.trim());
+      setRequest(updated);
+      setStageComment('');
+      await reloadRequest();
+      alert(
+        'Classificado como ativo fixo. Complete a classificação e registre na base — não passa pelo administrativo.',
+      );
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Falha ao marcar como ativo fixo.');
     } finally {
       setBusy(false);
     }
@@ -616,14 +644,18 @@ export function DetalhesSolicitacaoPage() {
           `Lote dividido.\n\n` +
             `• Esta solicitação permanece com os itens que não foram reclassificados.\n` +
             `• Nova solicitação ${newChild.id.slice(0, 8)}… criada para os itens reclassificados ` +
-            `(${newChild.fixedAsset ? 'Ativo Fixo / Imobilizado' : 'Uso e Consumo / Aprovador'}).`,
+            `(${newChild.fixedAsset ? 'Ativo Fixo / Aprovador - Imobilizado' : 'Uso e Consumo / Aprovador - Administrativo'}).`,
         );
         await reloadRequest();
       } else if (reclassifyDirection === 'fixed-asset') {
-        alert('Solicitação reclassificada como Ativo Fixo e enviada ao Imobilizado.');
+        alert(
+          'Solicitação reclassificada como Ativo Fixo e enviada ao Aprovador - Imobilizado.',
+        );
         navigate('/produtos/caixa-de-entrada');
       } else {
-        alert('Solicitação reclassificada como Uso e Consumo e enviada ao Aprovador.');
+        alert(
+          'Solicitação reclassificada como Uso e Consumo e enviada ao Aprovador - Administrativo.',
+        );
         navigate('/produtos/caixa-de-entrada');
       }
     } catch (e) {
@@ -646,6 +678,26 @@ export function DetalhesSolicitacaoPage() {
       navigate('/produtos/caixa-de-entrada');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Falha ao devolver solicitação.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function closeRequest(payload: { reasonCode: string; observation: string }) {
+    if (!request) return;
+    setBusy(true);
+    try {
+      await requestsApi.close(request.id, {
+        reasonCode: payload.reasonCode || undefined,
+        observation: payload.observation || undefined,
+      });
+      setCloseOpen(false);
+      alert(
+        'Solicitação encerrada. Ela não pode ser reaberta — se ainda precisar, abra uma nova.',
+      );
+      navigate('/produtos/solicitacoes');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Falha ao encerrar solicitação.');
     } finally {
       setBusy(false);
     }
@@ -1066,7 +1118,7 @@ export function DetalhesSolicitacaoPage() {
             disabled={busy || !dirty}
             onClick={() => void saveApproverChanges()}
           >
-            Salvar alterações do aprovador
+            Salvar alterações do aprovador - administrativo
           </button>
         </div>
       ) : null}
@@ -1088,7 +1140,7 @@ export function DetalhesSolicitacaoPage() {
             disabled={busy || !dirty}
             onClick={() => void saveImobilizadoChanges()}
           >
-            Salvar classificação do Imobilizado
+            Salvar classificação do aprovador - imobilizado
           </button>
         </div>
       ) : null}
@@ -1145,9 +1197,17 @@ export function DetalhesSolicitacaoPage() {
             disabled={busy}
             onClick={() => void sendToApprover()}
           >
-            {request.fixedAsset
-              ? 'Enviar ao imobilizado'
-              : 'Enviar formulário para aprovador'}
+            Enviar ao aprovador - imobilizado
+          </button>
+        ) : null}
+        {canCloseAsSolicitante ? (
+          <button
+            type="button"
+            className="btn btn-outline"
+            disabled={busy}
+            onClick={() => setCloseOpen(true)}
+          >
+            Encerrar solicitação
           </button>
         ) : null}
         {isImobilizado ? (
@@ -1164,23 +1224,52 @@ export function DetalhesSolicitacaoPage() {
               type="button"
               className="btn btn-outline"
               disabled={busy}
-              onClick={() => {
-                setReclassifyDirection('consumption');
-                setReclassifyOpen(true);
-              }}
+              onClick={() => setCloseOpen(true)}
             >
-              Reclassificar como Uso e Consumo
+              Encerrar solicitação
             </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={busy}
-              onClick={() => void sendFromImobilizado()}
-            >
-              {request.returnToApprover === false
-                ? 'Encerrar solicitação (Imobilizado)'
-                : 'Encaminhar ao aprovador de cadastro'}
-            </button>
+            {!request.fixedAsset ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={busy}
+                  onClick={() => void markAsFixedAsset()}
+                >
+                  É ativo fixo
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={busy}
+                  onClick={() => void sendFromImobilizado()}
+                >
+                  Não é ativo fixo — encaminhar ao administrativo
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={busy}
+                  onClick={() => {
+                    setReclassifyDirection('consumption');
+                    setReclassifyOpen(true);
+                  }}
+                >
+                  Desfazer — é uso e consumo
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={busy}
+                  onClick={() => void sendFromImobilizado()}
+                >
+                  Registrar na base de ativos fixos
+                </button>
+              </>
+            )}
           </>
         ) : null}
         {isApprover ? (
@@ -1193,8 +1282,13 @@ export function DetalhesSolicitacaoPage() {
             >
               Devolver ao solicitante
             </button>
-            <button type="button" className="btn btn-outline" disabled>
-              Recusar solicitação
+            <button
+              type="button"
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => setCloseOpen(true)}
+            >
+              Encerrar solicitação
             </button>
             <button
               type="button"
@@ -1299,6 +1393,14 @@ export function DetalhesSolicitacaoPage() {
         busy={busy}
         onClose={() => setReclassifyOpen(false)}
         onConfirm={(payload) => void confirmReclassify(payload)}
+      />
+
+      <CloseRequestDialog
+        open={closeOpen}
+        actor={closeActor}
+        busy={busy}
+        onClose={() => setCloseOpen(false)}
+        onConfirm={(payload) => void closeRequest(payload)}
       />
     </section>
   );

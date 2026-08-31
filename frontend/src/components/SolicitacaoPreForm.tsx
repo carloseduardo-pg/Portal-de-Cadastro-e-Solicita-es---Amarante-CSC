@@ -16,6 +16,8 @@ type Props = {
   hotelError?: string;
   familyError?: string;
   readOnly?: boolean;
+  /** Quando true, oculta o seletor de tipo (solicitante não decide AF/UC). */
+  hideKind?: boolean;
   /** Quando true, bloqueia só o tipo de item (uso/consumo × AF). */
   kindReadOnly?: boolean;
   /** Quando true, bloqueia só as unidades. */
@@ -44,6 +46,7 @@ export function SolicitacaoPreForm({
   hotelError,
   familyError,
   readOnly = false,
+  hideKind = false,
   kindReadOnly,
   hotelsReadOnly,
   onHotelChange,
@@ -112,6 +115,11 @@ export function SolicitacaoPreForm({
             <>
               <strong>ITM-11:</strong> unidades e família desta solicitação (somente visualização).
             </>
+          ) : hideKind ? (
+            <>
+              <strong>ITM-11:</strong> selecione as unidades e a família. A classificação final
+              (uso e consumo ou ativo fixo) é feita pelo aprovador - imobilizado.
+            </>
           ) : (
             <>
               <strong>ITM-11:</strong> selecione as unidades e a família desta solicitação. Depois adicione
@@ -122,13 +130,14 @@ export function SolicitacaoPreForm({
       </header>
 
       <div className="solicitacao-pre-form-body">
+        {hideKind ? null : (
         <FormField
           label="Tipo de item"
           required
           hint={
             fixedAsset
-              ? 'Ativo fixo: famílias patrimoniais e etapa Imobilizado antes do aprovador de cadastro.'
-              : 'Uso e consumo: famílias de estoque/consumo e fluxo padrão ao aprovador.'
+              ? 'Ativo fixo: famílias patrimoniais — tratativa exclusiva do aprovador - imobilizado.'
+              : 'Uso e consumo: famílias de estoque/consumo — após o imobilizado, segue ao administrativo.'
           }
         >
           <div
@@ -159,6 +168,7 @@ export function SolicitacaoPreForm({
             </button>
           </div>
         </FormField>
+        )}
 
         <HotelMultiSelect
           hotels={hotels}

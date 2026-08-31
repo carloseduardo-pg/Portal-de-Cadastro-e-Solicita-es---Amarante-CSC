@@ -43,8 +43,8 @@ const OPERATOR_STAGE_OPTIONS = [
   { value: '', label: 'Qualquer etapa' },
   { value: 'RASCUNHO', label: 'Rascunho' },
   { value: 'SOLICITANTE', label: 'Solicitante' },
-  { value: 'IMOBILIZADO', label: 'Imobilizado' },
-  { value: 'APROVADOR', label: 'Aprovador' },
+  { value: 'IMOBILIZADO', label: 'Aprovador - Imobilizado' },
+  { value: 'APROVADOR', label: 'Aprovador - Administrativo' },
   { value: 'RETORNO_SOLICITANTE', label: 'Retorno solicitante' },
   { value: 'ENCERRADO', label: 'Encerramento' },
 ];

@@ -23,6 +23,7 @@ Este repo é o **Portal de Cadastro & Solicitação** da Amarante CSC (stack Pro
 | **ITM-01** | Todo dado de item gravado em CAIXA ALTA (trigger no banco, não só UI) |
 | **ITM-09** | NCM nunca gravado sem confirmação humana explícita (`ncm_confirmed_by`) |
 | **ITM-11** | Lote = uma única família por solicitação (`requests.family_id`) |
+| **FLX-01** | Solicitante **nunca** envia direto ao Aprovador - Administrativo. Toda solicitação (inclusive após rascunho/retorno) passa primeiro pelo Aprovador - Imobilizado (triagem AF × UC). Só o Imobilizado encaminha UC ao Administrativo; AF encerra na base AF sem Administrativo |
 | **FIS-04** | Fornecedor externo vê exclusivamente dados do próprio CNPJ |
 | **FIS-17** | Fluxo fiscal no V360 — portal alimenta, não substitui |
 

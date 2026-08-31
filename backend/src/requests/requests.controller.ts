@@ -187,6 +187,19 @@ export class RequestsController {
     return this.requests.returnToRequester(id, req.user?.id ?? '', body.message ?? '');
   }
 
+  /**
+   * Encerrar sem promover à base (REPROVADO).
+   * Solicitante: motivo opcional. Aprovadores: motivo + observação obrigatórios.
+   */
+  @Post(':id/close')
+  close(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { reasonCode?: string; observation?: string },
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    return this.requests.closeRequest(id, req.user?.id ?? '', body ?? {});
+  }
+
   @Post(':id/send-to-approver')
   sendToApprover(
     @Param('id', ParseUUIDPipe) id: string,
@@ -196,7 +209,7 @@ export class RequestsController {
     return this.requests.sendToApprover(id, req.user?.id ?? '', body.message ?? '');
   }
 
-  /** Imobilizado → Aprovador de cadastro (ativo fixo), ou encerra se returnToApprover=false. */
+  /** Imobilizado → Aprovador de cadastro (UC) ou registra na base AF e encerra. */
   @Post(':id/send-from-imobilizado')
   sendFromImobilizado(
     @Param('id', ParseUUIDPipe) id: string,
@@ -209,6 +222,16 @@ export class RequestsController {
       body.message ?? '',
       body.items ?? [],
     );
+  }
+
+  /** Imobilizado classifica o lote como Ativo Fixo (permanece na etapa). */
+  @Post(':id/mark-fixed-asset')
+  markFixedAsset(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { message?: string },
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    return this.requests.markAsFixedAsset(id, req.user?.id ?? '', body.message ?? '');
   }
 
   /** Aprovador → reclassifica lote como Ativo Fixo (etapa Imobilizado). */

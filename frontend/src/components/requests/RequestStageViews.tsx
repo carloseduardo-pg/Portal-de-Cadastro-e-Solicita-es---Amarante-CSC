@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { REQUEST_STATE_COLORS, REQUEST_STATE_LABELS } from '../../lib/requestLabels';
 import type { Request } from '../../lib/types';
 import { slaBadge } from '../../lib/types';
 
@@ -76,10 +77,26 @@ export function groupRequestsByPriority(rows: Request[]) {
 
 /** Etapas ativas da caixa de entrada (badge nos cards). */
 export const INBOX_STAGE_COLUMNS: StageColumn[] = [
-  { state: 'SOLICITANTE', label: 'Solicitante', color: '#F8AB2B' },
-  { state: 'RETORNO_SOLICITANTE', label: 'Retorno', color: '#D97706' },
-  { state: 'IMOBILIZADO', label: 'Imobilizado', color: '#B45309' },
-  { state: 'APROVADOR', label: 'Aprovador', color: '#7E975B' },
+  {
+    state: 'SOLICITANTE',
+    label: REQUEST_STATE_LABELS.SOLICITANTE,
+    color: REQUEST_STATE_COLORS.SOLICITANTE,
+  },
+  {
+    state: 'RETORNO_SOLICITANTE',
+    label: 'Retorno',
+    color: REQUEST_STATE_COLORS.RETORNO_SOLICITANTE,
+  },
+  {
+    state: 'IMOBILIZADO',
+    label: REQUEST_STATE_LABELS.IMOBILIZADO,
+    color: REQUEST_STATE_COLORS.IMOBILIZADO,
+  },
+  {
+    state: 'APROVADOR',
+    label: REQUEST_STATE_LABELS.APROVADOR,
+    color: REQUEST_STATE_COLORS.APROVADOR,
+  },
 ];
 
 /** Colunas visíveis na caixa conforme perfil (Produtos — sem Compliance). */
@@ -96,10 +113,8 @@ export function inboxColumnsForRole(role?: string, inboxStages?: string[]) {
   return INBOX_STAGE_COLUMNS.filter((c) => allowed.includes(c.state));
 }
 
-/** Tinta cor de etapa como fundo leve. */
-export function stageTint(color: string, pct: number) {
-  return `color-mix(in srgb, ${color} ${pct}%, white)`;
-}
+/** Reexport — tinta de etapa (fonte: requestLabels). */
+export { stageTint } from '../../lib/requestLabels';
 
 /**
  * Título do card/listagem:
@@ -200,7 +215,7 @@ export function RequestInboxCard({
   compact,
 }: {
   request: Request;
-  /** Colunas de etapa para badge visual (Solicitante / Aprovador / Compliance). */
+  /** Colunas de etapa para badge visual (Solicitante / Aprovador - Imobilizado / Aprovador - Administrativo). */
   stageColumns: StageColumn[];
   showStageBadge?: boolean;
   compact?: boolean;

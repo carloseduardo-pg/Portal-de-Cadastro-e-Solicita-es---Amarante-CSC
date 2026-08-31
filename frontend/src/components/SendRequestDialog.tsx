@@ -13,7 +13,8 @@ type Props = {
 };
 
 /**
- * Confirmação de envio com 3 ações: cancelar, rascunho (solicitante) ou enviar ao aprovador.
+ * Confirmação de envio: cancelar, rascunho (solicitante) ou enviar ao
+ * aprovador - imobilizado (primeira aprovação — FLX-01).
  */
 export function SendRequestDialog({
   open,
@@ -21,7 +22,7 @@ export function SendRequestDialog({
   message,
   cancelLabel = 'Cancelar',
   draftLabel = 'Salvar como rascunho',
-  confirmLabel = 'Enviar ao aprovador',
+  confirmLabel = 'Enviar ao aprovador - imobilizado',
   onCancel,
   onDraft,
   onConfirm,

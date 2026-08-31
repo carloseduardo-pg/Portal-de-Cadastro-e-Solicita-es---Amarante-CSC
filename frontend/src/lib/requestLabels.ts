@@ -4,8 +4,16 @@ export const REQUEST_STATE_LABELS: Record<string, string> = {
   /** Etapa histórica de preenchimento — exibida como Rascunho (mesmo conceito). */
   FORMULARIO: 'Rascunho',
   SOLICITANTE: 'Solicitante',
-  IMOBILIZADO: 'Imobilizado',
-  APROVADOR: 'Aprovador',
+  /**
+   * Aprovação patrimonial (ativo fixo). Enum Prisma: `IMOBILIZADO`.
+   * Sempre exibir completo — não usar só "Aprovador" ou só "Imobilizado".
+   */
+  IMOBILIZADO: 'Aprovador - Imobilizado',
+  /**
+   * Aprovação final de cadastro (grava na base). Enum Prisma: `APROVADOR`.
+   * Sempre exibir completo — não usar só "Aprovador".
+   */
+  APROVADOR: 'Aprovador - Administrativo',
   COMPLIANCE: 'Compliance',
   ENCERRADO: 'Encerrada — Aprovada',
   APROVADO: 'Encerrada — Aprovada',
@@ -15,12 +23,43 @@ export const REQUEST_STATE_LABELS: Record<string, string> = {
   EXPIRADA: 'Expirada',
 };
 
+/**
+ * Cores das tags de etapa (mesma paleta da caixa / blocos de Solicitações).
+ * Usar em badges, timeline e KPIs — não inventar cor por tela.
+ */
+export const REQUEST_STATE_COLORS: Record<string, string> = {
+  RASCUNHO: '#F8AB2B',
+  FORMULARIO: '#F8AB2B',
+  SOLICITANTE: '#F8AB2B',
+  RETORNO_SOLICITANTE: '#D97706',
+  IMOBILIZADO: '#B45309',
+  APROVADOR: '#7E975B',
+  COMPLIANCE: '#6366F1',
+  ENCERRADO: '#094111',
+  APROVADO: '#094111',
+  REPROVADO: '#DC2626',
+  EXPIRADA: '#DC2626',
+  ERRO_INTEGRACAO: '#DC2626',
+};
+
+const DEFAULT_STAGE_COLOR = '#094111';
+
+/** Cor da tag da etapa (hex). */
+export function requestStateColor(state: string) {
+  return REQUEST_STATE_COLORS[state] ?? DEFAULT_STAGE_COLOR;
+}
+
+/** Tinta clara da cor de etapa (fundo de card/badge). */
+export function stageTint(color: string, pct: number) {
+  return `color-mix(in srgb, ${color} ${pct}%, white)`;
+}
+
 /** Valores especiais do filtro de etapa em Solicitações. */
 export const REGISTRY_STAGE_FILTER_OPTIONS = [
   { value: '', label: 'Etapa (todas)' },
   { value: 'SOLICITANTE', label: 'Solicitante' },
-  { value: 'IMOBILIZADO', label: 'Imobilizado' },
-  { value: 'APROVADOR', label: 'Aprovador' },
+  { value: 'IMOBILIZADO', label: REQUEST_STATE_LABELS.IMOBILIZADO },
+  { value: 'APROVADOR', label: REQUEST_STATE_LABELS.APROVADOR },
   { value: 'RETORNO_SOLICITANTE', label: 'Retorno solicitante' },
   { value: 'ENCERRADA', label: 'Encerrada (todas)' },
   { value: 'ENCERRADA_APROVADA', label: 'Encerrada — Aprovada' },
@@ -33,8 +72,8 @@ export const REGISTRY_STAGE_FILTER_OPTIONS = [
 /** Etapa principal do fluxo (blocos da tela Solicitações). */
 export const REQUEST_MAIN_STAGE_LABELS: Record<string, string> = {
   solicitante: 'Solicitante',
-  imobilizado: 'Imobilizado',
-  aprovador: 'Aprovador',
+  imobilizado: REQUEST_STATE_LABELS.IMOBILIZADO,
+  aprovador: REQUEST_STATE_LABELS.APROVADOR,
   encerrado: 'Encerrado',
 };
 

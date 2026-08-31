@@ -12,23 +12,40 @@
 
 .request-timeline-item {
   position: relative;
-  padding: 0 0 20px 24px;
+  padding: 0 0 24px 24px;
 }
 
 .request-timeline-item:last-child {
   padding-bottom: 0;
 }
 
+/** Bullet + data/hora na mesma linha, fora do card. */
+.request-timeline-marker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px -33px;
+  min-height: 18px;
+}
+
 .request-timeline-dot {
-  position: absolute;
-  left: -9px;
-  top: 14px;
+  flex: 0 0 auto;
   width: 14px;
   height: 14px;
   border-radius: 50%;
   background: var(--brand-primary, #094111);
   border: 2px solid #fff;
   box-shadow: 0 0 0 1px var(--brand-primary, #094111);
+}
+
+.request-timeline-when {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--brand-accent, #f8ab2b);
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .request-timeline-card {
@@ -51,7 +68,6 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: var(--brand-primary, #094111);
   margin-bottom: 8px !important;
   display: flex;
   flex-wrap: wrap;
@@ -85,7 +101,6 @@
 }
 
 .request-timeline-waiting {
-  color: var(--brand-secondary, #7e975b);
   font-weight: 600;
 }
 

@@ -75,7 +75,7 @@ type RequestItemCompareTableProps = {
   loading?: boolean;
 };
 
-/** Tabela comparativa Base vs solicitação — somente etapa Aprovador. */
+/** Tabela comparativa Base vs solicitação — somente etapa Aprovador - Administrativo. */
 export function RequestItemCompareTable({
   baseProduct,
   item,

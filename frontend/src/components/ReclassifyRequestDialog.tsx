@@ -139,15 +139,15 @@ export function ReclassifyRequestDialog({
           {isPartial ? (
             <p className="reclassify-dialog__warn" role="status">
               {direction === 'fixed-asset'
-                ? `Lote misto: ${selectedIds.length} item(ns) de ativo fixo vão para uma nova solicitação no Imobilizado; os ${items.length - selectedIds.length} restante(s) de consumo ficam nesta solicitação (Aprovador). As duas ficam vinculadas.`
-                : `Lote misto: ${selectedIds.length} item(ns) de uso e consumo vão para uma nova solicitação no Aprovador; os ${items.length - selectedIds.length} restante(s) de ativo fixo ficam no Imobilizado. As duas ficam vinculadas.`}
+                ? `Lote misto: ${selectedIds.length} item(ns) de ativo fixo vão para uma nova solicitação no Aprovador - Imobilizado; os ${items.length - selectedIds.length} restante(s) de consumo ficam nesta solicitação (Aprovador - Administrativo). As duas ficam vinculadas.`
+                : `Lote misto: ${selectedIds.length} item(ns) de uso e consumo vão para uma nova solicitação no Aprovador - Administrativo; os ${items.length - selectedIds.length} restante(s) de ativo fixo ficam no Aprovador - Imobilizado. As duas ficam vinculadas.`}
             </p>
           ) : null}
         </fieldset>
 
         {direction === 'fixed-asset' ? (
           <fieldset className="reclassify-dialog__return" disabled={busy}>
-            <legend>Após a análise do Imobilizado</legend>
+            <legend>Após a análise do Aprovador - Imobilizado</legend>
             <label>
               <input
                 type="radio"
@@ -155,7 +155,8 @@ export function ReclassifyRequestDialog({
                 checked={returnToApprover === true}
                 onChange={() => setReturnToApprover(true)}
               />
-              Após a análise do Imobilizado, a solicitação volta para mim
+              Após a análise do Aprovador - Imobilizado, a solicitação volta para o Aprovador -
+              Administrativo
             </label>
             <label>
               <input
@@ -164,7 +165,7 @@ export function ReclassifyRequestDialog({
                 checked={returnToApprover === false}
                 onChange={() => setReturnToApprover(false)}
               />
-              O Imobilizado conclui sozinho
+              O Aprovador - Imobilizado conclui sozinho
             </label>
           </fieldset>
         ) : null}

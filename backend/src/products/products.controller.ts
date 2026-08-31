@@ -46,6 +46,7 @@ export class ProductsController {
     @Query('hotel') hotelCode?: string,
     @Query('active') active?: string,
     @Query('family_id') familyId?: string,
+    @Query('item_kind') itemKind?: 'CONSUMPTION' | 'FIXED_ASSET',
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
@@ -54,6 +55,7 @@ export class ProductsController {
       hotelCode,
       active,
       familyId,
+      itemKind,
       ...parsePage(page, pageSize),
     });
   }

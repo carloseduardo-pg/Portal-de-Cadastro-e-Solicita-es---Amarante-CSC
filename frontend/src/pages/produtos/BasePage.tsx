@@ -9,9 +9,11 @@ import type { Family, Hotel, ProductBase } from '../../lib/types';
 import './produtos.css';
 
 type StatusFilter = 'active' | 'inactive' | 'all';
+type BaseKindTab = 'CONSUMPTION' | 'FIXED_ASSET';
 
-/** Base unificada de produtos — ativos/inativos e filtros detalhados. */
+/** Base de produtos — abas separadas Uso e consumo × Ativo fixo (catálogos distintos). */
 export function BasePage() {
+  const [kindTab, setKindTab] = useState<BaseKindTab>('CONSUMPTION');
   const [rows, setRows] = useState<ProductBase[]>([]);
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [families, setFamilies] = useState<Family[]>([]);
@@ -43,8 +45,15 @@ export function BasePage() {
 
   useEffect(() => {
     void catalogApi.hotels().then(setHotels);
-    void catalogApi.families({ pageSize: 100 }).then((r) => setFamilies(r.data));
   }, []);
+
+  useEffect(() => {
+    setFamilyId('');
+    void catalogApi
+      .families({ pageSize: 500, itemKind: kindTab })
+      .then((r) => setFamilies(r.data))
+      .catch(console.error);
+  }, [kindTab]);
 
   async function load(p = page) {
     setLoading(true);
@@ -55,6 +64,7 @@ export function BasePage() {
         hotel: hotel || undefined,
         active: activeParam,
         familyId: familyId || undefined,
+        itemKind: kindTab,
         page: p,
         pageSize,
       });
@@ -72,16 +82,42 @@ export function BasePage() {
       void load(1);
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, hotel, familyId, status]);
+  }, [search, hotel, familyId, status, kindTab]);
+
+  const isAf = kindTab === 'FIXED_ASSET';
 
   return (
     <section>
       <h1 className="module-title">BASE DE PRODUTOS</h1>
+
+      <div className="param-tabs" role="tablist" aria-label="Tipo de base">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!isAf}
+          className={`param-tab ${!isAf ? 'active' : ''}`}
+          onClick={() => setKindTab('CONSUMPTION')}
+        >
+          Uso e consumo
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isAf}
+          className={`param-tab ${isAf ? 'active' : ''}`}
+          onClick={() => setKindTab('FIXED_ASSET')}
+        >
+          Ativo fixo
+        </button>
+      </div>
+
       <p className="info-banner">
-        Catálogo unificado — um produto, múltiplos hotéis. Filtre por status, unidade, família ou descrição.
+        {isAf
+          ? 'Base patrimonial (ativo fixo) — catálogo e fluxo distintos do uso e consumo. Filtre por status, unidade, família ou descrição.'
+          : 'Base de uso e consumo — catálogo e fluxo distintos do ativo fixo. Filtre por status, unidade, família ou descrição.'}
       </p>
 
-      {duplicatePairs > 0 && status !== 'inactive' ? (
+      {duplicatePairs > 0 && status !== 'inactive' && !isAf ? (
         <div className="duplicate-summary">
           <strong>{duplicatePairs} produtos com descrição idêntica na base</strong>
           <button type="button" className="btn btn-outline" onClick={() => setSearch('camisa')}>
@@ -121,24 +157,44 @@ export function BasePage() {
       </div>
 
       <div className="queue-tabs">
-        <button type="button" className={`queue-tab ${!hotel ? 'active' : ''}`} onClick={() => setHotel('')}>Todos hotéis</button>
+        <button
+          type="button"
+          className={`queue-tab ${!hotel ? 'active' : ''}`}
+          onClick={() => setHotel('')}
+        >
+          Todos hotéis
+        </button>
         {hotels.map((h) => (
-          <button key={h.id} type="button" className={`queue-tab ${hotel === h.code ? 'active' : ''}`} onClick={() => setHotel(h.code)}>
+          <button
+            key={h.id}
+            type="button"
+            className={`queue-tab ${hotel === h.code ? 'active' : ''}`}
+            onClick={() => setHotel(h.code)}
+          >
             {h.code}
           </button>
         ))}
       </div>
 
+      <p className="param-count" role="status">
+        {loading ? 'Carregando…' : `${total} registro${total === 1 ? '' : 's'}`}
+      </p>
+
       <DataTable
         rows={rows}
         rowKey={(r) => r.id}
+        emptyMessage={loading ? 'Carregando…' : 'Nenhum produto nesta base.'}
         columns={[
-          { key: 'status', header: 'Status', render: (r) => (
-            <span className={r.active ? 'badge badge--success' : 'badge badge--danger'}>
-              {r.active ? 'ATIVO' : 'INATIVO'}
-            </span>
-          )},
-          { key: 'code', header: 'Código Unificado', render: (r) => r.unifiedCode ?? '—' },
+          {
+            key: 'status',
+            header: 'Status',
+            render: (r) => (
+              <span className={r.active ? 'badge badge--success' : 'badge badge--danger'}>
+                {r.active ? 'ATIVO' : 'INATIVO'}
+              </span>
+            ),
+          },
+          { key: 'code', header: 'Código', render: (r) => r.legacyCode ?? r.unifiedCode ?? '—' },
           { key: 'sap', header: 'Código SAP', render: (r) => r.sapCode ?? '—' },
           {
             key: 'desc',
@@ -147,19 +203,32 @@ export function BasePage() {
               <span>
                 {r.descriptionShort}
                 {r.possibleDuplicate ? (
-                  <span className="duplicate-badge" title={r.similarTo ? `Parecido com ${r.similarTo}` : 'Possível duplicata'}>
+                  <span
+                    className="duplicate-badge"
+                    title={r.similarTo ? `Parecido com ${r.similarTo}` : 'Possível duplicata'}
+                  >
                     possível duplicata
                   </span>
                 ) : null}
               </span>
             ),
           },
-          { key: 'hotels', header: 'Unidades', render: (r) => (
-            <HotelCodeBadges codes={r.hotelCodes ?? r.hotels?.map((ph) => ph.hotel.code) ?? []} />
-          )},
+          {
+            key: 'hotels',
+            header: 'Unidades',
+            render: (r) => (
+              <HotelCodeBadges
+                codes={r.hotelCodes ?? r.hotels?.map((ph) => ph.hotel.code) ?? []}
+              />
+            ),
+          },
           { key: 'family', header: 'Família', render: (r) => r.family?.name ?? '—' },
           { key: 'ncm', header: 'NCM', render: (r) => formatNcmDisplay(r.ncmCode) || '—' },
-          { key: 'unit', header: 'Unidade', render: (r) => r.measureUnit?.code ?? '—' },
+          {
+            key: 'unit',
+            header: 'Unidade',
+            render: (r) => (isAf ? '—' : r.measureUnit?.code ?? '—'),
+          },
         ]}
       />
       <PaginationBar page={page} pageSize={pageSize} total={total} onChange={(p) => void load(p)} />

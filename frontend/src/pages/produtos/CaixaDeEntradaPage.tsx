@@ -26,7 +26,8 @@ function toggleBucketSet(list: Set<string>, id: string) {
 
 /**
  * Caixa de entrada — quadro por prioridade (Novas / Do dia / Atrasadas).
- * Badge de etapa nos cards distingue Solicitante, Aprovador e Compliance (Admin vê todos).
+ * Badge de etapa nos cards distingue Solicitante, Aprovador - Imobilizado e
+ * Aprovador - Administrativo (Admin vê todos).
  */
 export function CaixaDeEntradaPage() {
   const { user } = useAuth();
@@ -122,11 +123,11 @@ export function CaixaDeEntradaPage() {
 
   const roleHint =
     effectiveRole === 'ADMIN'
-      ? 'Perfil Admin: fila unificada com badge de etapa (Solicitante, Imobilizado, Aprovador).'
+      ? 'Perfil Admin: fila unificada com badge de etapa (Solicitante, Aprovador - Imobilizado, Aprovador - Administrativo).'
       : effectiveRole === 'APROVADOR_IMOBILIZADO'
-        ? 'Perfil Imobilizado: somente solicitações de ativo fixo na sua etapa.'
+        ? 'Perfil Aprovador - Imobilizado: toda solicitação nova chega aqui para triagem (ativo fixo ou uso e consumo).'
         : effectiveRole === 'APROVADOR'
-          ? 'Perfil Aprovador: somente solicitações na sua etapa.'
+          ? 'Perfil Aprovador - Administrativo: somente solicitações na sua etapa.'
           : 'Perfil Solicitante: somente solicitações na sua etapa.';
 
   return (

@@ -271,12 +271,13 @@ export class ProductsService {
     return byProduct;
   }
 
-  /** Base de produtos — 1 produto, N hotéis; status e família como filtros. */
+  /** Base de produtos — 1 produto, N hotéis; status, família e tipo (UC / AF). */
   async findBase(params: {
     search?: string;
     hotelCode?: string;
     active?: string;
     familyId?: string;
+    itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
   } & PageParams) {
     const where: Prisma.ProductWhereInput = {};
     if (params.active === 'false') where.active = false;
@@ -284,6 +285,9 @@ export class ProductsService {
       /* sem filtro de status */
     } else {
       where.active = true;
+    }
+    if (params.itemKind) {
+      where.itemKind = params.itemKind;
     }
     if (params.familyId) {
       where.group = { subgroup: { familyId: params.familyId } };

@@ -13,6 +13,8 @@ import {
   formatRequestDate,
   REGISTRY_STAGE_FILTER_OPTIONS,
   requestMainStageLabel,
+  requestStateColor,
+  stageTint,
 } from '../../lib/requestLabels';
 import { requestsApi } from '../../lib/resources';
 import type { QueueResult, Request } from '../../lib/types';
@@ -217,15 +219,27 @@ export function SolicitacoesPage() {
           },
           {
             key: 'approver',
-            header: 'Aprovador',
+            header: 'Aprovado por',
             render: (r) => r.approvedBy?.name ?? '—',
           },
           {
             key: 'state',
             header: 'Etapa / Destino',
-            render: (r) => (
-              <span className="inbox-stage-pill">{requestMainStageLabel(r.state)}</span>
-            ),
+            render: (r) => {
+              const color = requestStateColor(r.state);
+              return (
+                <span
+                  className="inbox-stage-pill"
+                  style={{
+                    color,
+                    background: stageTint(color, 18),
+                    border: `1px solid ${color}`,
+                  }}
+                >
+                  {requestMainStageLabel(r.state)}
+                </span>
+              );
+            },
           },
           {
             key: 'actions',

@@ -19,6 +19,10 @@ import { pageResult, skipTake, type PageParams } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateRequestDto, UpdateRequestDto } from './dto/create-request.dto';
 import type { ReclassifyRequestDto } from './dto/reclassify-request.dto';
+import {
+  closeReasonLabel,
+  isCloseReasonCode,
+} from './close-reasons';
 import { isBlockRequestType, isExistingProductRequestType } from './request-type.helpers';
 
 const ACTIONABLE_STATES: RequestState[] = [
@@ -44,6 +48,20 @@ const EDITABLE_STATES: RequestState[] = [
 /** Outcome de etapa ao reclassificar consumo ↔ ativo fixo. */
 const OUTCOME_RECLASSIFY_FIXED_ASSET = 'RECLASSIFY_FIXED_ASSET';
 const OUTCOME_RECLASSIFY_CONSUMPTION = 'RECLASSIFY_CONSUMPTION';
+/** Encerramento voluntário sem promover à base (solicitante ou aprovador). */
+const OUTCOME_CLOSED = 'CLOSED';
+
+const SOLICITANTE_CLOSE_STATES: RequestState[] = [
+  RequestState.RASCUNHO,
+  RequestState.FORMULARIO,
+  RequestState.SOLICITANTE,
+  RequestState.RETORNO_SOLICITANTE,
+];
+
+const APROVADOR_CLOSE_STATES: RequestState[] = [
+  RequestState.APROVADOR,
+  RequestState.IMOBILIZADO,
+];
 
 /** Etapas visíveis na caixa de entrada conforme o perfil (Produtos — sem Compliance). */
 function inboxStatesForRole(role: UserRole): RequestState[] {
@@ -245,10 +263,12 @@ export class RequestsService {
 
   /**
    * Primeira etapa de aprovação após o solicitante.
-   * Ativo fixo → Imobilizado; caso contrário → Aprovador de cadastro.
+   * REGRA INVIOLÁVEL (fluxo Produtos): o solicitante NUNCA envia direto ao
+   * Aprovador - Administrativo. Toda solicitação passa primeiro pelo
+   * Aprovador - Imobilizado (triagem AF × UC), inclusive após rascunho/retorno.
    */
-  private firstApprovalState(fixedAsset: boolean): RequestState {
-    return fixedAsset ? RequestState.IMOBILIZADO : RequestState.APROVADOR;
+  private firstApprovalState(_fixedAsset?: boolean): RequestState {
+    return RequestState.IMOBILIZADO;
   }
 
   /**
@@ -1034,8 +1054,9 @@ export class RequestsService {
   async create(dto: CreateRequestDto, userId: string) {
     const hotelIds = this.resolveHotelIds(dto);
     await this.validateHotels(hotelIds);
-    const fixedAsset = Boolean(dto.fixedAsset);
-    const itemKind = fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
+    /** Solicitante não define AF/UC — sempre inicia como consumo; Imobilizado tria. */
+    const fixedAsset = false;
+    const itemKind = 'CONSUMPTION' as const;
     await this.assertFamilyExists(dto.familyId, itemKind);
     const requestType = dto.type ?? RequestType.INCLUSAO;
     this.assertObservation(dto.observation, requestType);
@@ -1052,9 +1073,7 @@ export class RequestsService {
     const stageMessage =
       dto.observation?.trim() ||
       (target === 'APROVADOR'
-        ? fixedAsset
-          ? 'Rascunho enviado ao aprovador de imobilizado (ativo fixo)'
-          : 'Rascunho enviado direto ao aprovador'
+        ? 'Rascunho enviado ao aprovador - imobilizado (triagem inicial)'
         : 'Rascunho salvo na caixa do solicitante');
 
     const request = await this.prisma.request.create({
@@ -1152,7 +1171,8 @@ export class RequestsService {
       existing.state === RequestState.APROVADOR &&
       (role === UserRole.APROVADOR || role === UserRole.ADMIN);
     const target = isApproverEdit || isImobilizadoEdit ? 'APROVADOR' : this.resolveTargetStage(dto);
-    const canChangeFixedAsset = requesterEditable.has(existing.state) || role === UserRole.ADMIN;
+    const canChangeFixedAsset =
+      isImobilizadoEdit || role === UserRole.ADMIN;
     const fixedAsset =
       dto.fixedAsset !== undefined && canChangeFixedAsset
         ? Boolean(dto.fixedAsset)
@@ -1203,9 +1223,7 @@ export class RequestsService {
       (isImobilizadoEdit
         ? 'Imobilizado atualizou a classificação (árvore de ativo fixo)'
         : target === 'APROVADOR'
-          ? fixedAsset
-            ? 'Rascunho enviado ao aprovador de imobilizado (ativo fixo)'
-            : 'Rascunho enviado direto ao aprovador'
+          ? 'Rascunho enviado ao aprovador - imobilizado (triagem inicial)'
           : 'Rascunho salvo na caixa do solicitante');
 
     let clearClassificationInvalidated = false;
@@ -1501,7 +1519,125 @@ export class RequestsService {
   }
 
   /**
-   * Solicitante envia à primeira aprovação (Imobilizado se ativo fixo, senão Aprovador).
+   * Encerrar solicitação sem promover à base (estado REPROVADO).
+   * Solicitante (rascunho / solicitante / retorno): motivo opcional.
+   * Aprovador - Administrativo ou Imobilizado: motivo (código) + observação obrigatórios.
+   */
+  async closeRequest(
+    requestId: string,
+    userId: string,
+    body: { reasonCode?: string; observation?: string },
+  ) {
+    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    if (!request) throw new NotFoundException('Solicitação não encontrada');
+
+    const isSolicitanteStage = SOLICITANTE_CLOSE_STATES.includes(request.state);
+    const isAprovadorStage = APROVADOR_CLOSE_STATES.includes(request.state);
+    if (!isSolicitanteStage && !isAprovadorStage) {
+      throw new BadRequestException(
+        'Só é possível encerrar solicitações nas etapas do solicitante ou dos aprovadores.',
+      );
+    }
+
+    const role = await this.resolveUserRole(userId);
+    if (isSolicitanteStage) {
+      const allowed =
+        role === UserRole.ADMIN ||
+        role === UserRole.SOLICITANTE ||
+        request.requesterId === userId;
+      if (!allowed) {
+        throw new ForbiddenException('Sem permissão para encerrar esta solicitação.');
+      }
+    } else {
+      const allowed =
+        role === UserRole.ADMIN ||
+        (role === UserRole.APROVADOR && request.state === RequestState.APROVADOR) ||
+        (role === UserRole.APROVADOR_IMOBILIZADO &&
+          request.state === RequestState.IMOBILIZADO);
+      if (!allowed) {
+        throw new ForbiddenException('Sem permissão para encerrar esta solicitação.');
+      }
+    }
+
+    const reasonCode = body.reasonCode?.trim() || '';
+    const observation = body.observation?.trim() || '';
+
+    if (isAprovadorStage) {
+      if (!isCloseReasonCode(reasonCode)) {
+        throw new BadRequestException('Selecione um motivo válido para o encerramento.');
+      }
+      if (!observation) {
+        throw new BadRequestException(
+          'A observação do encerramento é obrigatória para o aprovador.',
+        );
+      }
+    } else if (reasonCode && !isCloseReasonCode(reasonCode)) {
+      throw new BadRequestException('Motivo de encerramento inválido.');
+    }
+
+    const reasonLabel = closeReasonLabel(reasonCode);
+    const actorLabel = isSolicitanteStage
+      ? 'Solicitante'
+      : request.state === RequestState.IMOBILIZADO
+        ? 'Aprovador - Imobilizado'
+        : 'Aprovador - Administrativo';
+
+    const messageParts = [
+      `Encerrada por ${actorLabel}`,
+      reasonLabel ? `Motivo: ${reasonLabel}` : null,
+      observation || null,
+    ].filter(Boolean);
+    const stageMessage = messageParts.join(' — ');
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.requestStage.updateMany({
+        where: { requestId, finishedAt: null },
+        data: {
+          finishedAt: now,
+          userId,
+          message: stageMessage,
+          outcome: OUTCOME_CLOSED,
+          outcomeDetail: {
+            reasonCode: reasonCode || null,
+            reasonLabel,
+            observation: observation || null,
+            closedBy: isSolicitanteStage ? 'solicitante' : 'aprovador',
+          },
+        },
+      });
+      await tx.requestStage.create({
+        data: {
+          requestId,
+          stage: RequestState.REPROVADO,
+          userId,
+          startedAt: now,
+          finishedAt: now,
+          message: stageMessage,
+          outcome: OUTCOME_CLOSED,
+          outcomeDetail: {
+            reasonCode: reasonCode || null,
+            reasonLabel,
+            observation: observation || null,
+            closedBy: isSolicitanteStage ? 'solicitante' : 'aprovador',
+          },
+        },
+      });
+      await tx.request.update({
+        where: { id: requestId },
+        data: {
+          state: RequestState.REPROVADO,
+          closedAt: now,
+        },
+      });
+    });
+
+    return this.findOne(requestId);
+  }
+
+  /**
+   * Solicitante envia à primeira aprovação — sempre Aprovador - Imobilizado.
+   * Nunca salta para Aprovador - Administrativo sem triagem do Imobilizado.
    */
   async sendToApprover(requestId: string, userId: string, message: string) {
     const trimmed = message?.trim();
@@ -1524,6 +1660,11 @@ export class RequestsService {
     }
 
     const nextState = this.firstApprovalState(request.fixedAsset);
+    if (nextState !== RequestState.IMOBILIZADO) {
+      throw new BadRequestException(
+        'Toda solicitação deve passar pelo aprovador - imobilizado antes do administrativo.',
+      );
+    }
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
       await tx.requestStage.updateMany({
@@ -1545,12 +1686,6 @@ export class RequestsService {
       });
     });
 
-    if (nextState === RequestState.APROVADOR) {
-      await this.prisma.ncmSuggestion.deleteMany({
-        where: { requestItem: { requestId } },
-      });
-      await this.seedNcmSuggestions(requestId);
-    }
     return this.findOne(requestId);
   }
 
@@ -2139,7 +2274,9 @@ export class RequestsService {
   }
 
   /**
-   * Aprovador de imobilizado encaminha ao aprovador de cadastro (ou encerra sozinho).
+   * Conclusão da etapa Imobilizado (triagem):
+   * - fixedAsset=true → registra na base AF e encerra (não passa pelo Administrativo)
+   * - fixedAsset=false → encaminha ao Aprovador - Administrativo como uso e consumo
    */
   async sendFromImobilizadoToApprover(
     requestId: string,
@@ -2166,12 +2303,7 @@ export class RequestsService {
     if (!request) throw new NotFoundException('Solicitação não encontrada');
     if (request.state !== RequestState.IMOBILIZADO) {
       throw new BadRequestException(
-        'Só é possível encaminhar ao aprovador solicitações na etapa Imobilizado.',
-      );
-    }
-    if (!request.fixedAsset) {
-      throw new BadRequestException(
-        'Esta solicitação não é de ativo fixo — etapa Imobilizado não se aplica.',
+        'Só é possível concluir a etapa na fase Aprovador - Imobilizado.',
       );
     }
     const role = await this.resolveUserRole(userId);
@@ -2181,21 +2313,21 @@ export class RequestsService {
       );
     }
 
-    if (request.classificationInvalidated) {
-      await this.assertFixedAssetClassificationReady(
-        request.familyId,
-        request.items.map((i) => ({
-          id: i.id,
-          descriptionShort: i.descriptionShort,
-          groupId: i.groupId,
-        })),
-      );
-    }
-
     const now = new Date();
+    const treatAsFixedAsset = request.fixedAsset === true;
 
-    // Imobilizado conclui sozinho (return_to_approver=false) → promove e encerra.
-    if (request.returnToApprover === false) {
+    if (treatAsFixedAsset) {
+      if (request.classificationInvalidated) {
+        await this.assertFixedAssetClassificationReady(
+          request.familyId,
+          request.items.map((i) => ({
+            id: i.id,
+            descriptionShort: i.descriptionShort,
+            groupId: i.groupId,
+          })),
+        );
+      }
+
       const ncmByItem = new Map<string, string>();
       for (const item of request.items) {
         const pair = itemNcms.find((x) => x.itemId === item.id);
@@ -2207,20 +2339,19 @@ export class RequestsService {
           });
           ncm = product?.ncmCode?.trim() ?? '';
         }
-      if (!ncm && !isBlockRequestType(request.type)) {
-        throw new BadRequestException(
-          'ITM-09: confirme o NCM de todos os itens antes de finalizar.',
-        );
+        if (!ncm && !isBlockRequestType(request.type)) {
+          throw new BadRequestException(
+            'ITM-09: confirme o NCM de todos os itens antes de finalizar.',
+          );
+        }
+        if (ncm) {
+          ncmByItem.set(item.id, await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'));
+        }
       }
-      if (ncm) {
-        ncmByItem.set(item.id, await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'));
-      }
-    }
 
-    const stageMessage = `${trimmed} — Imobilizado encerrou (return_to_approver=false)`;
-    await this.prisma.$transaction(async (tx) => {
-      await this.promoteApprovedRequestToBase(tx, request, userId, now, ncmByItem);
-
+      const stageMessage = `${trimmed} — Aprovador - Imobilizado registrou na base de ativos fixos`;
+      await this.prisma.$transaction(async (tx) => {
+        await this.promoteApprovedRequestToBase(tx, request, userId, now, ncmByItem);
         await tx.requestStage.updateMany({
           where: { requestId, finishedAt: null },
           data: { finishedAt: now, userId, message: stageMessage },
@@ -2240,25 +2371,35 @@ export class RequestsService {
           data: {
             state: RequestState.ENCERRADO,
             closedAt: now,
+            fixedAsset: true,
             classificationInvalidated: false,
           },
         });
       });
-
       return this.findOne(requestId);
     }
 
+    // Uso e consumo → Administrativo
     await this.prisma.$transaction(async (tx) => {
       await tx.requestStage.updateMany({
         where: { requestId, finishedAt: null },
-        data: { finishedAt: now, userId, message: trimmed },
+        data: {
+          finishedAt: now,
+          userId,
+          message: `${trimmed} — Não é ativo fixo; encaminhado ao aprovador - administrativo`,
+        },
       });
       await tx.request.update({
         where: { id: requestId },
         data: {
           state: RequestState.APROVADOR,
+          fixedAsset: false,
           classificationInvalidated: false,
         },
+      });
+      await tx.requestItem.updateMany({
+        where: { requestId },
+        data: { itemKind: ItemKind.CONSUMPTION },
       });
       await tx.requestStage.create({
         data: {
@@ -2275,6 +2416,71 @@ export class RequestsService {
       where: { requestItem: { requestId } },
     });
     await this.seedNcmSuggestions(requestId);
+    return this.findOne(requestId);
+  }
+
+  /**
+   * Imobilizado marca o lote como Ativo Fixo e permanece na etapa para classificar/aprovar.
+   * Não encaminha ao Administrativo.
+   */
+  async markAsFixedAsset(requestId: string, userId: string, message: string) {
+    const trimmed = message?.trim();
+    if (!trimmed) {
+      throw new BadRequestException(
+        'Informe um comentário ao classificar como ativo fixo.',
+      );
+    }
+    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    if (!request) throw new NotFoundException('Solicitação não encontrada');
+    if (request.state !== RequestState.IMOBILIZADO) {
+      throw new BadRequestException(
+        'Só é possível marcar ativo fixo na etapa Aprovador - Imobilizado.',
+      );
+    }
+    const role = await this.resolveUserRole(userId);
+    if (role !== UserRole.ADMIN && role !== UserRole.APROVADOR_IMOBILIZADO) {
+      throw new ForbiddenException('Sem permissão para classificar esta solicitação.');
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.requestStage.updateMany({
+        where: { requestId, finishedAt: null },
+        data: {
+          finishedAt: now,
+          userId,
+          message: `${trimmed} — Classificado como ativo fixo (permanece no Imobilizado)`,
+        },
+      });
+      await tx.request.update({
+        where: { id: requestId },
+        data: {
+          fixedAsset: true,
+          returnToApprover: false,
+          classificationInvalidated: true,
+          state: RequestState.IMOBILIZADO,
+        },
+      });
+      await tx.requestItem.updateMany({
+        where: { requestId },
+        data: {
+          itemKind: ItemKind.FIXED_ASSET,
+          measureUnitId: null,
+          purchaseQtyTotal: null,
+          law116: null,
+        },
+      });
+      await tx.requestStage.create({
+        data: {
+          requestId,
+          stage: RequestState.IMOBILIZADO,
+          userId,
+          startedAt: now,
+          message: null,
+        },
+      });
+    });
+
     return this.findOne(requestId);
   }
 

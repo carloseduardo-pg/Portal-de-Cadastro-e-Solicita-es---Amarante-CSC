@@ -76,6 +76,7 @@ export const productsApi = {
     hotel?: string;
     active?: string;
     familyId?: string;
+    itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
     page?: number;
     pageSize?: number;
   }) =>
@@ -85,6 +86,7 @@ export const productsApi = {
         hotel: opts?.hotel,
         active: opts?.active,
         family_id: opts?.familyId,
+        item_kind: opts?.itemKind,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 20,
       })}`,
@@ -290,6 +292,12 @@ export const requestsApi = {
       method: 'POST',
       body: JSON.stringify({ message, items }),
     }),
+  /** Imobilizado marca como AF e permanece na etapa. */
+  markFixedAsset: (id: string, message: string) =>
+    apiFetch<Request>(`/requests/${id}/mark-fixed-asset`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
   reclassifyFixedAsset: (
     id: string,
     body: { justification: string; itemIds: string[]; returnToApprover?: boolean },
@@ -310,6 +318,12 @@ export const requestsApi = {
     apiFetch<Request>(`/requests/${id}/return-to-requester`, {
       method: 'POST',
       body: JSON.stringify({ message }),
+    }),
+  /** Encerrar sem promover à base (REPROVADO). */
+  close: (id: string, body: { reasonCode?: string; observation?: string }) =>
+    apiFetch<Request>(`/requests/${id}/close`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
   approve: (id: string, items: { itemId: string; ncm: string }[], message: string) =>
     apiFetch<Request>(`/requests/${id}/approve`, {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FormField } from '../../components/FormField';
 import { PageStageHeader } from '../../components/PageStageHeader';
@@ -6,14 +6,11 @@ import { SimilarProductsPanel } from '../../components/SimilarProductsPanel';
 import { useSimilarProducts } from '../../hooks/useSimilarProducts';
 import { minLengthText, requiredText } from '../../lib/formValidation';
 import {
-  hasExactProductMatch,
   findExactProductMatch,
   exactDuplicateMessage,
-  countExactDescriptionMatches,
 } from '../../lib/productMatch';
 import { isExistingProductRequestType } from '../../lib/requestLabels';
 import { toFormUppercase } from '../../lib/formText';
-import { productsApi } from '../../lib/resources';
 import type { ProductSearchResult } from '../../lib/types';
 import './produtos.css';
 import '../../components/SimilarProductsPanel.css';
@@ -26,80 +23,40 @@ type RequestTypeChoice =
   | 'BLOQUEIO_PARCIAL'
   | 'BLOQUEIO_TOTAL';
 
-/** Decisão do usuário quando há match 100% em ativo fixo. */
-type AfExactChoice = 'more' | 'different' | null;
-
 type SearchFieldErrors = {
   type?: string;
-  itemKind?: string;
   query?: string;
   observation?: string;
   selectedProduct?: string;
-  afExact?: string;
 };
 
 /**
  * Tela 1 — Tipo da solicitação + verificação na base unificada (P5).
+ * Solicitante não escolhe AF/UC — triagem no Aprovador - Imobilizado.
  */
 export function NovaSolicitacaoPage() {
   const navigate = useNavigate();
   const [requestType, setRequestType] = useState<RequestTypeChoice | ''>('');
-  const [fixedAsset, setFixedAsset] = useState<boolean | null>(null);
   const [query, setQuery] = useState('');
   const [observation, setObservation] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<ProductSearchResult | null>(null);
   const [fieldErrors, setFieldErrors] = useState<SearchFieldErrors>({});
-  const [afExactChoice, setAfExactChoice] = useState<AfExactChoice>(null);
-  const [afExactCount, setAfExactCount] = useState(0);
-  const [afSampleId, setAfSampleId] = useState<string | undefined>();
 
   const searchEnabled = Boolean(requestType);
   const needsExistingProduct = requestType ? isExistingProductRequestType(requestType) : false;
   const isInclusao = requestType === 'INCLUSAO';
-  const kindChosen = !isInclusao || fixedAsset !== null;
-  const itemKind =
-    isInclusao && fixedAsset === true
-      ? ('FIXED_ASSET' as const)
-      : isInclusao && fixedAsset === false
-        ? ('CONSUMPTION' as const)
-        : undefined;
+  const itemKind = isInclusao ? ('CONSUMPTION' as const) : undefined;
 
   const { results, loading, searched, hasSimilar } = useSimilarProducts({
     query,
-    enabled: searchEnabled && kindChosen,
+    enabled: searchEnabled,
     itemKind,
   });
 
   const exactHit = isInclusao ? findExactProductMatch(results, query) : null;
   const exactMatch = Boolean(exactHit);
-  /** Consumo: match 100% bloqueia. Ativo fixo: não bloqueia — oferece atalho. */
-  const blocksOnExact = exactMatch && fixedAsset !== true;
+  const blocksOnExact = exactMatch;
   const consumptionDupMessage = exactDuplicateMessage(exactHit);
-  const showAfExactOffer = isInclusao && fixedAsset === true && exactMatch;
-
-  useEffect(() => {
-    setAfExactChoice(null);
-    setAfExactCount(0);
-    setAfSampleId(undefined);
-    if (!showAfExactOffer || query.trim().length < 3) return;
-
-    let cancelled = false;
-    void productsApi
-      .exactCount({ q: query, itemKind: 'FIXED_ASSET' })
-      .then((r) => {
-        if (cancelled) return;
-        setAfExactCount(r.count);
-        setAfSampleId(r.sample?.id);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAfExactCount(0);
-        setAfSampleId(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [showAfExactOffer, query]);
 
   function handleTypeChange(next: RequestTypeChoice) {
     setRequestType(next);
@@ -107,19 +64,6 @@ export function NovaSolicitacaoPage() {
     setQuery('');
     setObservation('');
     setFieldErrors({});
-    setAfExactChoice(null);
-    if (next !== 'INCLUSAO') {
-      setFixedAsset(null);
-    }
-  }
-
-  function handleKindChange(next: boolean) {
-    setFixedAsset(next);
-    setSelectedProduct(null);
-    setQuery('');
-    setObservation('');
-    setAfExactChoice(null);
-    setFieldErrors((prev) => ({ ...prev, itemKind: undefined, query: undefined, afExact: undefined }));
   }
 
   function validateContinue(): SearchFieldErrors {
@@ -127,11 +71,6 @@ export function NovaSolicitacaoPage() {
 
     if (!requestType) {
       errors.type = 'Selecione o tipo da solicitação antes de continuar.';
-      return errors;
-    }
-
-    if (isInclusao && fixedAsset === null) {
-      errors.itemKind = 'Selecione Uso e consumo ou Ativo fixo antes de continuar.';
       return errors;
     }
 
@@ -148,11 +87,6 @@ export function NovaSolicitacaoPage() {
       errors.query = consumptionDupMessage;
     }
 
-    if (showAfExactOffer && !afExactChoice) {
-      errors.afExact =
-        'Já existem unidades deste bem. Escolha cadastrar mais unidades ou indicar que é um bem diferente.';
-    }
-
     if (needsExistingProduct && !selectedProduct) {
       errors.selectedProduct =
         'Selecione na lista o produto da base vinculado a esta solicitação.';
@@ -166,9 +100,7 @@ export function NovaSolicitacaoPage() {
           : 'Descreva o motivo do bloqueio solicitado.'
         : hasSimilar && !exactMatch
           ? 'Justifique na observação por que este produto precisa ser cadastrado mesmo com itens parecidos na base.'
-          : showAfExactOffer && afExactChoice === 'more'
-            ? 'Descreva o motivo do cadastro de unidades adicionais deste bem.'
-            : 'Descreva o motivo da inclusão deste produto.',
+          : 'Descreva o motivo da inclusão deste produto.',
     );
     if (observationError) errors.observation = observationError;
 
@@ -194,18 +126,13 @@ export function NovaSolicitacaoPage() {
       return;
     }
 
-    const isAf = fixedAsset === true;
     navigate('/produtos/dados-do-item', {
       state: {
         searchQuery: query.trim(),
         observation: observation.trim(),
         hotelIds: [],
         type: 'INCLUSAO' as const,
-        fixedAsset: isAf,
-        /** Prefill a partir de um bem existente (novas unidades — ainda INCLUSAO). */
-        templateProductId:
-          isAf && afExactChoice === 'more' ? afSampleId ?? selectedProduct?.id : undefined,
-        afExactChoice: isAf ? afExactChoice : undefined,
+        fixedAsset: false,
       },
     });
   }
@@ -214,7 +141,7 @@ export function NovaSolicitacaoPage() {
     {
       value: 'INCLUSAO',
       title: 'Inclusão',
-      hint: 'Cadastro de item(ns) que ainda não existem na base unificada.',
+      hint: 'Cadastro de item(ns) — a classificação AF/UC é feita pelo imobilizado.',
     },
     {
       value: 'ALTERACAO',
@@ -233,7 +160,7 @@ export function NovaSolicitacaoPage() {
     },
   ];
 
-  const canShowSearch = Boolean(requestType) && kindChosen;
+  const canShowSearch = Boolean(requestType);
 
   return (
     <section>
@@ -263,42 +190,15 @@ export function NovaSolicitacaoPage() {
       </FormField>
 
       {isInclusao ? (
-        <FormField
-          label="Tipo de item"
-          required
-          error={fieldErrors.itemKind}
-          hint="Uso e consumo ou ativo fixo muda o formulário e o caminho de aprovação."
-        >
-          <div className="item-kind-segment" role="radiogroup" aria-label="Tipo de item">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={fixedAsset === false}
-              className={`item-kind-segment__btn${fixedAsset === false ? ' item-kind-segment__btn--active' : ''}`}
-              onClick={() => handleKindChange(false)}
-            >
-              Uso e consumo
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={fixedAsset === true}
-              className={`item-kind-segment__btn${fixedAsset === true ? ' item-kind-segment__btn--active' : ''}`}
-              onClick={() => handleKindChange(true)}
-            >
-              Ativo fixo
-            </button>
-          </div>
-        </FormField>
+        <p className="info-banner">
+          A classificação final (uso e consumo ou ativo fixo) é feita pelo{' '}
+          <strong>aprovador - imobilizado</strong>. Toda solicitação passa primeiro por essa etapa.
+        </p>
       ) : null}
 
       {!requestType ? (
         <p className="info-banner">
           Selecione o tipo da solicitação para liberar a busca e continuar.
-        </p>
-      ) : isInclusao && fixedAsset === null ? (
-        <p className="info-banner">
-          Selecione <strong>Uso e consumo</strong> ou <strong>Ativo fixo</strong> para liberar a busca.
         </p>
       ) : !canShowSearch ? null : (
         <>
@@ -307,11 +207,6 @@ export function NovaSolicitacaoPage() {
               <>
                 Busque na <strong>base unificada</strong> e <strong>selecione o produto</strong>{' '}
                 vinculado. A solicitação ficará associada a esse item (um único item).
-              </>
-            ) : fixedAsset ? (
-              <>
-                Digite a descrição do bem. Se já existir cadastro idêntico, você poderá cadastrar mais
-                unidades ou indicar que é um bem diferente — a inclusão não é bloqueada.
               </>
             ) : (
               <>
@@ -340,22 +235,18 @@ export function NovaSolicitacaoPage() {
                 onChange={(e) => {
                   setQuery(toFormUppercase(e.target.value));
                   setSelectedProduct(null);
-                  setAfExactChoice(null);
-                  if (fieldErrors.query || fieldErrors.selectedProduct || fieldErrors.afExact) {
+                  if (fieldErrors.query || fieldErrors.selectedProduct) {
                     setFieldErrors((prev) => ({
                       ...prev,
                       query: undefined,
                       selectedProduct: undefined,
-                      afExact: undefined,
                     }));
                   }
                 }}
                 placeholder={
                   needsExistingProduct
                     ? 'EX.: AGUA MINERAL, CÓDIGO UNIFICADO...'
-                    : fixedAsset
-                      ? 'EX.: NOTEBOOK DELL LATITUDE, AR CONDICIONADO...'
-                      : 'EX.: AGUA MINERAL, CAMISA MASC ALMO...'
+                    : 'EX.: AGUA MINERAL, CAMISA MASC ALMO...'
                 }
                 autoFocus
               />
@@ -418,53 +309,6 @@ export function NovaSolicitacaoPage() {
               {consumptionDupMessage} Não é possível incluir — selecione Alteração ou Bloqueio
               parcial/total.
             </p>
-          ) : null}
-
-          {showAfExactOffer ? (
-            <div className="af-exact-banner" role="status">
-              <p>
-                Já existem{' '}
-                <strong>
-                  {afExactCount > 0
-                    ? afExactCount
-                    : countExactDescriptionMatches(results, query) || 1}
-                </strong>{' '}
-                unidade
-                {(afExactCount > 0
-                  ? afExactCount
-                  : countExactDescriptionMatches(results, query) || 1) === 1
-                  ? ''
-                  : 's'}{' '}
-                deste bem cadastradas.
-              </p>
-              {fieldErrors.afExact ? (
-                <p className="form-field-error" role="alert">
-                  {fieldErrors.afExact}
-                </p>
-              ) : null}
-              <div className="af-exact-banner__actions">
-                <button
-                  type="button"
-                  className={`btn ${afExactChoice === 'more' ? 'btn-primary' : 'btn-outline'}`}
-                  onClick={() => {
-                    setAfExactChoice('more');
-                    setFieldErrors((prev) => ({ ...prev, afExact: undefined }));
-                  }}
-                >
-                  Cadastrar mais unidades deste bem
-                </button>
-                <button
-                  type="button"
-                  className={`btn ${afExactChoice === 'different' ? 'btn-primary' : 'btn-outline'}`}
-                  onClick={() => {
-                    setAfExactChoice('different');
-                    setFieldErrors((prev) => ({ ...prev, afExact: undefined }));
-                  }}
-                >
-                  É um bem diferente
-                </button>
-              </div>
-            </div>
           ) : null}
 
           {needsExistingProduct && selectedProduct ? (
