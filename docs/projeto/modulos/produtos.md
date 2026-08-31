@@ -78,7 +78,7 @@ Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQ
 - `GET /api/products/exact-count?q=&item_kind=` e filtro `item_kind` em `/products/search` e `/products/base`
 - Devolução ao solicitante reinicia SLA (`POST /api/requests/:id/return-to-requester`) — Aprovador - Imobilizado ou Aprovador - Administrativo
 - Encerrar sem promover à base (`POST /api/requests/:id/close` → `REPROVADO`): solicitante (rascunho/retorno, motivo opcional) ou aprovadores (motivo pré + observação obrigatória). Não reabre.
-- Imobilizado classifica AF: `POST /api/requests/:id/mark-fixed-asset`
+- Imobilizado classifica AF: flag **É ativo fixo? SIM | NÃO** no final da etapa (obrigatória). SIM → permanece no Imobilizado (caixa filtrada); opção de **registrar automaticamente** na base AF. NÃO → Administrativo (UC). API: `POST …/mark-fixed-asset` + `send-from-imobilizado`
 - Imobilizado conclui: `POST /api/requests/:id/send-from-imobilizado` (AF → base AF + encerra; UC → Administrativo)
 - Aprovador - Administrativo pode editar campos na sua etapa; edições registradas na timeline
 - Caixa de entrada = etapas operacionais (Solicitante / Aprovador - Imobilizado / Aprovador - Administrativo)

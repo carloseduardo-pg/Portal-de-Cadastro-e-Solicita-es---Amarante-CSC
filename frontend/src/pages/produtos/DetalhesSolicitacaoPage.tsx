@@ -106,6 +106,10 @@ export function DetalhesSolicitacaoPage() {
   const [selectedNcm, setSelectedNcm] = useState<Record<string, string>>({});
   const [customNcm, setCustomNcm] = useState<Record<string, string>>({});
   const [stageComment, setStageComment] = useState('');
+  /** Triagem Imobilizado: null = ainda não respondeu. */
+  const [afFlag, setAfFlag] = useState<boolean | null>(null);
+  /** Com SIM: registrar na base AF na mesma aprovação (opcional). */
+  const [autoRegisterAf, setAutoRegisterAf] = useState(false);
   const [editNote, setEditNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [baseProduct, setBaseProduct] = useState<ProductBase | null>(null);
@@ -207,6 +211,8 @@ export function DetalhesSolicitacaoPage() {
     setEditHotelIds(ids);
     setEditFamilyId(request.family?.id ?? '');
     setEditFixedAsset(Boolean(request.fixedAsset));
+    setAfFlag(request.fixedAsset ? true : null);
+    setAutoRegisterAf(Boolean(request.fixedAsset));
     setDirty(false);
     setCurrentItem(0);
   }, [request, families]);
@@ -411,6 +417,7 @@ export function DetalhesSolicitacaoPage() {
     try {
       await requestsApi.update(request.id, {
         familyId: editFamilyId,
+        fixedAsset: true,
         editNote:
           editNote.trim() ||
             'Aprovador - Imobilizado atualizou a classificação (árvore de ativo fixo).',
@@ -541,10 +548,62 @@ export function DetalhesSolicitacaoPage() {
     requestSendToApprover();
   }
 
-  async function sendFromImobilizado() {
+  async function concludeImobilizado() {
     if (!request) return;
     if (!stageComment.trim()) {
       alert('Escreva um comentário sobre a conclusão da etapa Aprovador - Imobilizado.');
+      return;
+    }
+    if (afFlag === null) {
+      alert('Responda a flag obrigatória: este item é ativo fixo? SIM ou NÃO.');
+      return;
+    }
+
+    // NÃO → uso e consumo → Administrativo
+    if (afFlag === false) {
+      setBusy(true);
+      try {
+        await requestsApi.sendFromImobilizado(request.id, stageComment.trim());
+        alert('Não é ativo fixo — encaminhado ao aprovador - administrativo.');
+        navigate('/produtos/caixa-de-entrada');
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Falha ao encaminhar ao administrativo.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // SIM → fluxo obrigatório de ativo fixo
+    const registerNow = autoRegisterAf || request.fixedAsset;
+
+    if (!registerNow) {
+      setBusy(true);
+      try {
+        if (!request.fixedAsset) {
+          await requestsApi.markFixedAsset(request.id, stageComment.trim());
+        }
+        alert(
+          'Classificado como ativo fixo. A solicitação permanece na caixa do aprovador - imobilizado para registro na base.',
+        );
+        navigate('/produtos/caixa-de-entrada');
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Falha ao classificar como ativo fixo.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // SIM + registrar agora (ou 2ª passagem já AF)
+    if (!editFamilyId && !request.fixedAsset) {
+      alert(
+        'Para registrar agora, selecione a família de ativo fixo nos campos acima (ou desmarque o registro automático e aprove só a classificação).',
+      );
+      return;
+    }
+    if (dirty && request.fixedAsset) {
+      alert('Salve as alterações da classificação antes de registrar na base de ativos fixos.');
       return;
     }
     if (request.fixedAsset && request.classificationInvalidated) {
@@ -554,59 +613,40 @@ export function DetalhesSolicitacaoPage() {
       return;
     }
 
-    const concludesAsAf = request.fixedAsset === true;
-    let itemNcms: { itemId: string; ncm: string }[] | undefined;
-    if (concludesAsAf) {
-      itemNcms = [];
-      for (const it of request.items) {
-        const ncm = selectedNcm[it.id] || customNcm[it.id] || it.ncmCode;
-        if (!ncm) {
-          alert(
-            'ITM-09: confirme o NCM de todos os itens antes de registrar na base de ativos fixos.',
-          );
-          return;
-        }
-        itemNcms.push({ itemId: it.id, ncm });
+    for (const it of items) {
+      if (editFixedAsset && (!it.groupId || !it.subgroupId)) {
+        alert('Informe grupo e subgrupo de todos os itens na árvore de Ativo Fixo antes de registrar.');
+        return;
       }
     }
 
-    setBusy(true);
-    try {
-      await requestsApi.sendFromImobilizado(
-        request.id,
-        stageComment.trim(),
-        itemNcms,
-      );
-      alert(
-        concludesAsAf
-          ? 'Item(ns) registrados na base de ativos fixos. Solicitação encerrada.'
-          : 'Não é ativo fixo — encaminhado ao aprovador - administrativo.',
-      );
-      navigate(concludesAsAf ? '/produtos/base' : '/produtos/caixa-de-entrada');
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao concluir a etapa de imobilizado.');
-    } finally {
-      setBusy(false);
+    const itemNcms: { itemId: string; ncm: string }[] = [];
+    for (const it of request.items) {
+      const ncm = selectedNcm[it.id] || customNcm[it.id] || it.ncmCode;
+      if (!ncm) {
+        alert('ITM-09: confirme o NCM de todos os itens antes de registrar na base de ativos fixos.');
+        return;
+      }
+      itemNcms.push({ itemId: it.id, ncm });
     }
-  }
 
-  async function markAsFixedAsset() {
-    if (!request) return;
-    if (!stageComment.trim()) {
-      alert('Escreva um comentário ao classificar como ativo fixo.');
-      return;
-    }
     setBusy(true);
     try {
-      const updated = await requestsApi.markFixedAsset(request.id, stageComment.trim());
-      setRequest(updated);
-      setStageComment('');
-      await reloadRequest();
-      alert(
-        'Classificado como ativo fixo. Complete a classificação e registre na base — não passa pelo administrativo.',
-      );
+      if (!request.fixedAsset) {
+        await requestsApi.markFixedAsset(request.id, stageComment.trim());
+        await requestsApi.update(request.id, {
+          familyId: editFamilyId,
+          fixedAsset: true,
+          editNote: 'Classificação AF na mesma aprovação (registro automático).',
+          items: buildItemsPayload(),
+        });
+      }
+      await requestsApi.sendFromImobilizado(request.id, stageComment.trim(), itemNcms);
+      alert('Item(ns) registrados na base de ativos fixos. Solicitação encerrada.');
+      navigate('/produtos/base');
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao marcar como ativo fixo.');
+      alert(e instanceof Error ? e.message : 'Falha ao registrar na base de ativos fixos.');
+      await reloadRequest();
     } finally {
       setBusy(false);
     }
@@ -860,6 +900,7 @@ export function DetalhesSolicitacaoPage() {
         hotelIds={editHotelIds}
         familyId={editFamilyId}
         fixedAsset={editFixedAsset}
+        hideKind
         readOnly={!draftEditable && !classificationEditable}
         kindReadOnly={!draftEditable}
         hotelsReadOnly={!draftEditable}
@@ -885,6 +926,13 @@ export function DetalhesSolicitacaoPage() {
           setEditFamilyId('');
         }}
       />
+
+      {isImobilizado && request.fixedAsset ? (
+        <p className="info-banner">
+          Classificada como <strong>ativo fixo</strong> — permanece no aprovador - imobilizado até o
+          registro na base (não passa pelo administrativo).
+        </p>
+      ) : null}
 
       <ItemFolderStrip
         items={folderItems}
@@ -1147,6 +1195,74 @@ export function DetalhesSolicitacaoPage() {
 
       {canConcludeStage ? (
         <div className="stage-conclude-block">
+          {isImobilizado ? (
+            <div className="af-flag-block">
+              <p className="af-flag-block__label">
+                É ativo fixo? <span className="required-mark">*</span>
+              </p>
+              <p className="af-flag-block__hint">
+                Obrigatório antes de aprovar. SIM mantém o fluxo no imobilizado; NÃO encaminha ao
+                administrativo (uso e consumo).
+              </p>
+              <div className="af-flag-segment" role="radiogroup" aria-label="É ativo fixo?">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={afFlag === true}
+                  disabled={busy || request.fixedAsset}
+                  className={`af-flag-segment__btn${afFlag === true ? ' af-flag-segment__btn--active' : ''}`}
+                  onClick={() => {
+                    setAfFlag(true);
+                    setEditFixedAsset(true);
+                  }}
+                >
+                  SIM
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={afFlag === false}
+                  disabled={busy || request.fixedAsset}
+                  className={`af-flag-segment__btn${afFlag === false ? ' af-flag-segment__btn--active' : ''}`}
+                  onClick={() => {
+                    setAfFlag(false);
+                    setEditFixedAsset(false);
+                    setAutoRegisterAf(false);
+                  }}
+                >
+                  NÃO
+                </button>
+              </div>
+                  {afFlag === true ? (
+                <label className="af-flag-autoregister">
+                  <input
+                    type="checkbox"
+                    checked={autoRegisterAf || request.fixedAsset}
+                    disabled={busy || request.fixedAsset}
+                    onChange={(e) => setAutoRegisterAf(e.target.checked)}
+                  />
+                  <span>
+                    {request.fixedAsset
+                      ? 'Registrar na base de ativos fixos ao aprovar (obrigatório nesta passagem).'
+                      : 'Registrar automaticamente na base de ativos fixos ao aprovar (evita voltar à caixa de entrada). Exige família/grupo AF e NCM confirmado.'}
+                  </span>
+                </label>
+              ) : null}
+              {request.fixedAsset ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost af-flag-undo"
+                  disabled={busy}
+                  onClick={() => {
+                    setReclassifyDirection('consumption');
+                    setReclassifyOpen(true);
+                  }}
+                >
+                  Desfazer — é uso e consumo
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <label className="form-field">
             <span>Observação da etapa</span>
             <textarea
@@ -1228,48 +1344,20 @@ export function DetalhesSolicitacaoPage() {
             >
               Encerrar solicitação
             </button>
-            {!request.fixedAsset ? (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  disabled={busy}
-                  onClick={() => void markAsFixedAsset()}
-                >
-                  É ativo fixo
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={busy}
-                  onClick={() => void sendFromImobilizado()}
-                >
-                  Não é ativo fixo — encaminhar ao administrativo
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  disabled={busy}
-                  onClick={() => {
-                    setReclassifyDirection('consumption');
-                    setReclassifyOpen(true);
-                  }}
-                >
-                  Desfazer — é uso e consumo
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={busy}
-                  onClick={() => void sendFromImobilizado()}
-                >
-                  Registrar na base de ativos fixos
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || afFlag === null}
+              onClick={() => void concludeImobilizado()}
+            >
+              {afFlag === true && (autoRegisterAf || request.fixedAsset)
+                ? 'Aprovar e registrar na base de ativos fixos'
+                : afFlag === true
+                  ? 'Aprovar como ativo fixo'
+                  : afFlag === false
+                    ? 'Aprovar e encaminhar ao administrativo'
+                    : 'Aprovar (responda a flag ativo fixo)'}
+            </button>
           </>
         ) : null}
         {isApprover ? (

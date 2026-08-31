@@ -952,6 +952,13 @@
   text-transform: uppercase;
 }
 
+.kanban-card-stage--af {
+  margin-left: 6px;
+  border-color: #8a6a1a;
+  color: #6b5210;
+  background: #f8f0d8;
+}
+
 .kanban-empty--page {
   padding: 48px 16px;
   font-size: var(--font-size-body);
@@ -1052,6 +1059,77 @@
   width: 100%;
   resize: vertical;
   min-height: 80px;
+}
+
+.af-flag-block {
+  margin-bottom: 16px;
+}
+
+.af-flag-block__label {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.af-flag-block__hint {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #4a5545);
+}
+
+.af-flag-segment {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid #b8c4b0;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.af-flag-segment__btn {
+  min-width: 88px;
+  padding: 10px 20px;
+  border: none;
+  background: #fff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  color: var(--text-primary, #1a2e14);
+}
+
+.af-flag-segment__btn + .af-flag-segment__btn {
+  border-left: 1px solid #b8c4b0;
+}
+
+.af-flag-segment__btn--active {
+  background: var(--brand-primary, #094111);
+  color: #fff;
+}
+
+.af-flag-segment__btn:disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+
+.af-flag-autoregister {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.9rem;
+  margin: 0 0 8px;
+  cursor: pointer;
+}
+
+.af-flag-autoregister input {
+  margin-top: 3px;
+}
+
+.af-flag-undo {
+  margin-top: 4px;
+}
+
+.required-mark {
+  color: #b33;
 }
 
 .detalhes-solicitacao-page input[readonly],

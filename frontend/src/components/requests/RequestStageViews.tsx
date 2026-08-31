@@ -238,6 +238,9 @@ export function RequestInboxCard({
           {col.label}
         </span>
       ) : null}
+      {r.fixedAsset ? (
+        <span className="kanban-card-stage kanban-card-stage--af">Ativo fixo</span>
+      ) : null}
       <dl className="kanban-card-facts">
         <div>
           <dt>Família</dt>
