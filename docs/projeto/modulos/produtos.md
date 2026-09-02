@@ -79,9 +79,9 @@ Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQ
 - `GET /api/products/exact-count?q=&item_kind=` e filtro `item_kind` em `/products/search` e `/products/base`
 - Devolução ao solicitante reinicia SLA (`POST /api/requests/:id/return-to-requester`) — Aprovador - Imobilizado ou Aprovador - Administrativo
 - Encerrar sem promover à base (`POST /api/requests/:id/close` → `REPROVADO`): solicitante (rascunho/retorno, motivo opcional) ou aprovadores (motivo pré + observação obrigatória). Não reabre.
-- Imobilizado classifica AF: flag **É ativo fixo? SIM | NÃO** no final da etapa (obrigatória). SIM → permanece no Imobilizado (caixa filtrada); opção de **registrar automaticamente** na base AF. NÃO → Administrativo (UC). API: `POST …/mark-fixed-asset` + `send-from-imobilizado`
+- Imobilizado classifica AF: flag **É ativo fixo? SIM | NÃO** no final da etapa (obrigatória). SIM → permanece no Imobilizado (caixa filtrada); opção de **registrar automaticamente** na base AF. NÃO → Administrativo (UC). Bloco de NCM no Imobilizado **só aparece após SIM / já classificado como AF** (opcional na 1ª passagem; obrigatório ao registrar na base). API: `POST …/mark-fixed-asset` + `send-from-imobilizado`
 - Imobilizado conclui: `POST /api/requests/:id/send-from-imobilizado` (AF → base AF + encerra; UC → Administrativo)
-- Aprovador - Administrativo pode editar campos na sua etapa; edições registradas na timeline
+- Aprovador - Administrativo: finalização com NCM (ITM-09). Em **INCLUSÃO com 2+ itens**, popup permite aprovar um/alguns/todos — **aprovação total** ou **parcial** (`APPROVAL_TOTAL` / `APPROVAL_PARTIAL`). Não selecionados são rejeitados na mesma ação; solicitação encerra. API: `POST /api/requests/:id/approve` com `approvedItemIds` opcional.
 - Caixa de entrada = etapas operacionais (Solicitante / Aprovador - Imobilizado / Aprovador - Administrativo)
 - Ao concluir cada etapa: comentário obrigatório em `request_stages.message`
 
@@ -101,6 +101,7 @@ Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQ
 | `POST /api/requests/:id/close` | Encerrar sem base (`REPROVADO`; motivo pré + obs.) |
 | `POST /api/requests/:id/mark-fixed-asset` | Imobilizado marca como AF (permanece na etapa) |
 | `POST /api/requests/:id/send-from-imobilizado` | Imobilizado: AF → base AF; UC → Administrativo |
+| `POST /api/requests/:id/approve` | Administrativo finaliza (opcional `approvedItemIds` para parcial em INCLUSÃO 2+) |
 | `PATCH /api/requests/items/:itemId/ncm` | Confirmação NCM (ITM-09) |
 | `GET /api/catalog/hotels` · `families` · `groups` | Formulário / filtros |
 

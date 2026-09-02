@@ -18,6 +18,7 @@
 
 ## Entregas recentes
 
+- **Aprovação parcial/total (Administrativo):** INCLUSÃO 2+ itens → `ApproveItemsDialog`; subset à base + rejeitados na mesma ação; outcomes `APPROVAL_TOTAL` / `APPROVAL_PARTIAL` na timeline.
 - **Atributos PDM select + NCM UI:** atributos de família viram select (fechado ou +Outro); demo BEBIDAS com embalagem PET/vidro/lata. NCM candidatos: nome do item + código, similaridade em %, Outro só dígitos; seed grava `sourceProductId` do produto mais parecido.
 - **Flag AF no Imobilizado:** triagem no final da etapa — **É ativo fixo? SIM|NÃO** (obrigatória). SIM → volta à caixa do Imobilizado com badge AF (opção registrar automático); NÃO → Administrativo. Removido seletor UC|AF do pré-form nessa etapa.
 - **NCM no Imobilizado (FLX-01):** semeadura de sugestões alinhada ao fluxo — `create`/`update`/`sendToApprover` semeiam ao chegar em `IMOBILIZADO`; `markAsFixedAsset` reseia contra base AF; `seedNcmSuggestions` filtra por `item_kind`.

@@ -1124,8 +1124,20 @@
   margin-top: 3px;
 }
 
+.af-family-pick {
+  margin: 12px 0 14px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #c5d0be;
+  border-radius: 6px;
+}
+
 .af-flag-undo {
   margin-top: 4px;
+}
+
+.required-mark {
+  color: #b33;
 }
 
 .required-mark {

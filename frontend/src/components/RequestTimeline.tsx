@@ -59,6 +59,8 @@ export function RequestTimeline({ stages }: RequestTimelineProps) {
           const isReclassify =
             s.outcome === 'RECLASSIFY_FIXED_ASSET' ||
             s.outcome === 'RECLASSIFY_CONSUMPTION';
+          const isApproval =
+            s.outcome === 'APPROVAL_TOTAL' || s.outcome === 'APPROVAL_PARTIAL';
           const isClosed = s.outcome === 'CLOSED';
           const detail = s.outcomeDetail;
           const when = formatRequestDate(eventAt(s));
@@ -128,6 +130,46 @@ export function RequestTimeline({ stages }: RequestTimelineProps) {
                           <p>
                             <strong>Observação:</strong> {detail.observation}
                           </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {isApproval ? (
+                      <div className="request-timeline-reclassify">
+                        <p>
+                          <strong>Tipo:</strong>{' '}
+                          {s.outcome === 'APPROVAL_PARTIAL'
+                            ? 'Aprovação parcial'
+                            : 'Aprovação total'}
+                          {detail?.approvedCount != null
+                            ? ` — ${detail.approvedCount} aprovado(s)`
+                            : ''}
+                          {detail?.rejectedCount
+                            ? `, ${detail.rejectedCount} rejeitado(s)`
+                            : ''}
+                        </p>
+                        {detail?.itemsApproved?.length ? (
+                          <>
+                            <p>
+                              <strong>Itens na base:</strong>
+                            </p>
+                            <ul className="request-timeline-reclassify-items">
+                              {detail.itemsApproved.map((it) => (
+                                <li key={it.id}>{it.descriptionShort}</li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                        {detail?.itemsRejected?.length ? (
+                          <>
+                            <p>
+                              <strong>Itens rejeitados:</strong>
+                            </p>
+                            <ul className="request-timeline-reclassify-items">
+                              {detail.itemsRejected.map((it) => (
+                                <li key={it.id}>{it.descriptionShort}</li>
+                              ))}
+                            </ul>
+                          </>
                         ) : null}
                       </div>
                     ) : null}

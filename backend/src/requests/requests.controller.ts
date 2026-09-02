@@ -172,10 +172,21 @@ export class RequestsController {
   @Post(':id/approve')
   approve(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { items?: { itemId: string; ncm: string }[]; message?: string },
+    @Body()
+    body: {
+      items?: { itemId: string; ncm: string }[];
+      message?: string;
+      approvedItemIds?: string[];
+    },
     @Req() req: Request & { user?: { id: string } },
   ) {
-    return this.requests.approve(id, req.user?.id ?? '', body.items ?? [], body.message);
+    return this.requests.approve(
+      id,
+      req.user?.id ?? '',
+      body.items ?? [],
+      body.message,
+      body.approvedItemIds,
+    );
   }
 
   @Post(':id/return-to-requester')

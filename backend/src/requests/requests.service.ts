@@ -50,6 +50,10 @@ const OUTCOME_RECLASSIFY_FIXED_ASSET = 'RECLASSIFY_FIXED_ASSET';
 const OUTCOME_RECLASSIFY_CONSUMPTION = 'RECLASSIFY_CONSUMPTION';
 /** Encerramento voluntário sem promover à base (solicitante ou aprovador). */
 const OUTCOME_CLOSED = 'CLOSED';
+/** Finalização no Administrativo: todos os itens à base. */
+const OUTCOME_APPROVAL_TOTAL = 'APPROVAL_TOTAL';
+/** Finalização no Administrativo: subset à base; demais rejeitados. */
+const OUTCOME_APPROVAL_PARTIAL = 'APPROVAL_PARTIAL';
 
 const SOLICITANTE_CLOSE_STATES: RequestState[] = [
   RequestState.RASCUNHO,
@@ -2642,14 +2646,16 @@ export class RequestsService {
   }
 
   /**
-   * Aprovador finaliza (COMPLIANCE previsto — por enquanto encerra direto).
-   * Promove itens aprovados para a base de produtos (`products` + `product_hotels`).
+   * Aprovador - Administrativo finaliza.
+   * INCLUSÃO com subset: promove só `approvedItemIds`; demais rejeitados (outcome parcial).
+   * Sem `approvedItemIds` (ou todos): aprovação total.
    */
   async approve(
     requestId: string,
     userId: string,
     itemNcms: { itemId: string; ncm: string }[],
     message?: string,
+    approvedItemIds?: string[],
   ) {
     const trimmed = message?.trim();
     if (!trimmed) {
@@ -2673,8 +2679,30 @@ export class RequestsService {
       );
     }
 
+    const allIds = request.items.map((i) => i.id);
+    let approvedIds: string[];
+    if (!approvedItemIds?.length) {
+      approvedIds = allIds;
+    } else {
+      const unique = [...new Set(approvedItemIds)];
+      for (const id of unique) {
+        if (!allIds.includes(id)) {
+          throw new BadRequestException(`Item ${id} não pertence a esta solicitação.`);
+        }
+      }
+      if (!unique.length) {
+        throw new BadRequestException('Selecione ao menos um item para aprovar.');
+      }
+      approvedIds = unique;
+    }
+
+    const approvedSet = new Set(approvedIds);
+    const rejectedIds = allIds.filter((id) => !approvedSet.has(id));
+    const isPartial = rejectedIds.length > 0;
+    const approvedItems = request.items.filter((i) => approvedSet.has(i.id));
+
     const ncmByItem = new Map<string, string>();
-    for (const item of request.items) {
+    for (const item of approvedItems) {
       const pair = itemNcms.find((x) => x.itemId === item.id);
       let ncm = pair?.ncm?.trim() || item.ncmCode?.trim();
       if (!ncm && item.productId) {
@@ -2686,7 +2714,7 @@ export class RequestsService {
       }
       if (!ncm && !isBlockRequestType(request.type)) {
         throw new BadRequestException(
-          'ITM-09: confirme o NCM de todos os itens antes de finalizar.',
+          `ITM-09: confirme o NCM do item aprovado "${item.descriptionShort}" antes de finalizar.`,
         );
       }
       if (ncm) {
@@ -2694,13 +2722,45 @@ export class RequestsService {
       }
     }
 
+    const outcome = isPartial ? OUTCOME_APPROVAL_PARTIAL : OUTCOME_APPROVAL_TOTAL;
+    const stageMessage = isPartial
+      ? `${trimmed} — Aprovação parcial: ${approvedIds.length} de ${allIds.length} item(ns) na base; ${rejectedIds.length} rejeitado(s)`
+      : `${trimmed} — Aprovação total: ${approvedIds.length} item(ns) na base`;
+
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
-      await this.promoteApprovedRequestToBase(tx, request, userId, now, ncmByItem);
+      await this.promoteApprovedRequestToBase(
+        tx,
+        { ...request, items: approvedItems },
+        userId,
+        now,
+        ncmByItem,
+      );
 
       await tx.requestStage.updateMany({
         where: { requestId, finishedAt: null },
-        data: { finishedAt: now, userId, message: trimmed },
+        data: {
+          finishedAt: now,
+          userId,
+          message: stageMessage,
+          outcome,
+          outcomeDetail: {
+            approvedItemIds: approvedIds,
+            rejectedItemIds: rejectedIds,
+            approvedCount: approvedIds.length,
+            rejectedCount: rejectedIds.length,
+            itemsApproved: approvedItems.map((i) => ({
+              id: i.id,
+              descriptionShort: i.descriptionShort,
+            })),
+            itemsRejected: request.items
+              .filter((i) => !approvedSet.has(i.id))
+              .map((i) => ({
+                id: i.id,
+                descriptionShort: i.descriptionShort,
+              })),
+          },
+        },
       });
       await tx.requestStage.create({
         data: {
@@ -2709,7 +2769,14 @@ export class RequestsService {
           userId,
           startedAt: now,
           finishedAt: now,
-          message: trimmed,
+          message: stageMessage,
+          outcome,
+          outcomeDetail: {
+            approvedItemIds: approvedIds,
+            rejectedItemIds: rejectedIds,
+            approvedCount: approvedIds.length,
+            rejectedCount: rejectedIds.length,
+          },
         },
       });
       await tx.request.update({

@@ -325,10 +325,15 @@ export const requestsApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  approve: (id: string, items: { itemId: string; ncm: string }[], message: string) =>
+  approve: (
+    id: string,
+    items: { itemId: string; ncm: string }[],
+    message: string,
+    approvedItemIds?: string[],
+  ) =>
     apiFetch<Request>(`/requests/${id}/approve`, {
       method: 'POST',
-      body: JSON.stringify({ items, message }),
+      body: JSON.stringify({ items, message, approvedItemIds }),
     }),
   confirmNcm: (itemId: string, ncm: string) =>
     apiFetch<unknown>(`/requests/items/${itemId}/ncm`, {

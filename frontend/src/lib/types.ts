@@ -215,6 +215,13 @@ export type RequestStageOutcomeDetail = {
   childRequestId?: string;
   itemIds?: string[];
   remainingItemIds?: string[];
+  /** Aprovação total/parcial no Administrativo. */
+  approvedItemIds?: string[];
+  rejectedItemIds?: string[];
+  approvedCount?: number;
+  rejectedCount?: number;
+  itemsApproved?: { id: string; descriptionShort: string }[];
+  itemsRejected?: { id: string; descriptionShort: string }[];
   /** Encerramento voluntário (CLOSED). */
   reasonCode?: string | null;
   reasonLabel?: string | null;
