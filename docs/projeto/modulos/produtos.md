@@ -35,7 +35,8 @@ Substitui o Semplice. Prioridade máxima do projeto.
 - Produto 1×N hotéis via `product_hotels`
 - Hierarquia SAP B1: Família → Subgrupo → Grupo (texto + FK; sem códigos 1/3/6 Semplice); AF usa códigos AFF/AFS/AFG
 - Campos patrimoniais AF5 (`asset_tag`, depreciação, etc.) — colunas nullable, sem regra inventada
-- Sugestão NCM: score = **similaridade real** (`pg_trgm`) no histórico classificado — não escada sintética; filtro por `item_kind` do item (UC e AF separados)
+- Sugestão NCM: score = **similaridade real** (`pg_trgm`) no histórico classificado — não escada sintética; filtro por `item_kind` do item (UC e AF separados). UI do aprovador: nome do item da base + código NCM, similaridade em **%**; campo Outro aceita só dígitos (formato 9999.99.99).
+- Atributos PDM (demo): UI com **select** a partir de `examples` (SIM/NÃO, TIPO, EMBALAGEM fechados; MARCA/PESO com Outro). BEBIDAS usa embalagens de bebida no catálogo demo.
 
 ## Sugestões de NCM — quando são geradas
 

@@ -167,6 +167,9 @@ export type NcmSuggestion = {
   score: number | string;
   usageCount: number;
   rank: number;
+  sourceProductId?: string | null;
+  /** Descrição do item da base que originou a sugestão (mais parecido com o pedido). */
+  sampleDescription?: string | null;
 };
 
 export type Request = {

@@ -31,6 +31,12 @@ const ATTR = {
     required: true,
     examples: ['PCT', 'CX', 'BDJ', 'GALAO', 'FARDO'],
   },
+  /** Demo BEBIDAS — embalagens típicas de bebida (não reutilizar ATTR.embalagem genérico). */
+  embalagemBebida: {
+    name: 'EMBALAGEM',
+    required: true,
+    examples: ['GARRAFA PET', 'GARRAFA VIDRO', 'LATA', 'TETRA PAK', 'GALAO', 'SACHE'],
+  },
   pesoVol: {
     name: 'PESO / VOLUME',
     required: true,
@@ -58,7 +64,7 @@ export const PDM_ATTRS_BY_FAMILY: Record<string, PdmAttributeDef[]> = {
   BEBIDAS: [
     { name: 'TIPO', required: true, examples: ['AGUA', 'REFRIGERANTE', 'SUCO', 'CERVEJA'] },
     { name: 'COM GAS', required: false, examples: ['SIM', 'NAO'] },
-    ATTR.embalagem,
+    ATTR.embalagemBebida,
     ATTR.pesoVol,
     ATTR.marca,
   ],

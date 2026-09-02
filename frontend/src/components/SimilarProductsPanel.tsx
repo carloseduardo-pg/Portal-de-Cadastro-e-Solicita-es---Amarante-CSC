@@ -117,6 +117,11 @@ export function SimilarProductsPanel({
               </span>
             ),
           },
+          {
+            key: 'sim',
+            header: 'Match',
+            render: (r) => `${Math.round(r.similarity * 100)}%`,
+          },
           { key: 'family', header: 'Família', render: (r) => r.familyName || '—' },
           {
             key: 'subgroup',
@@ -142,11 +147,6 @@ export function SimilarProductsPanel({
             key: 'hotels',
             header: 'Unidades',
             render: (r) => <HotelCodeBadges codes={r.hotelCodes} />,
-          },
-          {
-            key: 'sim',
-            header: 'Match',
-            render: (r) => `${Math.round(r.similarity * 100)}%`,
           },
         ]}
       />

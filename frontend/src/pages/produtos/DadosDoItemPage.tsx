@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertDialog } from '../../components/AlertDialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -11,6 +11,7 @@ import { ItemPrimaryFields } from '../../components/ItemPrimaryFields';
 import { ItemCompletionSection, type ItemAttachmentDraft } from '../../components/ItemCompletionSection';
 import { ItemFolderStrip } from '../../components/ItemFolderStrip';
 import { PageStageHeader } from '../../components/PageStageHeader';
+import { PdmAttributeField } from '../../components/PdmAttributeField';
 import { SimilarProductsPanel } from '../../components/SimilarProductsPanel';
 import { RequestDescriptionBlock } from '../../components/RequestDescriptionBlock';
 import { SolicitacaoPreForm } from '../../components/SolicitacaoPreForm';
@@ -90,6 +91,8 @@ type ItemDraft = {
   productLinks: string[];
   itemObservation: string;
   attachments: ItemAttachmentDraft[];
+  /** Valores de atributos PDM na sessão (ainda não persistidos na API). */
+  attributeValues: Record<string, string>;
 };
 
 type NavState = {
@@ -133,6 +136,7 @@ function emptyItem(descriptionShort = ''): ItemDraft {
     productLinks: [],
     itemObservation: '',
     attachments: [],
+    attributeValues: {},
   };
 }
 
@@ -364,6 +368,7 @@ export function DadosDoItemPage() {
                 productLinks: it.links?.map((l) => l.url) ?? (it.productLink ? [it.productLink] : []),
                 itemObservation: it.itemObservation ?? '',
                 attachments: [],
+                attributeValues: {},
               }))
             : [emptyItem()],
         );
@@ -526,8 +531,13 @@ export function DadosDoItemPage() {
     patchCurrent(patch);
   }
 
-  function onAttributeInput(e: ChangeEvent<HTMLInputElement>) {
-    e.target.value = toFormUppercase(e.target.value);
+  function setAttributeValue(attrId: string, next: string) {
+    patchCurrent({
+      attributeValues: {
+        ...item.attributeValues,
+        [attrId]: next,
+      },
+    });
   }
 
   async function findExactDuplicateInBase(
@@ -1065,19 +1075,12 @@ export function DadosDoItemPage() {
                       <p className="form-section-title">Atributos desta família</p>
                       <div className="solicitacao-attributes-grid">
                         {attributes.map((attr) => (
-                          <div className="form-field" key={attr.id}>
-                            <label title={attr.examples.join(', ')}>
-                              {attr.name}{attr.required ? ' *' : ''}
-                            </label>
-                            <input
-                              placeholder={attr.examples[0] ?? ''}
-                              onChange={onAttributeInput}
-                              className="input-uppercase"
-                            />
-                            <span className="derived-field">
-                              Ex.: {attr.examples.slice(0, 2).join(' · ')}
-                            </span>
-                          </div>
+                          <PdmAttributeField
+                            key={attr.id}
+                            attr={attr}
+                            value={item.attributeValues[attr.id] ?? ''}
+                            onChange={(next) => setAttributeValue(attr.id, next)}
+                          />
                         ))}
                       </div>
                     </div>

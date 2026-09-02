@@ -1064,7 +1064,7 @@ export function DetalhesSolicitacaoPage() {
             }
           />
 
-          {isApprover || (isImobilizado && request.returnToApprover === false) ? (
+          {isApprover || isImobilizado ? (
             <div className="solicitacao-form-section detalhes-ncm-block">
               <p className="form-section-title">NCM — candidatos do histórico</p>
               <div className="ncm-warning">
@@ -1076,25 +1076,36 @@ export function DetalhesSolicitacaoPage() {
                 </p>
               ) : (
                 <div className="ncm-list">
-                  {(item.ncmSuggestions ?? []).map((s) => (
-                    <label
-                      key={s.id}
-                      className={`ncm-option ${selectedNcm[item.id] === s.ncm ? 'selected' : ''}`}
-                    >
-                      <input
-                        type="radio"
-                        name={`ncm-${item.id}`}
-                        checked={selectedNcm[item.id] === s.ncm}
-                        onChange={() =>
-                          setSelectedNcm((prev) => ({ ...prev, [item.id]: s.ncm }))
-                        }
-                      />
-                      <span>
-                        <strong>{formatNcmDisplay(s.ncm)}</strong> — usado {s.usageCount} vezes (similaridade{' '}
-                        {Number(s.score).toFixed(2)})
-                      </span>
-                    </label>
-                  ))}
+                  {(item.ncmSuggestions ?? []).map((s) => {
+                    const pct = Math.round(Number(s.score) * 100);
+                    const sample = s.sampleDescription?.trim();
+                    return (
+                      <label
+                        key={s.id}
+                        className={`ncm-option ${selectedNcm[item.id] === s.ncm ? 'selected' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name={`ncm-${item.id}`}
+                          checked={selectedNcm[item.id] === s.ncm}
+                          onChange={() =>
+                            setSelectedNcm((prev) => ({ ...prev, [item.id]: s.ncm }))
+                          }
+                        />
+                        <span>
+                          {sample ? (
+                            <>
+                              <strong>{sample}</strong> ({formatNcmDisplay(s.ncm)})
+                            </>
+                          ) : (
+                            <strong>{formatNcmDisplay(s.ncm)}</strong>
+                          )}{' '}
+                          — usado {s.usageCount} {s.usageCount === 1 ? 'vez' : 'vezes'} (similaridade{' '}
+                          {pct}%)
+                        </span>
+                      </label>
+                    );
+                  })}
                   <label className="ncm-option">
                     <input
                       type="radio"
@@ -1109,11 +1120,21 @@ export function DetalhesSolicitacaoPage() {
                     <span>Outro: </span>
                     <input
                       value={customNcm[item.id] ?? ''}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={10}
                       onChange={(e) => {
-                        setCustomNcm((prev) => ({ ...prev, [item.id]: e.target.value }));
-                        setSelectedNcm((prev) => ({ ...prev, [item.id]: e.target.value }));
+                        const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
+                        const display =
+                          digits.length <= 4
+                            ? digits
+                            : digits.length <= 6
+                              ? `${digits.slice(0, 4)}.${digits.slice(4)}`
+                              : `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`;
+                        setCustomNcm((prev) => ({ ...prev, [item.id]: display }));
+                        setSelectedNcm((prev) => ({ ...prev, [item.id]: digits }));
                       }}
-                      placeholder="Digite o NCM"
+                      placeholder="9999.99.99"
                     />
                   </label>
                 </div>

@@ -1011,15 +1011,20 @@ export class RequestsService {
   private async seedNcmSuggestions(requestId: string) {
     const items = await this.prisma.requestItem.findMany({ where: { requestId } });
     for (const item of items) {
-      // Score = similaridade real (pg_trgm) no histórico classificado — não escada sintética.
-      // Filtra pelo item_kind do item (UC e AF são bases distintas).
+      // Score = similaridade real (pg_trgm); guarda o produto mais parecido por NCM.
       const rows = await this.prisma.$queryRaw<
-        { ncm: string; usage_count: bigint; score: number }[]
+        {
+          ncm: string;
+          usage_count: bigint;
+          score: number;
+          product_id: string;
+        }[]
       >`
         SELECT
           trim(p.ncm_code)::text AS ncm,
           COUNT(*)::bigint AS usage_count,
-          MAX(similarity(p.description_short, ${item.descriptionShort}))::float8 AS score
+          MAX(similarity(p.description_short, ${item.descriptionShort}))::float8 AS score,
+          (array_agg(p.id::text ORDER BY similarity(p.description_short, ${item.descriptionShort}) DESC))[1] AS product_id
         FROM products p
         WHERE p.ncm_code IS NOT NULL
           AND length(trim(p.ncm_code)) = 8
@@ -1037,6 +1042,7 @@ export class RequestsService {
           score: Math.min(1, Math.max(0, Number(row.score))),
           usageCount: Number(row.usage_count),
           rank: rank + 1,
+          sourceProductId: row.product_id || null,
         })),
       });
     }
@@ -2563,7 +2569,37 @@ export class RequestsService {
       },
     });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
-    return request;
+
+    const sourceIds = [
+      ...new Set(
+        request.items.flatMap((it) =>
+          (it.ncmSuggestions ?? [])
+            .map((s) => s.sourceProductId)
+            .filter((pid): pid is string => Boolean(pid)),
+        ),
+      ),
+    ];
+    const sourceProducts =
+      sourceIds.length === 0
+        ? []
+        : await this.prisma.product.findMany({
+            where: { id: { in: sourceIds } },
+            select: { id: true, descriptionShort: true },
+          });
+    const descByProduct = new Map(sourceProducts.map((p) => [p.id, p.descriptionShort]));
+
+    return {
+      ...request,
+      items: request.items.map((it) => ({
+        ...it,
+        ncmSuggestions: (it.ncmSuggestions ?? []).map((s) => ({
+          ...s,
+          sampleDescription: s.sourceProductId
+            ? descByProduct.get(s.sourceProductId) ?? null
+            : null,
+        })),
+      })),
+    };
   }
 
   /**
