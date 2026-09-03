@@ -1,6 +1,6 @@
 import { DataTable } from '../../components/DataTable';
 import { PaginationBar } from '../../components/PaginationBar';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { suppliersApi } from '../../lib/resources';
 import type { Supplier, SupplierRequest } from '../../lib/types';
 
@@ -9,7 +9,7 @@ function useSuppliers(mode: 'base' | 'inactive' | 'requests', mine = false) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
 
-  async function load(p = 1) {
+  const load = useCallback(async (p = 1) => {
     if (mode === 'base') {
       const r = await suppliersApi.base({ page: p });
       setRows(r.data); setTotal(r.total); setPage(r.page);
@@ -20,9 +20,9 @@ function useSuppliers(mode: 'base' | 'inactive' | 'requests', mine = false) {
       const r = await suppliersApi.requests({ mine, page: p });
       setRows(r.data); setTotal(r.total); setPage(r.page);
     }
-  }
+  }, [mode, mine]);
 
-  useEffect(() => { void load(); }, [mode, mine]);
+  useEffect(() => { void load(); }, [load]);
 
   return { rows, total, page, load };
 }

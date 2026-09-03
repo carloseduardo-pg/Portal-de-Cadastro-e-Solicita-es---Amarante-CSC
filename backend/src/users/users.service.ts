@@ -5,11 +5,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
-import {
-  pageResult,
-  skipTake,
-  type PageParams,
-} from '../common/pagination';
+import { pageResult, skipTake, type PageParams } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 

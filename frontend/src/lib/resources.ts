@@ -39,10 +39,13 @@ export const dashboardApi = {
 };
 
 export const productsApi = {
+  /** Busca por descrição (similaridade) ou por qualquer código do produto. */
   search: (opts: {
     q: string;
     hotelId?: string;
     itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+    /** Bloqueio: só faz sentido sobre item ativo. */
+    activeOnly?: boolean;
     page?: number;
     pageSize?: number;
   }) =>
@@ -51,6 +54,7 @@ export const productsApi = {
         q: opts.q,
         hotel_id: opts.hotelId,
         item_kind: opts.itemKind,
+        active_only: opts.activeOnly ? 'true' : undefined,
         page: opts.page ?? 1,
         pageSize: opts.pageSize ?? 20,
       })}`,
@@ -79,6 +83,8 @@ export const productsApi = {
     itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
     page?: number;
     pageSize?: number;
+    sort?: string;
+    dir?: 'asc' | 'desc';
   }) =>
     apiFetch<ProductBaseResult>(
       `/products/base${qs({
@@ -89,6 +95,8 @@ export const productsApi = {
         item_kind: opts?.itemKind,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 20,
+        sort: opts?.sort,
+        dir: opts?.dir,
       })}`,
     ),
   inactive: (opts?: { search?: string; page?: number; pageSize?: number }) =>
@@ -96,7 +104,20 @@ export const productsApi = {
       `/products/inactive${qs({ search: opts?.search, page: opts?.page ?? 1, pageSize: opts?.pageSize ?? 20 })}`,
     ),
   get: (id: string) => apiFetch<ProductBase>(`/products/${id}`),
+  remove: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/products/${id}`, { method: 'DELETE' }),
 };
+
+/**
+ * Tipos aceitos na criação/edição. `BLOQUEIO_*` só aparece em registros antigos —
+ * o portal grava sempre `BLOQUEIO` com as flags de escopo.
+ */
+export type RequestTypeInput =
+  | 'INCLUSAO'
+  | 'ALTERACAO'
+  | 'BLOQUEIO'
+  | 'BLOQUEIO_PARCIAL'
+  | 'BLOQUEIO_TOTAL';
 
 export const requestsApi = {
   summary: () => apiFetch<Record<string, number>>('/requests/summary'),
@@ -191,8 +212,11 @@ export const requestsApi = {
   create: (body: {
     hotelIds: string[];
     familyId: string;
-    type?: 'INCLUSAO' | 'ALTERACAO' | 'BLOQUEIO_PARCIAL' | 'BLOQUEIO_TOTAL';
+    type?: RequestTypeInput;
     fixedAsset?: boolean;
+    /** Bloqueio: ao menos uma flag; ambas = bloqueio total. */
+    blockRequisition?: boolean;
+    blockPurchase?: boolean;
     items: {
       productId?: string;
       groupId?: string;
@@ -218,6 +242,7 @@ export const requestsApi = {
       productLink?: string;
       productLinks?: string[];
       itemObservation?: string;
+      ncmCode?: string;
       sortOrder?: number;
     }[];
     submit?: boolean;
@@ -234,8 +259,10 @@ export const requestsApi = {
     body: {
       hotelIds?: string[];
       familyId?: string;
-      type?: 'INCLUSAO' | 'ALTERACAO' | 'BLOQUEIO_PARCIAL' | 'BLOQUEIO_TOTAL';
+      type?: RequestTypeInput;
       fixedAsset?: boolean;
+      blockRequisition?: boolean;
+      blockPurchase?: boolean;
       items?: {
         productId?: string;
         groupId?: string;
@@ -261,6 +288,7 @@ export const requestsApi = {
         productLink?: string;
         productLinks?: string[];
         itemObservation?: string;
+        ncmCode?: string;
         sortOrder?: number;
       }[];
       submit?: boolean;
@@ -287,10 +315,11 @@ export const requestsApi = {
     id: string,
     message: string,
     items?: { itemId: string; ncm: string }[],
+    targetFamilyId?: string,
   ) =>
     apiFetch<Request>(`/requests/${id}/send-from-imobilizado`, {
       method: 'POST',
-      body: JSON.stringify({ message, items }),
+      body: JSON.stringify({ message, items, targetFamilyId }),
     }),
   /** Imobilizado marca como AF e permanece na etapa. */
   markFixedAsset: (id: string, message: string) =>
@@ -300,7 +329,12 @@ export const requestsApi = {
     }),
   reclassifyFixedAsset: (
     id: string,
-    body: { justification: string; itemIds: string[]; returnToApprover?: boolean },
+    body: {
+      justification: string;
+      itemIds: string[];
+      returnToApprover?: boolean;
+      targetFamilyId: string;
+    },
   ) =>
     apiFetch<Request>(`/requests/${id}/reclassify-fixed-asset`, {
       method: 'POST',
@@ -308,7 +342,7 @@ export const requestsApi = {
     }),
   reclassifyConsumption: (
     id: string,
-    body: { justification: string; itemIds: string[] },
+    body: { justification: string; itemIds: string[]; targetFamilyId: string },
   ) =>
     apiFetch<Request>(`/requests/${id}/reclassify-consumption`, {
       method: 'POST',
@@ -330,10 +364,16 @@ export const requestsApi = {
     items: { itemId: string; ncm: string }[],
     message: string,
     approvedItemIds?: string[],
+    returnRejectedItemIds?: string[],
   ) =>
     apiFetch<Request>(`/requests/${id}/approve`, {
       method: 'POST',
-      body: JSON.stringify({ items, message, approvedItemIds }),
+      body: JSON.stringify({
+        items,
+        message,
+        approvedItemIds,
+        returnRejectedItemIds,
+      }),
     }),
   confirmNcm: (itemId: string, ncm: string) =>
     apiFetch<unknown>(`/requests/items/${itemId}/ncm`, {
@@ -343,10 +383,12 @@ export const requestsApi = {
 };
 
 export const catalogApi = {
-  hotels: () => apiFetch<Hotel[]>('/catalog/hotels'),
+  hotels: (opts?: { status?: 'active' | 'inactive' | 'all' }) =>
+    apiFetch<Hotel[]>(`/catalog/hotels${qs({ status: opts?.status })}`),
   families: (opts?: {
     search?: string;
     itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+    status?: 'active' | 'inactive' | 'all';
     page?: number;
     pageSize?: number;
   }) =>
@@ -354,6 +396,7 @@ export const catalogApi = {
       `/catalog/families${qs({
         search: opts?.search,
         item_kind: opts?.itemKind,
+        status: opts?.status,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 50,
       })}`,
@@ -366,6 +409,7 @@ export const catalogApi = {
           search?: string;
           subgroupId?: string;
           itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+          status?: 'active' | 'inactive' | 'all';
           page?: number;
           pageSize?: number;
         }
@@ -380,6 +424,7 @@ export const catalogApi = {
         search: opts?.search,
         subgroup_id: opts?.subgroupId,
         item_kind: opts?.itemKind,
+        status: opts?.status,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 200,
       })}`,
@@ -389,6 +434,7 @@ export const catalogApi = {
     search?: string;
     familyId?: string;
     itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+    status?: 'active' | 'inactive' | 'all';
     page?: number;
     pageSize?: number;
   }) =>
@@ -397,21 +443,133 @@ export const catalogApi = {
         search: opts?.search,
         family_id: opts?.familyId,
         item_kind: opts?.itemKind,
+        status: opts?.status,
         page: opts?.page ?? 1,
         pageSize: opts?.pageSize ?? 200,
       })}`,
     ),
-  measureUnits: (page = 1) =>
-    apiFetch<PageResult<MeasureUnit>>(`/catalog/measure-units${qs({ page })}`),
-  costCenters: (hotelIds?: string[]) =>
+  measureUnits: (opts?: {
+    page?: number;
+    pageSize?: number;
+    status?: 'active' | 'inactive' | 'all';
+  }) =>
+    apiFetch<PageResult<MeasureUnit>>(
+      `/catalog/measure-units${qs({
+        page: opts?.page ?? 1,
+        pageSize: opts?.pageSize,
+        status: opts?.status,
+      })}`,
+    ),
+  costCenters: (hotelIds?: string[], opts?: { status?: 'active' | 'inactive' | 'all' }) =>
     apiFetch<CostCenter[]>(
       `/catalog/cost-centers${qs({
         hotel_ids: hotelIds?.length ? hotelIds : undefined,
         hotel_id: hotelIds?.length === 1 ? hotelIds[0] : undefined,
+        status: opts?.status,
       })}`,
     ),
-  warehouses: (page = 1) =>
-    apiFetch<PageResult<{ id: string; code: string; name: string; hotel?: Hotel }>>(`/catalog/warehouses${qs({ page })}`),
+  warehouses: (opts?: { page?: number; status?: 'active' | 'inactive' | 'all' }) =>
+    apiFetch<PageResult<{ id: string; code: string; name: string; hotel?: Hotel }>>(
+      `/catalog/warehouses${qs({ page: opts?.page ?? 1, status: opts?.status })}`,
+    ),
+  createFamily: (body: {
+    name: string;
+    itemKind: 'CONSUMPTION' | 'FIXED_ASSET';
+    code?: string;
+  }) =>
+    apiFetch<Family>('/catalog/families', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createSubgroup: (body: { familyId: string; name: string; code?: string }) =>
+    apiFetch<CatalogSubgroup>('/catalog/subgroups', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createGroup: (body: {
+    subgroupId: string;
+    name: string;
+    catalogCode: string;
+    code?: string;
+  }) =>
+    apiFetch<CatalogGroup>('/catalog/groups', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createCostCenter: (body: { code: string; name: string }) =>
+    apiFetch<{ code: string; name: string; hotelsLinked: number }>('/catalog/cost-centers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateFamily: (
+    id: string,
+    body: { name?: string; itemKind?: 'CONSUMPTION' | 'FIXED_ASSET'; code?: string },
+  ) =>
+    apiFetch<Family>(`/catalog/families/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deactivateFamily: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/catalog/families/${id}`, { method: 'DELETE' }),
+  updateSubgroup: (
+    id: string,
+    body: { familyId?: string; name?: string; code?: string },
+  ) =>
+    apiFetch<CatalogSubgroup>(`/catalog/subgroups/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deactivateSubgroup: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/catalog/subgroups/${id}`, { method: 'DELETE' }),
+  updateGroup: (
+    id: string,
+    body: { subgroupId?: string; name?: string; catalogCode?: string; code?: string },
+  ) =>
+    apiFetch<CatalogGroup>(`/catalog/groups/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deactivateGroup: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/catalog/groups/${id}`, { method: 'DELETE' }),
+  updateCostCenter: (code: string, body: { code?: string; name?: string }) =>
+    apiFetch<{ ok: boolean; code: string; name: string | null }>(
+      `/catalog/cost-centers/${encodeURIComponent(code)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      },
+    ),
+  deactivateCostCenter: (code: string) =>
+    apiFetch<{ ok: boolean }>(
+      `/catalog/cost-centers/${encodeURIComponent(code)}`,
+      {
+        method: 'DELETE',
+      },
+    ),
+  createHotel: (body: { code: string; name: string }) =>
+    apiFetch<Hotel>('/catalog/hotels', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateHotel: (id: string, body: { code?: string; name?: string }) =>
+    apiFetch<Hotel>(`/catalog/hotels/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deactivateHotel: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/catalog/hotels/${id}`, { method: 'DELETE' }),
+  createMeasureUnit: (body: { code: string; name: string }) =>
+    apiFetch<MeasureUnit>('/catalog/measure-units', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateMeasureUnit: (id: string, body: { code?: string; name?: string }) =>
+    apiFetch<MeasureUnit>(`/catalog/measure-units/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deactivateMeasureUnit: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/catalog/measure-units/${id}`, { method: 'DELETE' }),
 };
 
 export const suppliersApi = {

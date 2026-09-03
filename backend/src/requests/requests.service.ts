@@ -17,13 +17,20 @@ import { buildPdmSignature } from '../common/pdm-signature';
 import { formatNcmDisplay, normalizeNcmCode } from '../common/ncm';
 import { pageResult, skipTake, type PageParams } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
-import type { CreateRequestDto, UpdateRequestDto } from './dto/create-request.dto';
+import type {
+  CreateRequestDto,
+  UpdateRequestDto,
+} from './dto/create-request.dto';
 import type { ReclassifyRequestDto } from './dto/reclassify-request.dto';
+import { closeReasonLabel, isCloseReasonCode } from './close-reasons';
+import { allocateRequestCode } from './request-code';
 import {
-  closeReasonLabel,
-  isCloseReasonCode,
-} from './close-reasons';
-import { isBlockRequestType, isExistingProductRequestType } from './request-type.helpers';
+  blockScopeLabel,
+  blockScopeOf,
+  blockStateFromScope,
+  isBlockRequestType,
+  isExistingProductRequestType,
+} from './request-type.helpers';
 
 const ACTIONABLE_STATES: RequestState[] = [
   RequestState.SOLICITANTE,
@@ -54,6 +61,30 @@ const OUTCOME_CLOSED = 'CLOSED';
 const OUTCOME_APPROVAL_TOTAL = 'APPROVAL_TOTAL';
 /** Finalização no Administrativo: subset à base; demais rejeitados. */
 const OUTCOME_APPROVAL_PARTIAL = 'APPROVAL_PARTIAL';
+
+/** Campos do item confrontados com o produto da base para detectar alteração real. */
+type ComparableRequestItem = {
+  descriptionShort: string;
+  descriptionLong: string | null;
+  groupId: string | null;
+  measureUnitId: string | null;
+  costCenterId: string | null;
+  source: ProductSource;
+  unifiedCode: string | null;
+  legacyCode: string | null;
+  law116: string | null;
+  ncmCode: string | null;
+  productLink: string | null;
+  itemObservation: string | null;
+  physicalLocation: string | null;
+  assetTag: string | null;
+  acquisitionValue: unknown;
+  acquisitionDate: Date | null;
+  usefulLifeMonths: number | null;
+  depreciationRate: unknown;
+  supplierDocument: string | null;
+  invoiceNumber: string | null;
+};
 
 const SOLICITANTE_CLOSE_STATES: RequestState[] = [
   RequestState.RASCUNHO,
@@ -114,7 +145,9 @@ const ENCERRADO_BUCKET_STATES: RequestState[] = [
 const CLOSED_ALL_STATES: RequestState[] = ENCERRADO_BUCKET_STATES;
 
 /** Filtro do bloco principal na tela Solicitações. */
-function resolveRegistryBucketFilter(bucket?: string): RequestState[] | undefined {
+function resolveRegistryBucketFilter(
+  bucket?: string,
+): RequestState[] | undefined {
   if (!bucket?.trim()) return undefined;
   switch (bucket) {
     case 'solicitante':
@@ -131,7 +164,9 @@ function resolveRegistryBucketFilter(bucket?: string): RequestState[] | undefine
 }
 
 /** Filtro de etapa da lista analítica (Solicitações), incluindo agrupamento Encerrada. */
-function resolveRegistryStageFilter(stage?: string): RequestState[] | undefined {
+function resolveRegistryStageFilter(
+  stage?: string,
+): RequestState[] | undefined {
   if (!stage?.trim()) return undefined;
   switch (stage) {
     case 'ENCERRADA':
@@ -149,7 +184,9 @@ function resolveRegistryStageFilter(stage?: string): RequestState[] | undefined 
   }
 }
 
-function resolveOperatorStageFilter(stage?: string): RequestState | { in: RequestState[] } | undefined {
+function resolveOperatorStageFilter(
+  stage?: string,
+): RequestState | { in: RequestState[] } | undefined {
   if (!stage?.trim()) return undefined;
   if (stage === 'RASCUNHO') return { in: DRAFT_STAGE_VALUES };
   return Object.values(RequestState).includes(stage as RequestState)
@@ -256,9 +293,10 @@ export class RequestsService {
   }
 
   /** Destino: rascunho → SOLICITANTE; envio → primeira etapa de aprovação. */
-  private resolveTargetStage(
-    dto: { targetStage?: string; submit?: boolean },
-  ): 'SOLICITANTE' | 'APROVADOR' {
+  private resolveTargetStage(dto: {
+    targetStage?: string;
+    submit?: boolean;
+  }): 'SOLICITANTE' | 'APROVADOR' {
     if (dto.targetStage === 'APROVADOR' || dto.targetStage === 'SOLICITANTE') {
       return dto.targetStage;
     }
@@ -266,13 +304,51 @@ export class RequestsService {
   }
 
   /**
-   * Primeira etapa de aprovação após o solicitante.
-   * REGRA INVIOLÁVEL (fluxo Produtos): o solicitante NUNCA envia direto ao
-   * Aprovador - Administrativo. Toda solicitação passa primeiro pelo
-   * Aprovador - Imobilizado (triagem AF × UC), inclusive após rascunho/retorno.
+   * Primeira etapa de aprovação após o solicitante — definida pela família do lote.
+   * CONSUMPTION → Aprovador - Administrativo; FIXED_ASSET → Aprovador - Imobilizado.
    */
-  private firstApprovalState(_fixedAsset?: boolean): RequestState {
-    return RequestState.IMOBILIZADO;
+  private firstApprovalState(
+    familyKind?: 'CONSUMPTION' | 'FIXED_ASSET' | boolean | null,
+  ): RequestState {
+    if (familyKind === true || familyKind === 'FIXED_ASSET') {
+      return RequestState.IMOBILIZADO;
+    }
+    return RequestState.APROVADOR;
+  }
+
+  /** Resolve itemKind / fixedAsset / destino a partir da família do lote. */
+  private async resolveRoutingFromFamily(familyId: string) {
+    const family = await this.prisma.family.findFirst({
+      where: { id: familyId, active: true },
+      select: { id: true, code: true, name: true, itemKind: true },
+    });
+    if (!family) {
+      throw new BadRequestException('Família inválida ou inativa.');
+    }
+    const fixedAsset = family.itemKind === 'FIXED_ASSET';
+    return {
+      family,
+      fixedAsset,
+      itemKind: fixedAsset
+        ? ('FIXED_ASSET' as const)
+        : ('CONSUMPTION' as const),
+      approvalState: this.firstApprovalState(family.itemKind),
+    };
+  }
+
+  /** Exige família ativa do kind informado (transferência entre setores). */
+  private async assertTargetFamily(
+    familyId: string | undefined,
+    kind: 'CONSUMPTION' | 'FIXED_ASSET',
+  ) {
+    if (!familyId?.trim()) {
+      throw new BadRequestException(
+        kind === 'FIXED_ASSET'
+          ? 'Selecione a família de ativo fixo para encaminhar.'
+          : 'Selecione a família de uso e consumo para encaminhar.',
+      );
+    }
+    return this.assertFamilyExists(familyId, kind);
   }
 
   /**
@@ -281,18 +357,26 @@ export class RequestsService {
    */
   private resolveSelectedItemIds(allItemIds: string[], selectedIds: string[]) {
     if (!selectedIds?.length) {
-      throw new BadRequestException('Selecione ao menos um item para reclassificar.');
+      throw new BadRequestException(
+        'Selecione ao menos um item para reclassificar.',
+      );
     }
     const all = new Set(allItemIds);
     const selected = [...new Set(selectedIds)];
     for (const id of selected) {
       if (!all.has(id)) {
-        throw new BadRequestException('Um ou mais itens selecionados não pertencem a esta solicitação.');
+        throw new BadRequestException(
+          'Um ou mais itens selecionados não pertencem a esta solicitação.',
+        );
       }
     }
     const selectedSet = new Set(selected);
     const remainingIds = allItemIds.filter((id) => !selectedSet.has(id));
-    return { selectedIds: selected, remainingIds, isFullLot: remainingIds.length === 0 };
+    return {
+      selectedIds: selected,
+      remainingIds,
+      isFullLot: remainingIds.length === 0,
+    };
   }
 
   /**
@@ -354,16 +438,18 @@ export class RequestsService {
    * Lista analítica de todas as solicitações (módulo Solicitações).
    * Busca avançada via filtros combinados (operadores, datas, família, hotel, etc.).
    */
-  async findRegistry(
-    params: RegistryFilterParams & PageParams,
-  ) {
+  async findRegistry(params: RegistryFilterParams & PageParams) {
     const filters = this.buildRegistryFilters(params);
-    const where: Prisma.RequestWhereInput = filters.length ? { AND: filters } : {};
+    const where: Prisma.RequestWhereInput = filters.length
+      ? { AND: filters }
+      : {};
 
     const include = {
       requester: { select: { id: true, name: true } },
       hotel: { select: { id: true, code: true, name: true } },
-      hotels: { include: { hotel: { select: { id: true, code: true, name: true } } } },
+      hotels: {
+        include: { hotel: { select: { id: true, code: true, name: true } } },
+      },
       family: { select: { code: true, name: true } },
       items: { orderBy: { sortOrder: 'asc' as const } },
       stages: {
@@ -405,10 +491,14 @@ export class RequestsService {
   /** Contagens por etapa principal (blocos da tela Solicitações). */
   async registryStageSummary(): Promise<RegistryStageSummary> {
     const [solicitante, imobilizado, aprovador, encerrado] = await Promise.all([
-      this.prisma.request.count({ where: { state: { in: SOLICITANTE_BUCKET_STATES } } }),
+      this.prisma.request.count({
+        where: { state: { in: SOLICITANTE_BUCKET_STATES } },
+      }),
       this.prisma.request.count({ where: { state: RequestState.IMOBILIZADO } }),
       this.prisma.request.count({ where: { state: RequestState.APROVADOR } }),
-      this.prisma.request.count({ where: { state: { in: ENCERRADO_BUCKET_STATES } } }),
+      this.prisma.request.count({
+        where: { state: { in: ENCERRADO_BUCKET_STATES } },
+      }),
     ]);
     return { solicitante, imobilizado, aprovador, encerrado };
   }
@@ -431,8 +521,8 @@ export class RequestsService {
     requesterIds?: string[];
   }) {
     const role =
-      params.role && Object.values(UserRole).includes(params.role as UserRole)
-        ? (params.role as UserRole)
+      params.role && Object.values(UserRole).includes(params.role)
+        ? params.role
         : await this.resolveUserRole(params.userId);
     const inboxStates = inboxStatesForRole(role);
     const where: Prisma.RequestWhereInput = {
@@ -452,12 +542,14 @@ export class RequestsService {
     };
   }
 
-  async findAll(params: {
-    state?: string;
-    mine?: string;
-    userId?: string;
-    search?: string;
-  } & PageParams) {
+  async findAll(
+    params: {
+      state?: string;
+      mine?: string;
+      userId?: string;
+      search?: string;
+    } & PageParams,
+  ) {
     const where = this.buildListWhere(params);
     const { skip, take } = skipTake(params);
     const [total, data] = await this.prisma.$transaction([
@@ -495,7 +587,10 @@ export class RequestsService {
 
   private parseIdList(value?: string): string[] | undefined {
     if (!value?.trim()) return undefined;
-    const ids = value.split(',').map((s) => s.trim()).filter(Boolean);
+    const ids = value
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     return ids.length ? ids : undefined;
   }
 
@@ -565,7 +660,9 @@ export class RequestsService {
   }
 
   /** Monta cláusulas AND para a busca avançada de solicitações. */
-  private buildRegistryFilters(params: RegistryFilterParams): Prisma.RequestWhereInput[] {
+  private buildRegistryFilters(
+    params: RegistryFilterParams,
+  ): Prisma.RequestWhereInput[] {
     const filters: Prisma.RequestWhereInput[] = [];
     const { twoDaysAgo } = timeWindows();
 
@@ -580,7 +677,18 @@ export class RequestsService {
     }
 
     if (params.type === 'INCLUSAO' || params.type === 'ALTERACAO') {
-      filters.push({ type: params.type as RequestType });
+      filters.push({ type: params.type });
+    } else if (params.type === 'BLOQUEIO') {
+      // Bloqueio unificado agrupa também os tipos históricos parcial/total.
+      filters.push({
+        type: {
+          in: [
+            RequestType.BLOQUEIO,
+            RequestType.BLOQUEIO_PARCIAL,
+            RequestType.BLOQUEIO_TOTAL,
+          ],
+        },
+      });
     }
 
     if (params.itemsMode === 'single') {
@@ -677,13 +785,36 @@ export class RequestsService {
 
     if (params.search?.trim()) {
       const q = params.search.trim();
+      const codeFilter =
+        /^\d{1,10}$/.test(q)
+          ? [{ code: q }]
+          : [{ code: { contains: q, mode: 'insensitive' as const } }];
       filters.push({
         OR: [
-          { items: { some: { descriptionShort: { contains: q, mode: 'insensitive' } } } },
-          { items: { some: { descriptionLong: { contains: q, mode: 'insensitive' } } } },
-          { items: { some: { unifiedCode: { contains: q, mode: 'insensitive' } } } },
-          { items: { some: { legacyCode: { contains: q, mode: 'insensitive' } } } },
-          { items: { some: { ncmCode: { contains: q, mode: 'insensitive' } } } },
+          ...codeFilter,
+          {
+            items: {
+              some: { descriptionShort: { contains: q, mode: 'insensitive' } },
+            },
+          },
+          {
+            items: {
+              some: { descriptionLong: { contains: q, mode: 'insensitive' } },
+            },
+          },
+          {
+            items: {
+              some: { unifiedCode: { contains: q, mode: 'insensitive' } },
+            },
+          },
+          {
+            items: {
+              some: { legacyCode: { contains: q, mode: 'insensitive' } },
+            },
+          },
+          {
+            items: { some: { ncmCode: { contains: q, mode: 'insensitive' } } },
+          },
           { requestDescription: { contains: q, mode: 'insensitive' } },
           { observation: { contains: q, mode: 'insensitive' } },
           { family: { name: { contains: q, mode: 'insensitive' } } },
@@ -692,8 +823,14 @@ export class RequestsService {
           { hotel: { name: { contains: q, mode: 'insensitive' } } },
           { requester: { name: { contains: q, mode: 'insensitive' } } },
           { requester: { email: { contains: q, mode: 'insensitive' } } },
-          { stages: { some: { message: { contains: q, mode: 'insensitive' } } } },
-          { stages: { some: { user: { name: { contains: q, mode: 'insensitive' } } } } },
+          {
+            stages: { some: { message: { contains: q, mode: 'insensitive' } } },
+          },
+          {
+            stages: {
+              some: { user: { name: { contains: q, mode: 'insensitive' } } },
+            },
+          },
         ],
       });
     }
@@ -713,8 +850,20 @@ export class RequestsService {
   }): Prisma.RequestWhereInput {
     const where: Prisma.RequestWhereInput = {};
     if (params.state) where.state = params.state as RequestState;
-    if (params.type) where.type = params.type as RequestType;
-    if (params.mine === 'true' && params.userId) where.requesterId = params.userId;
+    if (params.type === RequestType.BLOQUEIO) {
+      // Bloqueio unificado agrupa também os tipos históricos parcial/total.
+      where.type = {
+        in: [
+          RequestType.BLOQUEIO,
+          RequestType.BLOQUEIO_PARCIAL,
+          RequestType.BLOQUEIO_TOTAL,
+        ],
+      };
+    } else if (params.type) {
+      where.type = params.type as RequestType;
+    }
+    if (params.mine === 'true' && params.userId)
+      where.requesterId = params.userId;
     if (params.familyIds?.length) where.familyId = { in: params.familyIds };
     if (params.hotelIds?.length) {
       where.OR = [
@@ -722,10 +871,17 @@ export class RequestsService {
         { hotels: { some: { hotelId: { in: params.hotelIds } } } },
       ];
     }
-    if (params.requesterIds?.length) where.requesterId = { in: params.requesterIds };
+    if (params.requesterIds?.length)
+      where.requesterId = { in: params.requesterIds };
     if (params.search?.trim()) {
       const q = params.search.trim();
+      const codeFilter =
+        /^\d{1,10}$/.test(q)
+          ? [{ code: q }]
+          : [{ code: { contains: q, mode: 'insensitive' as const } }];
       where.OR = [
+        ...codeFilter,
+        { requestDescription: { contains: q, mode: 'insensitive' } },
         {
           items: {
             some: {
@@ -749,7 +905,10 @@ export class RequestsService {
     return Number.isFinite(n) && n > 0 ? n : 15;
   }
 
-  private resolveHotelIds(dto: { hotelIds?: string[]; hotelId?: string }): string[] {
+  private resolveHotelIds(dto: {
+    hotelIds?: string[];
+    hotelId?: string;
+  }): string[] {
     const ids = dto.hotelIds?.length
       ? [...new Set(dto.hotelIds)]
       : dto.hotelId
@@ -766,7 +925,9 @@ export class RequestsService {
       where: { id: { in: hotelIds }, active: true },
     });
     if (count !== hotelIds.length) {
-      throw new BadRequestException('Uma ou mais unidades selecionadas são inválidas.');
+      throw new BadRequestException(
+        'Uma ou mais unidades selecionadas são inválidas.',
+      );
     }
   }
 
@@ -811,7 +972,10 @@ export class RequestsService {
     return fromArray;
   }
 
-  private normalizeItemInput(items: CreateRequestDto['items'], itemKind: 'CONSUMPTION' | 'FIXED_ASSET') {
+  private normalizeItemInput(
+    items: CreateRequestDto['items'],
+    itemKind: 'CONSUMPTION' | 'FIXED_ASSET',
+  ) {
     return items.map((item, idx) => {
       const links = this.extractItemLinks(item);
       const unitQuantity =
@@ -824,17 +988,26 @@ export class RequestsService {
         productId: item.productId ?? null,
         groupId: item.groupId ?? null,
         itemKind,
-        measureUnitId: itemKind === 'FIXED_ASSET' ? null : item.measureUnitId ?? null,
+        measureUnitId:
+          itemKind === 'FIXED_ASSET' ? null : (item.measureUnitId ?? null),
         costCenterId: item.costCenterId ?? null,
         source: item.source ?? ProductSource.NATIONAL,
         itemValue: item.itemValue != null ? item.itemValue : null,
-        purchaseQtyTotal: itemKind === 'FIXED_ASSET' ? null : item.purchaseQtyTotal != null ? item.purchaseQtyTotal : null,
+        purchaseQtyTotal:
+          itemKind === 'FIXED_ASSET'
+            ? null
+            : item.purchaseQtyTotal != null
+              ? item.purchaseQtyTotal
+              : null,
         unitQuantity,
         physicalLocation:
           itemKind === 'FIXED_ASSET'
             ? item.physicalLocation?.trim().toUpperCase() || null
             : null,
-        assetTag: itemKind === 'FIXED_ASSET' ? item.assetTag?.trim().toUpperCase() || null : null,
+        assetTag:
+          itemKind === 'FIXED_ASSET'
+            ? item.assetTag?.trim().toUpperCase() || null
+            : null,
         acquisitionValue:
           itemKind === 'FIXED_ASSET' && item.acquisitionValue != null
             ? item.acquisitionValue
@@ -852,15 +1025,21 @@ export class RequestsService {
             ? item.depreciationRate
             : null,
         supplierDocument:
-          itemKind === 'FIXED_ASSET' ? item.supplierDocument?.trim() || null : null,
+          itemKind === 'FIXED_ASSET'
+            ? item.supplierDocument?.trim() || null
+            : null,
         invoiceNumber:
-          itemKind === 'FIXED_ASSET' ? item.invoiceNumber?.trim() || null : null,
+          itemKind === 'FIXED_ASSET'
+            ? item.invoiceNumber?.trim() || null
+            : null,
         unifiedCode: item.unifiedCode?.trim() || null,
         legacyCode: item.legacyCode?.trim().toUpperCase() || null,
         law116: item.law116?.trim() || null,
         productLink: links[0] ?? null,
         itemLinks: links,
         itemObservation: item.itemObservation?.trim() || null,
+        // ITM-09: NCM aqui é sugestão; confirmação humana continua no aprovador.
+        ncmCode: normalizeNcmCode(item.ncmCode ?? '') || null,
         sortOrder: item.sortOrder ?? idx,
       };
     });
@@ -871,7 +1050,9 @@ export class RequestsService {
     familyId: string,
     items: { groupId: string | null; descriptionShort: string }[],
   ) {
-    const groupIds = [...new Set(items.map((i) => i.groupId).filter(Boolean))] as string[];
+    const groupIds = [
+      ...new Set(items.map((i) => i.groupId).filter(Boolean)),
+    ] as string[];
     if (!groupIds.length) return;
     const groups = await this.prisma.group.findMany({
       where: { id: { in: groupIds } },
@@ -914,7 +1095,9 @@ export class RequestsService {
 
     const hit = rows[0];
     if (!hit.active || hit.block_state !== 'NONE') {
-      throw new BadRequestException('Existe um item idêntico bloqueado na base.');
+      throw new BadRequestException(
+        'Existe um item idêntico bloqueado na base.',
+      );
     }
     throw new BadRequestException(
       'Produto com descrição idêntica já existe na base unificada. Não é possível solicitar inclusão duplicada.',
@@ -946,7 +1129,9 @@ export class RequestsService {
   ) {
     for (const item of items) {
       if (!item.descriptionShort) {
-        throw new BadRequestException('Descrição curta é obrigatória em todos os itens.');
+        throw new BadRequestException(
+          'Descrição curta é obrigatória em todos os itens.',
+        );
       }
       if (type === RequestType.INCLUSAO && !item.productId) {
         // Ativo fixo = instância: descrição idêntica é esperada (mais unidades do mesmo bem).
@@ -963,15 +1148,25 @@ export class RequestsService {
         );
       }
       if (submit) {
-        if (!item.descriptionLong) {
-          throw new BadRequestException('Descrição longa é obrigatória para enviar à aprovação.');
+        // Alteração e bloqueio partem do cadastro da base, que muitas vezes não
+        // tem descrição longa nem centro de custo — exigi-los forçaria o
+        // solicitante a inventar dado que não é objeto do pedido.
+        const isNewRegistration = type === RequestType.INCLUSAO;
+        if (isNewRegistration && !item.descriptionLong) {
+          throw new BadRequestException(
+            'Descrição longa é obrigatória para enviar à aprovação.',
+          );
         }
-        if (!item.groupId && type === RequestType.INCLUSAO) {
+        if (!item.groupId && isNewRegistration) {
           throw new BadRequestException(
             'Grupo de itens é obrigatório em todos os itens para enviar à aprovação.',
           );
         }
-        if (item.itemKind === 'CONSUMPTION' && !item.measureUnitId) {
+        if (
+          item.itemKind === 'CONSUMPTION' &&
+          !item.measureUnitId &&
+          !isBlockRequestType(type)
+        ) {
           throw new BadRequestException(
             'Unidade de medida é obrigatória para itens de consumo.',
           );
@@ -989,16 +1184,24 @@ export class RequestsService {
             );
           }
         }
-        if (!item.costCenterId) {
-          throw new BadRequestException('Centro de custo é obrigatório em todos os itens.');
+        if (!item.costCenterId && isNewRegistration) {
+          throw new BadRequestException(
+            'Centro de custo é obrigatório em todos os itens.',
+          );
         }
       }
       if (item.costCenterId) {
         const cc = await this.prisma.costCenter.findFirst({
-          where: { id: item.costCenterId, hotelId: { in: hotelIds }, active: true },
+          where: {
+            id: item.costCenterId,
+            hotelId: { in: hotelIds },
+            active: true,
+          },
         });
         if (!cc) {
-          throw new BadRequestException('Centro de custo inválido para as unidades selecionadas.');
+          throw new BadRequestException(
+            'Centro de custo inválido para as unidades selecionadas.',
+          );
         }
       }
       if (item.measureUnitId) {
@@ -1013,7 +1216,9 @@ export class RequestsService {
   }
 
   private async seedNcmSuggestions(requestId: string) {
-    const items = await this.prisma.requestItem.findMany({ where: { requestId } });
+    const items = await this.prisma.requestItem.findMany({
+      where: { requestId },
+    });
     for (const item of items) {
       // Score = similaridade real (pg_trgm); guarda o produto mais parecido por NCM.
       const rows = await this.prisma.$queryRaw<
@@ -1052,40 +1257,193 @@ export class RequestsService {
     }
   }
 
-  private assertObservation(observation: string | undefined | null, type: RequestType) {
+  private assertObservation(
+    observation: string | undefined | null,
+    type: RequestType,
+  ) {
     if (
-      (type === RequestType.INCLUSAO || isExistingProductRequestType(type)) &&
-      !observation?.trim()
+      !(type === RequestType.INCLUSAO || isExistingProductRequestType(type)) ||
+      observation?.trim()
     ) {
+      return;
+    }
+    if (isBlockRequestType(type)) {
       throw new BadRequestException(
-        'Observação é obrigatória: descreva o motivo da solicitação.',
+        'Informe o motivo do bloqueio: a observação é obrigatória.',
       );
+    }
+    if (type === RequestType.ALTERACAO) {
+      throw new BadRequestException(
+        'Justifique a alteração: a observação é obrigatória.',
+      );
+    }
+    throw new BadRequestException(
+      'Observação é obrigatória: descreva o motivo da solicitação.',
+    );
+  }
+
+  /**
+   * Bloqueio exige ao menos um canal (requisição e/ou compras).
+   * Ambos ⇒ bloqueio total; apenas um ⇒ parcial.
+   */
+  private assertBlockScope(
+    type: RequestType,
+    scope: { blockRequisition: boolean; blockPurchase: boolean },
+  ) {
+    if (!isBlockRequestType(type)) return;
+    if (!scope.blockRequisition && !scope.blockPurchase) {
+      throw new BadRequestException(
+        'Marque ao menos um escopo do bloqueio: requisição e/ou compras.',
+      );
+    }
+  }
+
+  /** Bloqueio só incide sobre produto ativo na base. */
+  private async assertBlockTargetsActiveProducts(
+    type: RequestType,
+    items: { productId: string | null }[],
+  ) {
+    if (!isBlockRequestType(type)) return;
+    const productIds = items
+      .map((i) => i.productId)
+      .filter((id): id is string => Boolean(id));
+    if (!productIds.length) return;
+    const inactive = await this.prisma.product.findFirst({
+      where: { id: { in: productIds }, active: false },
+      select: { descriptionShort: true },
+    });
+    if (inactive) {
+      throw new BadRequestException(
+        `O item "${inactive.descriptionShort}" já está inativo na base — não há o que bloquear.`,
+      );
+    }
+  }
+
+  /**
+   * Campos do item comparáveis com o produto da base — dizem se a alteração
+   * mudou de fato alguma coisa.
+   */
+  private itemChangesAgainstProduct(
+    item: ComparableRequestItem,
+    product: {
+      descriptionShort: string;
+      descriptionLong: string | null;
+      groupId: string | null;
+      measureUnitId: string | null;
+      costCenterId: string | null;
+      source: ProductSource | null;
+      unifiedCode: string | null;
+      legacyCode: string | null;
+      law116: string | null;
+      ncmCode: string | null;
+      productLink: string | null;
+      notes: string | null;
+      physicalLocation: string | null;
+      assetTag: string | null;
+      acquisitionValue: unknown;
+      acquisitionDate: Date | null;
+      usefulLifeMonths: number | null;
+      depreciationRate: unknown;
+      supplierDocument: string | null;
+      invoiceNumber: string | null;
+    },
+  ): string[] {
+    const text = (value: unknown) =>
+      value == null ? '' : String(value).trim().toUpperCase();
+    const num = (value: unknown) =>
+      value == null || value === '' ? '' : String(Number(value));
+    const day = (value: Date | null) =>
+      value ? new Date(value).toISOString().slice(0, 10) : '';
+
+    const pairs: [string, string, string][] = [
+      ['Descrição curta', text(item.descriptionShort), text(product.descriptionShort)],
+      ['Descrição longa', text(item.descriptionLong), text(product.descriptionLong)],
+      ['Grupo de itens', text(item.groupId), text(product.groupId)],
+      ['Unidade de medida', text(item.measureUnitId), text(product.measureUnitId)],
+      ['Centro de custo', text(item.costCenterId), text(product.costCenterId)],
+      ['Fonte do produto', text(item.source), text(product.source)],
+      ['Código unificado', text(item.unifiedCode), text(product.unifiedCode)],
+      ['Código legado', text(item.legacyCode), text(product.legacyCode)],
+      ['Lei 116', text(item.law116), text(product.law116)],
+      ['NCM', text(item.ncmCode), text(product.ncmCode)],
+      ['Link do produto', text(item.productLink), text(product.productLink)],
+      ['Observação do item', text(item.itemObservation), text(product.notes)],
+      ['Localização física', text(item.physicalLocation), text(product.physicalLocation)],
+      ['Número de patrimônio', text(item.assetTag), text(product.assetTag)],
+      ['Valor de aquisição', num(item.acquisitionValue), num(product.acquisitionValue)],
+      ['Data de aquisição', day(item.acquisitionDate), day(product.acquisitionDate)],
+      ['Vida útil (meses)', num(item.usefulLifeMonths), num(product.usefulLifeMonths)],
+      ['Taxa de depreciação', num(item.depreciationRate), num(product.depreciationRate)],
+      ['Documento do fornecedor', text(item.supplierDocument), text(product.supplierDocument)],
+      ['Nota fiscal', text(item.invoiceNumber), text(product.invoiceNumber)],
+    ];
+
+    return pairs
+      .filter(([, next, current]) => next !== current)
+      .map(([label]) => label);
+  }
+
+  /** Alteração precisa mudar ao menos um campo em relação à base. */
+  private async assertAlteracaoHasChanges(
+    type: RequestType,
+    items: (ComparableRequestItem & { productId: string | null })[],
+  ) {
+    if (type !== RequestType.ALTERACAO) return;
+    for (const item of items) {
+      if (!item.productId) continue;
+      const product = await this.prisma.product.findUnique({
+        where: { id: item.productId },
+      });
+      if (!product) continue;
+      const changes = this.itemChangesAgainstProduct(item, product);
+      if (!changes.length) {
+        throw new BadRequestException(
+          `Nenhum campo foi alterado em "${item.descriptionShort}". Altere ao menos um dado para enviar a solicitação.`,
+        );
+      }
     }
   }
 
   async create(dto: CreateRequestDto, userId: string) {
     const hotelIds = this.resolveHotelIds(dto);
     await this.validateHotels(hotelIds);
-    /** Solicitante não define AF/UC — sempre inicia como consumo; Imobilizado tria. */
-    const fixedAsset = false;
-    const itemKind = 'CONSUMPTION' as const;
-    await this.assertFamilyExists(dto.familyId, itemKind);
+    /** Roteamento pela família: UC → Administrativo; AF → Imobilizado. */
+    const routing = await this.resolveRoutingFromFamily(dto.familyId);
+    const { fixedAsset, itemKind, approvalState } = routing;
     const requestType = dto.type ?? RequestType.INCLUSAO;
     this.assertObservation(dto.observation, requestType);
+    const blockScope = {
+      blockRequisition: Boolean(dto.blockRequisition),
+      blockPurchase: Boolean(dto.blockPurchase),
+    };
+    this.assertBlockScope(requestType, blockScope);
     const items = this.normalizeItemInput(dto.items, itemKind);
     const target = this.resolveTargetStage(dto);
     const strict = target === 'APROVADOR';
     await this.assertItemsBelongToFamily(dto.familyId, items);
-    await this.validateItems(items, hotelIds, strict, dto.type ?? RequestType.INCLUSAO, dto.observation);
+    await this.validateItems(
+      items,
+      hotelIds,
+      strict,
+      requestType,
+      dto.observation,
+    );
+    await this.assertBlockTargetsActiveProducts(requestType, items);
+    if (strict) {
+      await this.assertAlteracaoHasChanges(requestType, items);
+    }
 
     const now = new Date();
-    const approvalState = this.firstApprovalState(fixedAsset);
     const state =
       target === 'APROVADOR' ? approvalState : RequestState.SOLICITANTE;
+    const destLabel =
+      approvalState === RequestState.IMOBILIZADO
+        ? 'aprovador - imobilizado'
+        : 'aprovador - administrativo';
     const stageMessage =
       dto.observation?.trim() ||
       (target === 'APROVADOR'
-        ? 'Rascunho enviado ao aprovador - imobilizado (triagem inicial)'
+        ? `Rascunho enviado ao ${destLabel} (roteamento pela família)`
         : 'Rascunho salvo na caixa do solicitante');
 
     const request = await this.prisma.request.create({
@@ -1095,8 +1453,12 @@ export class RequestsService {
         familyId: dto.familyId,
         type: requestType,
         fixedAsset,
+        blockRequisition: blockScope.blockRequisition,
+        blockPurchase: blockScope.blockPurchase,
+        code: await allocateRequestCode(this.prisma),
         observation: dto.observation?.trim() || null,
-        requestDescription: dto.requestDescription?.trim().toUpperCase() || null,
+        requestDescription:
+          dto.requestDescription?.trim().toUpperCase() || null,
         state,
         submittedAt: now,
         expiresAt: null,
@@ -1104,7 +1466,12 @@ export class RequestsService {
           create: items.map(({ itemLinks, ...item }) => ({
             ...item,
             links: itemLinks.length
-              ? { create: itemLinks.map((url, sortOrder) => ({ url, sortOrder })) }
+              ? {
+                  create: itemLinks.map((url, sortOrder) => ({
+                    url,
+                    sortOrder,
+                  })),
+                }
               : undefined,
           })),
         },
@@ -1147,7 +1514,7 @@ export class RequestsService {
       include: this.requestListInclude(),
     });
 
-    if (target === 'APROVADOR' && approvalState === RequestState.IMOBILIZADO) {
+    if (target === 'APROVADOR') {
       await this.seedNcmSuggestions(request.id);
     }
     return this.findOne(request.id);
@@ -1167,11 +1534,15 @@ export class RequestsService {
       (role === UserRole.APROVADOR_IMOBILIZADO || role === UserRole.ADMIN);
     const canEdit =
       role === UserRole.ADMIN ||
-      (existing.requesterId === userId && requesterEditable.has(existing.state)) ||
-      (role === UserRole.APROVADOR && existing.state === RequestState.APROVADOR) ||
+      (existing.requesterId === userId &&
+        requesterEditable.has(existing.state)) ||
+      (role === UserRole.APROVADOR &&
+        existing.state === RequestState.APROVADOR) ||
       isImobilizadoEdit;
     if (!canEdit) {
-      throw new ForbiddenException('Sem permissão para editar esta solicitação.');
+      throw new ForbiddenException(
+        'Sem permissão para editar esta solicitação.',
+      );
     }
     if (!isImobilizadoEdit && !EDITABLE_STATES.includes(existing.state)) {
       throw new BadRequestException(
@@ -1182,19 +1553,41 @@ export class RequestsService {
     const isApproverEdit =
       existing.state === RequestState.APROVADOR &&
       (role === UserRole.APROVADOR || role === UserRole.ADMIN);
-    const target = isApproverEdit || isImobilizadoEdit ? 'APROVADOR' : this.resolveTargetStage(dto);
-    const canChangeFixedAsset =
-      isImobilizadoEdit || role === UserRole.ADMIN;
-    const fixedAsset =
+    const target =
+      isApproverEdit || isImobilizadoEdit
+        ? 'APROVADOR'
+        : this.resolveTargetStage(dto);
+    const canChangeFixedAsset = isImobilizadoEdit || role === UserRole.ADMIN;
+    const nextFamilyId = dto.familyId ?? existing.familyId;
+    let fixedAsset =
       dto.fixedAsset !== undefined && canChangeFixedAsset
         ? Boolean(dto.fixedAsset)
         : existing.fixedAsset;
+    /** Solicitante/rascunho: kind segue a família escolhida. */
+    if (
+      !isImobilizadoEdit &&
+      !isApproverEdit &&
+      (dto.familyId || !canChangeFixedAsset)
+    ) {
+      const routing = await this.resolveRoutingFromFamily(nextFamilyId);
+      fixedAsset = routing.fixedAsset;
+    }
     const itemKind = fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
     const strict = target === 'APROVADOR' && !isImobilizadoEdit;
-    const items = dto.items ? this.normalizeItemInput(dto.items, itemKind) : undefined;
-    const hotelIds = dto.hotelIds?.length || dto.hotelId
-      ? this.resolveHotelIds({ hotelIds: dto.hotelIds, hotelId: dto.hotelId ?? existing.hotelId })
-      : (await this.prisma.requestHotel.findMany({ where: { requestId: id } })).map((h) => h.hotelId);
+    const items = dto.items
+      ? this.normalizeItemInput(dto.items, itemKind)
+      : undefined;
+    const hotelIds =
+      dto.hotelIds?.length || dto.hotelId
+        ? this.resolveHotelIds({
+            hotelIds: dto.hotelIds,
+            hotelId: dto.hotelId ?? existing.hotelId,
+          })
+        : (
+            await this.prisma.requestHotel.findMany({
+              where: { requestId: id },
+            })
+          ).map((h) => h.hotelId);
     if (dto.hotelIds?.length || dto.hotelId) {
       await this.validateHotels(hotelIds);
     }
@@ -1218,24 +1611,56 @@ export class RequestsService {
     if (dto.observation !== undefined || strict) {
       this.assertObservation(nextObservation, nextType);
     }
+    const nextBlockScope = {
+      blockRequisition:
+        dto.blockRequisition !== undefined
+          ? Boolean(dto.blockRequisition)
+          : existing.blockRequisition,
+      blockPurchase:
+        dto.blockPurchase !== undefined
+          ? Boolean(dto.blockPurchase)
+          : existing.blockPurchase,
+    };
+    if (
+      dto.blockRequisition !== undefined ||
+      dto.blockPurchase !== undefined ||
+      strict
+    ) {
+      this.assertBlockScope(nextType, nextBlockScope);
+    }
+    if (items) {
+      await this.assertBlockTargetsActiveProducts(nextType, items);
+      if (strict) {
+        await this.assertAlteracaoHasChanges(nextType, items);
+      }
+    }
 
     const now = new Date();
-    const approvalState = this.firstApprovalState(fixedAsset);
+    const approvalState = this.firstApprovalState(
+      fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION',
+    );
     const nextState = isApproverEdit
       ? RequestState.APROVADOR
       : isImobilizadoEdit
         ? RequestState.IMOBILIZADO
-      : target === 'APROVADOR'
-        ? approvalState
-        : RequestState.SOLICITANTE;
+        : target === 'APROVADOR'
+          ? approvalState
+          : RequestState.SOLICITANTE;
     const editNote = dto.editNote?.trim();
+    const destLabel =
+      approvalState === RequestState.IMOBILIZADO
+        ? 'aprovador - imobilizado'
+        : 'aprovador - administrativo';
     const stageMessage =
       editNote ||
-      (dto.observation !== undefined ? dto.observation : existing.observation)?.trim() ||
+      (dto.observation !== undefined
+        ? dto.observation
+        : existing.observation
+      )?.trim() ||
       (isImobilizadoEdit
         ? 'Imobilizado atualizou a classificação (árvore de ativo fixo)'
         : target === 'APROVADOR'
-          ? 'Rascunho enviado ao aprovador - imobilizado (triagem inicial)'
+          ? `Rascunho enviado ao ${destLabel} (roteamento pela família)`
           : 'Rascunho salvo na caixa do solicitante');
 
     let clearClassificationInvalidated = false;
@@ -1247,12 +1672,10 @@ export class RequestsService {
             descriptionShort: i.descriptionShort,
             groupId: i.groupId,
           }))
-        : (
-            await this.prisma.requestItem.findMany({
-              where: { requestId: id },
-              select: { id: true, groupId: true, descriptionShort: true },
-            })
-          );
+        : await this.prisma.requestItem.findMany({
+            where: { requestId: id },
+            select: { id: true, groupId: true, descriptionShort: true },
+          });
       try {
         await this.assertFixedAssetClassificationReady(nextFamilyId, nextItems);
         clearClassificationInvalidated = true;
@@ -1266,14 +1689,15 @@ export class RequestsService {
             descriptionShort: i.descriptionShort,
             groupId: i.groupId,
           }))
-        : (
-            await this.prisma.requestItem.findMany({
-              where: { requestId: id },
-              select: { groupId: true, descriptionShort: true },
-            })
-          );
+        : await this.prisma.requestItem.findMany({
+            where: { requestId: id },
+            select: { groupId: true, descriptionShort: true },
+          });
       try {
-        const family = await this.assertFamilyExists(nextFamilyId, 'CONSUMPTION');
+        const family = await this.assertFamilyExists(
+          nextFamilyId,
+          'CONSUMPTION',
+        );
         void family;
         if (nextItems.every((i) => i.groupId)) {
           await this.assertItemsBelongToFamily(nextFamilyId, nextItems);
@@ -1296,7 +1720,12 @@ export class RequestsService {
               ...item,
               requestId: id,
               links: itemLinks.length
-                ? { create: itemLinks.map((url, sortOrder) => ({ url, sortOrder })) }
+                ? {
+                    create: itemLinks.map((url, sortOrder) => ({
+                      url,
+                      sortOrder,
+                    })),
+                  }
                 : undefined,
             },
           });
@@ -1316,14 +1745,26 @@ export class RequestsService {
           hotelId: hotelIds[0] ?? existing.hotelId,
           familyId: dto.familyId,
           type: dto.type,
-          ...(canChangeFixedAsset && dto.fixedAsset !== undefined
-            ? { fixedAsset }
+          ...(dto.blockRequisition !== undefined ||
+          dto.blockPurchase !== undefined
+            ? {
+                blockRequisition: nextBlockScope.blockRequisition,
+                blockPurchase: nextBlockScope.blockPurchase,
+              }
             : {}),
+          ...(!isImobilizadoEdit && !isApproverEdit
+            ? { fixedAsset }
+            : canChangeFixedAsset && dto.fixedAsset !== undefined
+              ? { fixedAsset }
+              : {}),
           ...(dto.observation !== undefined
             ? { observation: dto.observation.trim() || null }
             : {}),
           ...(dto.requestDescription !== undefined
-            ? { requestDescription: dto.requestDescription.trim().toUpperCase() || null }
+            ? {
+                requestDescription:
+                  dto.requestDescription.trim().toUpperCase() || null,
+              }
             : {}),
           ...(clearClassificationInvalidated
             ? { classificationInvalidated: false }
@@ -1377,7 +1818,11 @@ export class RequestsService {
             message: null,
           },
         });
-      } else if (existing.state !== RequestState.SOLICITANTE && !isApproverEdit && !isImobilizadoEdit) {
+      } else if (
+        existing.state !== RequestState.SOLICITANTE &&
+        !isApproverEdit &&
+        !isImobilizadoEdit
+      ) {
         await tx.requestStage.updateMany({
           where: { requestId: id, finishedAt: null },
           data: {
@@ -1398,7 +1843,12 @@ export class RequestsService {
       }
     });
 
-    if (target === 'APROVADOR' && !isApproverEdit && !isImobilizadoEdit && approvalState === RequestState.IMOBILIZADO) {
+    if (
+      target === 'APROVADOR' &&
+      !isApproverEdit &&
+      !isImobilizadoEdit &&
+      approvalState === RequestState.IMOBILIZADO
+    ) {
       await this.prisma.ncmSuggestion.deleteMany({
         where: { requestItem: { requestId: id } },
       });
@@ -1416,20 +1866,30 @@ export class RequestsService {
     if (!existing) throw new NotFoundException('Solicitação não encontrada');
     const role = await this.resolveUserRole(userId);
     if (role !== UserRole.ADMIN && existing.requesterId !== userId) {
-      throw new ForbiddenException('Somente o solicitante pode enviar esta solicitação.');
+      throw new ForbiddenException(
+        'Somente o solicitante pode enviar esta solicitação.',
+      );
     }
     if (!EDITABLE_STATES.includes(existing.state)) {
-      throw new BadRequestException('Esta solicitação já saiu da etapa editável.');
+      throw new BadRequestException(
+        'Esta solicitação já saiu da etapa editável.',
+      );
     }
     for (const item of existing.items) {
       if (!item.descriptionLong) {
-        throw new BadRequestException('Descrição longa é obrigatória em todos os itens.');
+        throw new BadRequestException(
+          'Descrição longa é obrigatória em todos os itens.',
+        );
       }
       if (!item.measureUnitId) {
-        throw new BadRequestException('Unidade de medida é obrigatória em todos os itens.');
+        throw new BadRequestException(
+          'Unidade de medida é obrigatória em todos os itens.',
+        );
       }
       if (!item.costCenterId) {
-        throw new BadRequestException('Centro de custo é obrigatório em todos os itens.');
+        throw new BadRequestException(
+          'Centro de custo é obrigatório em todos os itens.',
+        );
       }
     }
 
@@ -1486,7 +1946,9 @@ export class RequestsService {
       );
     }
 
-    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    const request = await this.prisma.request.findUnique({
+      where: { id: requestId },
+    });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
     if (
       request.state !== RequestState.APROVADOR &&
@@ -1499,11 +1961,14 @@ export class RequestsService {
     const role = await this.resolveUserRole(userId);
     const allowed =
       role === UserRole.ADMIN ||
-      (role === UserRole.APROVADOR && request.state === RequestState.APROVADOR) ||
+      (role === UserRole.APROVADOR &&
+        request.state === RequestState.APROVADOR) ||
       (role === UserRole.APROVADOR_IMOBILIZADO &&
         request.state === RequestState.IMOBILIZADO);
     if (!allowed) {
-      throw new ForbiddenException('Sem permissão para devolver esta solicitação.');
+      throw new ForbiddenException(
+        'Sem permissão para devolver esta solicitação.',
+      );
     }
 
     const now = new Date();
@@ -1540,7 +2005,9 @@ export class RequestsService {
     userId: string,
     body: { reasonCode?: string; observation?: string },
   ) {
-    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    const request = await this.prisma.request.findUnique({
+      where: { id: requestId },
+    });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
 
     const isSolicitanteStage = SOLICITANTE_CLOSE_STATES.includes(request.state);
@@ -1558,16 +2025,21 @@ export class RequestsService {
         role === UserRole.SOLICITANTE ||
         request.requesterId === userId;
       if (!allowed) {
-        throw new ForbiddenException('Sem permissão para encerrar esta solicitação.');
+        throw new ForbiddenException(
+          'Sem permissão para encerrar esta solicitação.',
+        );
       }
     } else {
       const allowed =
         role === UserRole.ADMIN ||
-        (role === UserRole.APROVADOR && request.state === RequestState.APROVADOR) ||
+        (role === UserRole.APROVADOR &&
+          request.state === RequestState.APROVADOR) ||
         (role === UserRole.APROVADOR_IMOBILIZADO &&
           request.state === RequestState.IMOBILIZADO);
       if (!allowed) {
-        throw new ForbiddenException('Sem permissão para encerrar esta solicitação.');
+        throw new ForbiddenException(
+          'Sem permissão para encerrar esta solicitação.',
+        );
       }
     }
 
@@ -1576,7 +2048,9 @@ export class RequestsService {
 
     if (isAprovadorStage) {
       if (!isCloseReasonCode(reasonCode)) {
-        throw new BadRequestException('Selecione um motivo válido para o encerramento.');
+        throw new BadRequestException(
+          'Selecione um motivo válido para o encerramento.',
+        );
       }
       if (!observation) {
         throw new BadRequestException(
@@ -1648,8 +2122,8 @@ export class RequestsService {
   }
 
   /**
-   * Solicitante envia à primeira aprovação — sempre Aprovador - Imobilizado.
-   * Nunca salta para Aprovador - Administrativo sem triagem do Imobilizado.
+   * Solicitante envia à primeira aprovação — destino pela família do lote.
+   * Família UC → Administrativo; família AF → Imobilizado.
    */
   async sendToApprover(requestId: string, userId: string, message: string) {
     const trimmed = message?.trim();
@@ -1659,24 +2133,31 @@ export class RequestsService {
       );
     }
 
-    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    const request = await this.prisma.request.findUnique({
+      where: { id: requestId },
+    });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
-    if (request.state !== RequestState.SOLICITANTE && request.state !== RequestState.RETORNO_SOLICITANTE) {
+    if (
+      request.state !== RequestState.SOLICITANTE &&
+      request.state !== RequestState.RETORNO_SOLICITANTE
+    ) {
       throw new BadRequestException(
         'Só é possível enviar ao aprovador solicitações na etapa Solicitante ou Retorno solicitante.',
       );
     }
     const role = await this.resolveUserRole(userId);
-    if (role !== UserRole.ADMIN && role !== UserRole.SOLICITANTE && request.requesterId !== userId) {
-      throw new ForbiddenException('Sem permissão para enviar esta solicitação ao aprovador.');
-    }
-
-    const nextState = this.firstApprovalState(request.fixedAsset);
-    if (nextState !== RequestState.IMOBILIZADO) {
-      throw new BadRequestException(
-        'Toda solicitação deve passar pelo aprovador - imobilizado antes do administrativo.',
+    if (
+      role !== UserRole.ADMIN &&
+      role !== UserRole.SOLICITANTE &&
+      request.requesterId !== userId
+    ) {
+      throw new ForbiddenException(
+        'Sem permissão para enviar esta solicitação ao aprovador.',
       );
     }
+
+    const routing = await this.resolveRoutingFromFamily(request.familyId);
+    const nextState = routing.approvalState;
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
       await tx.requestStage.updateMany({
@@ -1685,7 +2166,14 @@ export class RequestsService {
       });
       await tx.request.update({
         where: { id: requestId },
-        data: { state: nextState },
+        data: {
+          state: nextState,
+          fixedAsset: routing.fixedAsset,
+        },
+      });
+      await tx.requestItem.updateMany({
+        where: { requestId },
+        data: { itemKind: routing.itemKind },
       });
       await tx.requestStage.create({
         data: {
@@ -1718,7 +2206,9 @@ export class RequestsService {
   ) {
     const justification = dto.justification?.trim();
     if (!justification) {
-      throw new BadRequestException('Informe a justificativa da reclassificação.');
+      throw new BadRequestException(
+        'Informe a justificativa da reclassificação.',
+      );
     }
 
     const request = await this.prisma.request.findUnique({
@@ -1752,12 +2242,17 @@ export class RequestsService {
       );
     }
 
-    const { selectedIds, remainingIds, isFullLot } = this.resolveSelectedItemIds(
-      request.items.map((i) => i.id),
-      dto.itemIds,
-    );
+    const { selectedIds, remainingIds, isFullLot } =
+      this.resolveSelectedItemIds(
+        request.items.map((i) => i.id),
+        dto.itemIds,
+      );
+    await this.assertTargetFamily(dto.targetFamilyId, 'FIXED_ASSET');
+    const targetFamilyId = dto.targetFamilyId;
     const returnToApprover = dto.returnToApprover ?? true;
-    const selectedItems = request.items.filter((i) => selectedIds.includes(i.id));
+    const selectedItems = request.items.filter((i) =>
+      selectedIds.includes(i.id),
+    );
     const itemsBefore = selectedItems.map((i) =>
       this.itemClassificationSnapshot(i, request.familyId),
     );
@@ -1814,6 +2309,7 @@ export class RequestsService {
         await tx.request.update({
           where: { id: requestId },
           data: {
+            familyId: targetFamilyId,
             fixedAsset: true,
             returnToApprover,
             classificationInvalidated: true,
@@ -1843,8 +2339,12 @@ export class RequestsService {
 
     // --- Lote misto: filha AF + mãe permanece no Aprovador com o consumo ---
     const now = new Date();
-    const splitNote = `Divisão automática: itens de ativo fixo separados da solicitação ${requestId.slice(0, 8)}…`;
-    const childObservation = [request.observation?.trim(), splitNote, `Justificativa: ${justification}`]
+    const splitNote = `Divisão automática: itens de ativo fixo separados da solicitação ${request.code}.`;
+    const childObservation = [
+      request.observation?.trim(),
+      splitNote,
+      `Justificativa: ${justification}`,
+    ]
       .filter(Boolean)
       .join('\n\n');
     const childDescription = request.requestDescription?.trim()
@@ -1856,13 +2356,14 @@ export class RequestsService {
         data: {
           requesterId: request.requesterId,
           hotelId: request.hotelId,
-          familyId: request.familyId,
+          familyId: targetFamilyId,
           type: request.type,
           state: RequestState.IMOBILIZADO,
           fixedAsset: true,
           returnToApprover,
           classificationInvalidated: true,
           parentRequestId: request.id,
+          code: await allocateRequestCode(tx),
           observation: childObservation,
           requestDescription: childDescription,
           submittedAt: request.submittedAt ?? now,
@@ -1893,7 +2394,9 @@ export class RequestsService {
       });
 
       // Reordena itens remanescentes na mãe
-      const remaining = request.items.filter((i) => remainingIds.includes(i.id));
+      const remaining = request.items.filter((i) =>
+        remainingIds.includes(i.id),
+      );
       let remSort = 0;
       for (const item of remaining) {
         await tx.requestItem.update({
@@ -1920,7 +2423,7 @@ export class RequestsService {
 
       const parentMessage =
         `${justification}\n\n` +
-        `Lote dividido: ${selectedIds.length} item(ns) de ativo fixo → solicitação ${child.id}. ` +
+        `Lote dividido: ${selectedIds.length} item(ns) de ativo fixo → solicitação ${child.code}. ` +
         `${remainingIds.length} item(ns) de consumo permanecem nesta solicitação.`;
 
       await tx.requestStage.updateMany({
@@ -2016,7 +2519,9 @@ export class RequestsService {
   ) {
     const justification = dto.justification?.trim();
     if (!justification) {
-      throw new BadRequestException('Informe a justificativa da reclassificação.');
+      throw new BadRequestException(
+        'Informe a justificativa da reclassificação.',
+      );
     }
 
     const request = await this.prisma.request.findUnique({
@@ -2050,11 +2555,16 @@ export class RequestsService {
       );
     }
 
-    const { selectedIds, remainingIds, isFullLot } = this.resolveSelectedItemIds(
-      request.items.map((i) => i.id),
-      dto.itemIds,
+    const { selectedIds, remainingIds, isFullLot } =
+      this.resolveSelectedItemIds(
+        request.items.map((i) => i.id),
+        dto.itemIds,
+      );
+    await this.assertTargetFamily(dto.targetFamilyId, 'CONSUMPTION');
+    const targetFamilyId = dto.targetFamilyId;
+    const selectedItems = request.items.filter((i) =>
+      selectedIds.includes(i.id),
     );
-    const selectedItems = request.items.filter((i) => selectedIds.includes(i.id));
     const itemsBefore = selectedItems.map((i) =>
       this.itemClassificationSnapshot(i, request.familyId),
     );
@@ -2066,10 +2576,10 @@ export class RequestsService {
       unitQuantity: null as number | null,
       physicalLocation: null as string | null,
       assetTag: null as string | null,
-      acquisitionValue: null as null,
-      acquisitionDate: null as null,
+      acquisitionValue: null,
+      acquisitionDate: null,
       usefulLifeMonths: null as number | null,
-      depreciationRate: null as null,
+      depreciationRate: null,
       supplierDocument: null as string | null,
       invoiceNumber: null as string | null,
     };
@@ -2120,6 +2630,7 @@ export class RequestsService {
         await tx.request.update({
           where: { id: requestId },
           data: {
+            familyId: targetFamilyId,
             fixedAsset: false,
             returnToApprover: true,
             classificationInvalidated: true,
@@ -2146,8 +2657,12 @@ export class RequestsService {
 
     // --- Lote misto inverso: filha consumo no Aprovador; mãe AF no Imobilizado ---
     const now = new Date();
-    const splitNote = `Divisão automática: itens de uso e consumo separados da solicitação ${requestId.slice(0, 8)}…`;
-    const childObservation = [request.observation?.trim(), splitNote, `Justificativa: ${justification}`]
+    const splitNote = `Divisão automática: itens de uso e consumo separados da solicitação ${request.code}.`;
+    const childObservation = [
+      request.observation?.trim(),
+      splitNote,
+      `Justificativa: ${justification}`,
+    ]
       .filter(Boolean)
       .join('\n\n');
     const childDescription = request.requestDescription?.trim()
@@ -2159,13 +2674,14 @@ export class RequestsService {
         data: {
           requesterId: request.requesterId,
           hotelId: request.hotelId,
-          familyId: request.familyId,
+          familyId: targetFamilyId,
           type: request.type,
           state: RequestState.APROVADOR,
           fixedAsset: false,
           returnToApprover: true,
           classificationInvalidated: true,
           parentRequestId: request.id,
+          code: await allocateRequestCode(tx),
           observation: childObservation,
           requestDescription: childDescription,
           submittedAt: request.submittedAt ?? now,
@@ -2191,7 +2707,9 @@ export class RequestsService {
         where: { requestItemId: { in: selectedIds } },
       });
 
-      const remaining = request.items.filter((i) => remainingIds.includes(i.id));
+      const remaining = request.items.filter((i) =>
+        remainingIds.includes(i.id),
+      );
       let remSort = 0;
       for (const item of remaining) {
         await tx.requestItem.update({
@@ -2218,7 +2736,7 @@ export class RequestsService {
 
       const parentMessage =
         `${justification}\n\n` +
-        `Lote dividido: ${selectedIds.length} item(ns) de uso e consumo → solicitação ${child.id}. ` +
+        `Lote dividido: ${selectedIds.length} item(ns) de uso e consumo → solicitação ${child.code}. ` +
         `${remainingIds.length} item(ns) de ativo fixo permanecem nesta solicitação.`;
 
       await tx.requestStage.updateMany({
@@ -2300,6 +2818,7 @@ export class RequestsService {
     userId: string,
     message: string,
     itemNcms: { itemId: string; ncm: string }[] = [],
+    targetFamilyId?: string,
   ) {
     const trimmed = message?.trim();
     if (!trimmed) {
@@ -2362,13 +2881,22 @@ export class RequestsService {
           );
         }
         if (ncm) {
-          ncmByItem.set(item.id, await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'));
+          ncmByItem.set(
+            item.id,
+            await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'),
+          );
         }
       }
 
       const stageMessage = `${trimmed} — Aprovador - Imobilizado registrou na base de ativos fixos`;
       await this.prisma.$transaction(async (tx) => {
-        await this.promoteApprovedRequestToBase(tx, request, userId, now, ncmByItem);
+        await this.promoteApprovedRequestToBase(
+          tx,
+          request,
+          userId,
+          now,
+          ncmByItem,
+        );
         await tx.requestStage.updateMany({
           where: { requestId, finishedAt: null },
           data: { finishedAt: now, userId, message: stageMessage },
@@ -2396,7 +2924,9 @@ export class RequestsService {
       return this.findOne(requestId);
     }
 
-    // Uso e consumo → Administrativo
+    // Uso e consumo → Administrativo (família UC sugerida pelo Imobilizado)
+    await this.assertTargetFamily(targetFamilyId, 'CONSUMPTION');
+    const ucFamilyId = targetFamilyId!;
     await this.prisma.$transaction(async (tx) => {
       await tx.requestStage.updateMany({
         where: { requestId, finishedAt: null },
@@ -2410,13 +2940,19 @@ export class RequestsService {
         where: { id: requestId },
         data: {
           state: RequestState.APROVADOR,
+          familyId: ucFamilyId,
           fixedAsset: false,
-          classificationInvalidated: false,
+          classificationInvalidated: true,
         },
       });
       await tx.requestItem.updateMany({
         where: { requestId },
-        data: { itemKind: ItemKind.CONSUMPTION },
+        data: {
+          itemKind: ItemKind.CONSUMPTION,
+          groupId: null,
+          measureUnitId: null,
+          unitQuantity: null,
+        },
       });
       await tx.requestStage.create({
         data: {
@@ -2447,7 +2983,9 @@ export class RequestsService {
         'Informe um comentário ao classificar como ativo fixo.',
       );
     }
-    const request = await this.prisma.request.findUnique({ where: { id: requestId } });
+    const request = await this.prisma.request.findUnique({
+      where: { id: requestId },
+    });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
     if (request.state !== RequestState.IMOBILIZADO) {
       throw new BadRequestException(
@@ -2456,7 +2994,9 @@ export class RequestsService {
     }
     const role = await this.resolveUserRole(userId);
     if (role !== UserRole.ADMIN && role !== UserRole.APROVADOR_IMOBILIZADO) {
-      throw new ForbiddenException('Sem permissão para classificar esta solicitação.');
+      throw new ForbiddenException(
+        'Sem permissão para classificar esta solicitação.',
+      );
     }
 
     const now = new Date();
@@ -2533,8 +3073,10 @@ export class RequestsService {
     return {
       requester: { select: { id: true, name: true } },
       hotel: { select: { id: true, code: true, name: true } },
-      family: { select: { id: true, code: true, name: true } },
-      hotels: { include: { hotel: { select: { id: true, code: true, name: true } } } },
+      family: { select: { id: true, code: true, name: true, itemKind: true } },
+      hotels: {
+        include: { hotel: { select: { id: true, code: true, name: true } } },
+      },
       items: {
         orderBy: { sortOrder: 'asc' as const },
         take: 3,
@@ -2554,7 +3096,9 @@ export class RequestsService {
       include: {
         requester: { select: { id: true, name: true, email: true } },
         hotel: true,
-        family: { select: { id: true, code: true, name: true, itemKind: true } },
+        family: {
+          select: { id: true, code: true, name: true, itemKind: true },
+        },
         hotels: { include: { hotel: true } },
         items: {
           orderBy: { sortOrder: 'asc' },
@@ -2564,12 +3108,15 @@ export class RequestsService {
             ncmSuggestions: { orderBy: { rank: 'asc' } },
           },
         },
-        parentRequest: { select: { id: true, state: true, fixedAsset: true } },
+        parentRequest: { select: { id: true, code: true, state: true, fixedAsset: true } },
         childRequests: {
-          select: { id: true, state: true, fixedAsset: true, createdAt: true },
+          select: { id: true, code: true, state: true, fixedAsset: true, createdAt: true },
           orderBy: { createdAt: 'asc' },
         },
-        stages: { orderBy: { startedAt: 'asc' }, include: { user: { select: { name: true } } } },
+        stages: {
+          orderBy: { startedAt: 'asc' },
+          include: { user: { select: { name: true } } },
+        },
       },
     });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
@@ -2590,7 +3137,9 @@ export class RequestsService {
             where: { id: { in: sourceIds } },
             select: { id: true, descriptionShort: true },
           });
-    const descByProduct = new Map(sourceProducts.map((p) => [p.id, p.descriptionShort]));
+    const descByProduct = new Map(
+      sourceProducts.map((p) => [p.id, p.descriptionShort]),
+    );
 
     return {
       ...request,
@@ -2599,7 +3148,7 @@ export class RequestsService {
         ncmSuggestions: (it.ncmSuggestions ?? []).map((s) => ({
           ...s,
           sampleDescription: s.sourceProductId
-            ? descByProduct.get(s.sourceProductId) ?? null
+            ? (descByProduct.get(s.sourceProductId) ?? null)
             : null,
         })),
       })),
@@ -2635,7 +3184,9 @@ export class RequestsService {
   }
 
   async confirmNcm(itemId: string, ncm: string, userId: string) {
-    const item = await this.prisma.requestItem.findUnique({ where: { id: itemId } });
+    const item = await this.prisma.requestItem.findUnique({
+      where: { id: itemId },
+    });
     if (!item) throw new NotFoundException('Item não encontrado');
 
     const code = await this.ensureNcmCode(this.prisma, ncm, 'MANUAL');
@@ -2649,6 +3200,8 @@ export class RequestsService {
    * Aprovador - Administrativo finaliza.
    * INCLUSÃO com subset: promove só `approvedItemIds`; demais rejeitados (outcome parcial).
    * Sem `approvedItemIds` (ou todos): aprovação total.
+   * Opcional: `returnRejectedItemIds` clona rejeitados em nova solicitação (SOLICITANTE)
+   * para o solicitante original (novo código / ID).
    */
   async approve(
     requestId: string,
@@ -2656,6 +3209,7 @@ export class RequestsService {
     itemNcms: { itemId: string; ncm: string }[],
     message?: string,
     approvedItemIds?: string[],
+    returnRejectedItemIds?: string[],
   ) {
     const trimmed = message?.trim();
     if (!trimmed) {
@@ -2667,7 +3221,10 @@ export class RequestsService {
     const request = await this.prisma.request.findUnique({
       where: { id: requestId },
       include: {
-        items: { orderBy: { sortOrder: 'asc' } },
+        items: {
+          orderBy: { sortOrder: 'asc' },
+          include: { links: { orderBy: { sortOrder: 'asc' } } },
+        },
         hotels: true,
         stages: { where: { finishedAt: null } },
       },
@@ -2687,11 +3244,15 @@ export class RequestsService {
       const unique = [...new Set(approvedItemIds)];
       for (const id of unique) {
         if (!allIds.includes(id)) {
-          throw new BadRequestException(`Item ${id} não pertence a esta solicitação.`);
+          throw new BadRequestException(
+            `Item ${id} não pertence a esta solicitação.`,
+          );
         }
       }
       if (!unique.length) {
-        throw new BadRequestException('Selecione ao menos um item para aprovar.');
+        throw new BadRequestException(
+          'Selecione ao menos um item para aprovar.',
+        );
       }
       approvedIds = unique;
     }
@@ -2700,6 +3261,24 @@ export class RequestsService {
     const rejectedIds = allIds.filter((id) => !approvedSet.has(id));
     const isPartial = rejectedIds.length > 0;
     const approvedItems = request.items.filter((i) => approvedSet.has(i.id));
+
+    const returnIds = [...new Set(returnRejectedItemIds ?? [])];
+    if (returnIds.length) {
+      if (!isPartial) {
+        throw new BadRequestException(
+          'Só é possível devolver itens em aprovação parcial (com rejeitados).',
+        );
+      }
+      for (const id of returnIds) {
+        if (!rejectedIds.includes(id)) {
+          throw new BadRequestException(
+            `Item ${id} não está entre os rejeitados desta aprovação.`,
+          );
+        }
+      }
+    }
+    const returnSet = new Set(returnIds);
+    const returnItems = request.items.filter((i) => returnSet.has(i.id));
 
     const ncmByItem = new Map<string, string>();
     for (const item of approvedItems) {
@@ -2718,16 +3297,28 @@ export class RequestsService {
         );
       }
       if (ncm) {
-        ncmByItem.set(item.id, await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'));
+        ncmByItem.set(
+          item.id,
+          await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'),
+        );
       }
     }
 
-    const outcome = isPartial ? OUTCOME_APPROVAL_PARTIAL : OUTCOME_APPROVAL_TOTAL;
-    const stageMessage = isPartial
+    const outcome = isPartial
+      ? OUTCOME_APPROVAL_PARTIAL
+      : OUTCOME_APPROVAL_TOTAL;
+    let stageMessage = isPartial
       ? `${trimmed} — Aprovação parcial: ${approvedIds.length} de ${allIds.length} item(ns) na base; ${rejectedIds.length} rejeitado(s)`
       : `${trimmed} — Aprovação total: ${approvedIds.length} item(ns) na base`;
+    if (isBlockRequestType(request.type)) {
+      stageMessage += ` — Escopo do bloqueio: ${blockScopeLabel(blockScopeOf(request))}`;
+    }
 
     const now = new Date();
+    let returnedDraft:
+      | { id: string; code: string; itemIds: string[] }
+      | null = null;
+
     await this.prisma.$transaction(async (tx) => {
       await this.promoteApprovedRequestToBase(
         tx,
@@ -2737,6 +3328,134 @@ export class RequestsService {
         ncmByItem,
       );
 
+      if (returnItems.length) {
+        const draftNote = `Devolvida automaticamente a partir da aprovação parcial da solicitação ${request.code}: ${returnItems.length} item(ns) para reavaliação do solicitante.`;
+        const childObservation = [request.observation?.trim(), draftNote, trimmed]
+          .filter(Boolean)
+          .join('\n\n');
+        const childDescription = request.requestDescription?.trim()
+          ? `${request.requestDescription.trim()} (DEVOLUÇÃO — APROVAÇÃO PARCIAL)`
+          : 'DEVOLUÇÃO — APROVAÇÃO PARCIAL';
+
+        const child = await tx.request.create({
+          data: {
+            requesterId: request.requesterId,
+            hotelId: request.hotelId,
+            familyId: request.familyId,
+            type: request.type,
+            state: RequestState.SOLICITANTE,
+            fixedAsset: request.fixedAsset,
+            returnToApprover: request.returnToApprover,
+            classificationInvalidated: false,
+            parentRequestId: request.id,
+            code: await allocateRequestCode(tx),
+            observation: childObservation,
+            requestDescription: childDescription,
+            submittedAt: now,
+            hotels: {
+              create: request.hotels.map((h) => ({ hotelId: h.hotelId })),
+            },
+            stages: {
+              create: [
+                {
+                  stage: RequestState.FORMULARIO,
+                  userId,
+                  startedAt: now,
+                  finishedAt: now,
+                  message: draftNote,
+                },
+                {
+                  stage: RequestState.SOLICITANTE,
+                  userId: request.requesterId,
+                  startedAt: now,
+                  message: null,
+                },
+              ],
+            },
+          },
+        });
+
+        let sort = 0;
+        const clonedItemIds: string[] = [];
+        for (const item of returnItems) {
+          const created = await tx.requestItem.create({
+            data: {
+              requestId: child.id,
+              productId: item.productId,
+              groupId: item.groupId,
+              itemKind: item.itemKind,
+              descriptionShort: item.descriptionShort,
+              descriptionLong: item.descriptionLong,
+              measureUnitId: item.measureUnitId,
+              costCenterId: item.costCenterId,
+              source: item.source,
+              itemValue: item.itemValue,
+              purchaseQtyTotal: item.purchaseQtyTotal,
+              unifiedCode: item.unifiedCode,
+              legacyCode: item.legacyCode,
+              law116: item.law116,
+              productLink: item.productLink,
+              itemObservation: item.itemObservation,
+              unitQuantity: item.unitQuantity,
+              physicalLocation: item.physicalLocation,
+              assetTag: item.assetTag,
+              acquisitionValue: item.acquisitionValue,
+              acquisitionDate: item.acquisitionDate,
+              usefulLifeMonths: item.usefulLifeMonths,
+              depreciationRate: item.depreciationRate,
+              supplierDocument: item.supplierDocument,
+              invoiceNumber: item.invoiceNumber,
+              ncmCode: item.ncmCode,
+              ncmConfirmed: false,
+              sortOrder: sort++,
+              links: item.links.length
+                ? {
+                    create: item.links.map((l) => ({
+                      url: l.url,
+                      sortOrder: l.sortOrder,
+                    })),
+                  }
+                : undefined,
+            },
+          });
+          clonedItemIds.push(created.id);
+        }
+
+        returnedDraft = {
+          id: child.id,
+          code: child.code,
+          itemIds: clonedItemIds,
+        };
+        stageMessage += ` — ${returnItems.length} item(ns) devolvido(s) na solicitação ${child.code}`;
+      }
+
+      const outcomeDetail = {
+        approvedItemIds: approvedIds,
+        rejectedItemIds: rejectedIds,
+        approvedCount: approvedIds.length,
+        rejectedCount: rejectedIds.length,
+        itemsApproved: approvedItems.map((i) => ({
+          id: i.id,
+          descriptionShort: i.descriptionShort,
+        })),
+        itemsRejected: request.items
+          .filter((i) => !approvedSet.has(i.id))
+          .map((i) => ({
+            id: i.id,
+            descriptionShort: i.descriptionShort,
+          })),
+        ...(returnedDraft
+          ? {
+              returnedDraftRequestId: returnedDraft.id,
+              returnedDraftRequestCode: returnedDraft.code,
+              returnedItemIds: returnIds,
+              split: true,
+              parentRequestId: request.id,
+              childRequestId: returnedDraft.id,
+            }
+          : {}),
+      };
+
       await tx.requestStage.updateMany({
         where: { requestId, finishedAt: null },
         data: {
@@ -2744,22 +3463,7 @@ export class RequestsService {
           userId,
           message: stageMessage,
           outcome,
-          outcomeDetail: {
-            approvedItemIds: approvedIds,
-            rejectedItemIds: rejectedIds,
-            approvedCount: approvedIds.length,
-            rejectedCount: rejectedIds.length,
-            itemsApproved: approvedItems.map((i) => ({
-              id: i.id,
-              descriptionShort: i.descriptionShort,
-            })),
-            itemsRejected: request.items
-              .filter((i) => !approvedSet.has(i.id))
-              .map((i) => ({
-                id: i.id,
-                descriptionShort: i.descriptionShort,
-              })),
-          },
+          outcomeDetail,
         },
       });
       await tx.requestStage.create({
@@ -2776,6 +3480,14 @@ export class RequestsService {
             rejectedItemIds: rejectedIds,
             approvedCount: approvedIds.length,
             rejectedCount: rejectedIds.length,
+            ...(returnedDraft
+              ? {
+                  returnedDraftRequestId: returnedDraft.id,
+                  returnedDraftRequestCode: returnedDraft.code,
+                  returnedItemIds: returnIds,
+                  childRequestId: returnedDraft.id,
+                }
+              : {}),
           },
         },
       });
@@ -2803,6 +3515,8 @@ export class RequestsService {
       hotelId: string;
       type: RequestType;
       fixedAsset: boolean;
+      blockRequisition: boolean;
+      blockPurchase: boolean;
       items: {
         id: string;
         productId: string | null;
@@ -2847,15 +3561,21 @@ export class RequestsService {
             `Bloqueio "${item.descriptionShort}": vincule o produto existente na base.`,
           );
         }
-        const blockState =
-          request.type === RequestType.BLOQUEIO_TOTAL
-            ? ProductBlockState.TOTAL
-            : ProductBlockState.PARTIAL;
+        // Escopo (requisição/compras) define parcial × total; total inativa o item.
+        const scope = blockScopeOf(request);
+        const blockState = blockStateFromScope(scope);
+        if (blockState === ProductBlockState.NONE) {
+          throw new BadRequestException(
+            `Bloqueio "${item.descriptionShort}": marque requisição e/ou compras antes de aprovar.`,
+          );
+        }
         await tx.product.update({
           where: { id: item.productId },
           data: {
             blockState,
-            active: blockState === ProductBlockState.TOTAL ? false : true,
+            blockRequisition: scope.blockRequisition,
+            blockPurchase: scope.blockPurchase,
+            active: blockState !== ProductBlockState.TOTAL,
             notes: item.itemObservation?.trim() || null,
           },
         });
@@ -2872,7 +3592,8 @@ export class RequestsService {
           `Item "${item.descriptionShort}": unidade de medida obrigatória para consumo.`,
         );
       }
-      if (!item.descriptionLong?.trim()) {
+      // Cadastro novo exige descrição longa; alteração pode manter a da base.
+      if (!item.descriptionLong?.trim() && !item.productId) {
         throw new BadRequestException(
           `Item "${item.descriptionShort}": descrição longa obrigatória para cadastro na base.`,
         );
@@ -2891,7 +3612,8 @@ export class RequestsService {
 
       const afFields = isFixed
         ? {
-            physicalLocation: item.physicalLocation?.trim().toUpperCase() || null,
+            physicalLocation:
+              item.physicalLocation?.trim().toUpperCase() || null,
             costCenterId: item.costCenterId,
             hotelId: hotelIds[0] ?? request.hotelId,
             assetTag: item.assetTag?.trim().toUpperCase() || null,
@@ -2904,11 +3626,17 @@ export class RequestsService {
           }
         : {};
 
+      const descriptionLong = item.descriptionLong?.trim().toUpperCase() || null;
       const productFields = {
         descriptionShort: item.descriptionShort.trim().toUpperCase(),
-        descriptionLong: item.descriptionLong!.trim().toUpperCase(),
+        // Sem valor numa alteração = manter o que já está na base (não apagar).
+        ...(descriptionLong || !item.productId ? { descriptionLong } : {}),
         ...(item.groupId ? { groupId: item.groupId } : {}),
-        measureUnitId: isFixed ? null : item.measureUnitId,
+        ...(isFixed
+          ? { measureUnitId: null }
+          : item.measureUnitId || !item.productId
+            ? { measureUnitId: item.measureUnitId }
+            : {}),
         itemKind: isFixed ? ('FIXED_ASSET' as const) : ('CONSUMPTION' as const),
         source: item.source,
         legacyCode: item.legacyCode?.trim() || null,
@@ -2923,6 +3651,8 @@ export class RequestsService {
         active: true,
         fixedAsset: isFixed,
         blockState: ProductBlockState.NONE,
+        blockRequisition: false,
+        blockPurchase: false,
         ...afFields,
       };
 
@@ -2932,10 +3662,19 @@ export class RequestsService {
         where: { requestItemId: item.id },
         orderBy: { sortOrder: 'asc' },
       });
-      const hotelRows = await this.buildProductHotelRows(tx, hotelIds, item.costCenterId);
+      const hotelRows = await this.buildProductHotelRows(
+        tx,
+        hotelIds,
+        item.costCenterId,
+      );
 
-      if (item.productId && !(isFixed && request.type === RequestType.INCLUSAO)) {
-        const existing = await tx.product.findUnique({ where: { id: item.productId } });
+      if (
+        item.productId &&
+        !(isFixed && request.type === RequestType.INCLUSAO)
+      ) {
+        const existing = await tx.product.findUnique({
+          where: { id: item.productId },
+        });
         if (!existing) {
           throw new BadRequestException(
             `Item "${item.descriptionShort}": produto de origem não encontrado na base.`,
@@ -2947,7 +3686,9 @@ export class RequestsService {
         });
         lastProductId = item.productId;
 
-        await tx.productLink.deleteMany({ where: { productId: lastProductId } });
+        await tx.productLink.deleteMany({
+          where: { productId: lastProductId },
+        });
         if (itemLinks.length) {
           await tx.productLink.createMany({
             data: itemLinks.map((link, sortOrder) => ({
@@ -2957,15 +3698,24 @@ export class RequestsService {
             })),
           });
         }
-        await tx.productHotel.deleteMany({ where: { productId: lastProductId } });
-        if (hotelRows.length) {
-          await tx.productHotel.createMany({
-            data: hotelRows.map((row) => ({
-              productId: lastProductId!,
-              hotelId: row.hotelId,
-              costCenterId: row.costCenterId,
-            })),
+        // Item da base sem unidade vinculada: a solicitação usa "todas as
+        // unidades" só para tramitar — aprovar não pode inventar esse vínculo.
+        const hadHotels = await tx.productHotel.count({
+          where: { productId: lastProductId },
+        });
+        if (hadHotels > 0 || !isExistingProductRequestType(request.type)) {
+          await tx.productHotel.deleteMany({
+            where: { productId: lastProductId },
           });
+          if (hotelRows.length) {
+            await tx.productHotel.createMany({
+              data: hotelRows.map((row) => ({
+                productId: lastProductId!,
+                hotelId: row.hotelId,
+                costCenterId: row.costCenterId,
+              })),
+            });
+          }
         }
       } else {
         if (isExistingProductRequestType(request.type)) {
@@ -3030,7 +3780,9 @@ export class RequestsService {
   ): Promise<string> {
     if (item.unifiedCode?.trim()) {
       const code = item.unifiedCode.trim().toUpperCase();
-      const exists = await tx.product.findFirst({ where: { unifiedCode: code } });
+      const exists = await tx.product.findFirst({
+        where: { unifiedCode: code },
+      });
       if (exists) {
         throw new BadRequestException(
           `Código unificado "${code}" já existe na base de produtos.`,
@@ -3050,11 +3802,15 @@ export class RequestsService {
 
     for (let attempt = 0; attempt < 50; attempt++) {
       const candidate = `${prefix}${String(baseCount + 1 + attempt).padStart(4, '0')}`;
-      const clash = await tx.product.findFirst({ where: { unifiedCode: candidate } });
+      const clash = await tx.product.findFirst({
+        where: { unifiedCode: candidate },
+      });
       if (!clash) return candidate;
     }
 
-    throw new BadRequestException('Não foi possível gerar código unificado para o produto.');
+    throw new BadRequestException(
+      'Não foi possível gerar código unificado para o produto.',
+    );
   }
 
   /** Mapeia hotéis da solicitação → `product_hotels` com CC quando aplicável. */

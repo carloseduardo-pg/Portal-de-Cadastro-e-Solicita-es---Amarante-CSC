@@ -136,6 +136,11 @@ export class RequestItemInputDto {
   @IsString()
   itemObservation?: string;
 
+  /** NCM sugerido pelo solicitante na alteração — confirmação humana segue no aprovador (ITM-09). */
+  @IsOptional()
+  @IsString()
+  ncmCode?: string;
+
   /** Comentário opcional ao salvar edição (timeline). */
   @IsOptional()
   @IsString()
@@ -173,6 +178,16 @@ export class CreateRequestDto {
   @IsOptional()
   @IsBoolean()
   fixedAsset?: boolean;
+
+  /** Bloqueio: impedir requisição do item. Ao menos uma flag é obrigatória. */
+  @IsOptional()
+  @IsBoolean()
+  blockRequisition?: boolean;
+
+  /** Bloqueio: impedir compra do item. Ambas as flags ⇒ bloqueio total. */
+  @IsOptional()
+  @IsBoolean()
+  blockPurchase?: boolean;
 
   @IsArray()
   @ArrayMinSize(1)
@@ -230,6 +245,16 @@ export class UpdateRequestDto {
   @IsOptional()
   @IsBoolean()
   fixedAsset?: boolean;
+
+  /** Bloqueio: impedir requisição do item. Ao menos uma flag é obrigatória. */
+  @IsOptional()
+  @IsBoolean()
+  blockRequisition?: boolean;
+
+  /** Bloqueio: impedir compra do item. Ambas as flags ⇒ bloqueio total. */
+  @IsOptional()
+  @IsBoolean()
+  blockPurchase?: boolean;
 
   @IsOptional()
   @IsArray()

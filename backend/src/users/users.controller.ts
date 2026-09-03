@@ -47,10 +47,7 @@ export class UsersController {
 
   /** Updates a user. */
   @Patch(':id')
-  update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateUserDto,
-  ) {
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto) {
     return this.users.update(id, dto);
   }
 

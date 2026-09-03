@@ -48,7 +48,7 @@ const nav: NavItem[] = [
         to: '/produtos/nova-solicitacao',
         label: 'Nova Solicitação',
         icon: 'plus-circle',
-        alsoActive: ['/produtos/dados-do-item'],
+        alsoActive: ['/produtos/dados-do-item', '/produtos/produto-existente'],
       },
       { to: '/produtos/caixa-de-entrada', label: 'Caixa de Entrada', icon: 'inbox' },
       {
@@ -241,6 +241,7 @@ export function AppShell() {
     const path = location.pathname.replace(/\/$/, '') || '/';
     const pageOverrides: Record<string, string> = {
       '/produtos/dados-do-item': 'Dados do Item',
+      '/produtos/produto-existente': 'Alteração / Bloqueio',
     };
 
     for (const item of nav) {

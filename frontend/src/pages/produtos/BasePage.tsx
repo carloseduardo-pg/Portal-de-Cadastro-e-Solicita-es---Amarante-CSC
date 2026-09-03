@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../auth/AuthContext';
 import { DataTable } from '../../components/DataTable';
 import { HotelCodeBadges } from '../../components/HotelCodeBadges';
 import { PaginationBar } from '../../components/PaginationBar';
+import { ProductStatusDot } from '../../components/ProductStatusDot';
 import { SearchableSelect } from '../../components/SearchableSelect';
+import '../../components/ProductStatusDot.css';
 import { catalogApi, productsApi } from '../../lib/resources';
 import { formatNcmDisplay } from '../../lib/ncm';
 import type { Family, Hotel, ProductBase } from '../../lib/types';
@@ -10,9 +13,25 @@ import './produtos.css';
 
 type StatusFilter = 'active' | 'inactive' | 'all';
 type BaseKindTab = 'CONSUMPTION' | 'FIXED_ASSET';
+type SortDir = 'asc' | 'desc';
+
+const DEFAULT_SORT = 'desc';
+const DEFAULT_DIR: SortDir = 'asc';
+
+function formatRegisteredAt(value?: string) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
+}
 
 /** Base de produtos — abas separadas Uso e consumo × Ativo fixo (catálogos distintos). */
 export function BasePage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [kindTab, setKindTab] = useState<BaseKindTab>('CONSUMPTION');
   const [rows, setRows] = useState<ProductBase[]>([]);
   const [hotels, setHotels] = useState<Hotel[]>([]);
@@ -21,11 +40,15 @@ export function BasePage() {
   const [familyId, setFamilyId] = useState('');
   const [status, setStatus] = useState<StatusFilter>('active');
   const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState(DEFAULT_SORT);
+  const [sortDir, setSortDir] = useState<SortDir>(DEFAULT_DIR);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [duplicatePairs, setDuplicatePairs] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState('');
   const pageSize = 20;
+  const recentActive = sortKey === 'createdAt' && sortDir === 'desc';
 
   const familyOptions = useMemo(
     () =>
@@ -55,7 +78,7 @@ export function BasePage() {
       .catch(console.error);
   }, [kindTab]);
 
-  async function load(p = page) {
+  const load = useCallback(async (p = 1) => {
     setLoading(true);
     try {
       const activeParam = status === 'all' ? 'all' : status === 'inactive' ? 'false' : undefined;
@@ -67,6 +90,8 @@ export function BasePage() {
         itemKind: kindTab,
         page: p,
         pageSize,
+        sort: sortKey,
+        dir: sortDir,
       });
       setRows(r.data);
       setTotal(r.total);
@@ -75,14 +100,40 @@ export function BasePage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [familyId, hotel, kindTab, pageSize, search, sortDir, sortKey, status]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       void load(1);
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, hotel, familyId, status, kindTab]);
+  }, [search, hotel, familyId, status, kindTab, sortKey, sortDir, load]);
+
+  function handleSort(key: string) {
+    if (sortKey === key) {
+      setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === 'createdAt' ? 'desc' : 'asc');
+  }
+
+  async function handleDelete(row: ProductBase) {
+    if (!isAdmin || row.fromOriginalBase || row.sapCode) return;
+    const ok = window.confirm(
+      `Excluir "${row.descriptionShort}" da base? Somente cadastros feitos no portal podem ser excluídos. Itens da base original SAP permanecem.`,
+    );
+    if (!ok) return;
+    setDeletingId(row.id);
+    try {
+      await productsApi.remove(row.id);
+      await load(page);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Falha ao excluir o item.');
+    } finally {
+      setDeletingId('');
+    }
+  }
 
   const isAf = kindTab === 'FIXED_ASSET';
 
@@ -113,8 +164,8 @@ export function BasePage() {
 
       <p className="info-banner">
         {isAf
-          ? 'Base patrimonial (ativo fixo) — catálogo e fluxo distintos do uso e consumo. Filtre por status, unidade, família ou descrição.'
-          : 'Base de uso e consumo — catálogo e fluxo distintos do ativo fixo. Filtre por status, unidade, família ou descrição.'}
+          ? 'Base patrimonial (ativo fixo) — catálogo e fluxo distintos do uso e consumo. Clique no cabeçalho para ordenar. Filtre por status, unidade, família ou descrição.'
+          : 'Base de uso e consumo — catálogo e fluxo distintos do ativo fixo. Clique no cabeçalho para ordenar. Filtre por status, unidade, família ou descrição.'}
       </p>
 
       {duplicatePairs > 0 && status !== 'inactive' && !isAf ? (
@@ -153,6 +204,16 @@ export function BasePage() {
             emptyLabel="Todas"
           />
         </div>
+        <button
+          type="button"
+          className={`btn ${recentActive ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => {
+            setSortKey('createdAt');
+            setSortDir('desc');
+          }}
+        >
+          Mais recentes
+        </button>
         {loading ? <span className="base-filter-hint">Atualizando…</span> : null}
       </div>
 
@@ -167,8 +228,8 @@ export function BasePage() {
         {hotels.map((h) => (
           <button
             key={h.id}
-            type="button"
             className={`queue-tab ${hotel === h.code ? 'active' : ''}`}
+            type="button"
             onClick={() => setHotel(h.code)}
           >
             {h.code}
@@ -184,23 +245,38 @@ export function BasePage() {
         rows={rows}
         rowKey={(r) => r.id}
         emptyMessage={loading ? 'Carregando…' : 'Nenhum produto nesta base.'}
+        sort={{ key: sortKey, dir: sortDir }}
+        onSort={handleSort}
         columns={[
           {
             key: 'status',
             header: 'Status',
+            sortable: true,
             render: (r) => (
               <span className={r.active ? 'badge badge--success' : 'badge badge--danger'}>
                 {r.active ? 'ATIVO' : 'INATIVO'}
               </span>
             ),
           },
-          { key: 'code', header: 'Código', render: (r) => r.legacyCode ?? r.unifiedCode ?? '—' },
-          { key: 'sap', header: 'Código SAP', render: (r) => r.sapCode ?? '—' },
+          {
+            key: 'code',
+            header: 'Código',
+            sortable: true,
+            render: (r) => r.legacyCode ?? r.unifiedCode ?? '—',
+          },
+          {
+            key: 'sap',
+            header: 'Código SAP',
+            sortable: true,
+            render: (r) => r.sapCode ?? '—',
+          },
           {
             key: 'desc',
             header: 'Descrição',
+            sortable: true,
             render: (r) => (
               <span>
+                <ProductStatusDot active={r.active} blockState={r.blockState} />
                 {r.descriptionShort}
                 {r.possibleDuplicate ? (
                   <span
@@ -222,13 +298,61 @@ export function BasePage() {
               />
             ),
           },
-          { key: 'family', header: 'Família', render: (r) => r.family?.name ?? '—' },
-          { key: 'ncm', header: 'NCM', render: (r) => formatNcmDisplay(r.ncmCode) || '—' },
+          {
+            key: 'family',
+            header: 'Família',
+            sortable: true,
+            render: (r) => r.family?.name ?? '—',
+          },
+          {
+            key: 'ncm',
+            header: 'NCM',
+            sortable: true,
+            render: (r) => formatNcmDisplay(r.ncmCode) || '—',
+          },
           {
             key: 'unit',
             header: 'Unidade',
+            sortable: true,
             render: (r) => (isAf ? '—' : r.measureUnit?.code ?? '—'),
           },
+          {
+            key: 'createdAt',
+            header: 'Registro',
+            sortable: true,
+            render: (r) => formatRegisteredAt(r.createdAt),
+          },
+          ...(isAdmin
+            ? [
+                {
+                  key: 'actions',
+                  header: 'Ações',
+                  render: (r: ProductBase) => {
+                    const canDelete = !r.fromOriginalBase && !r.sapCode;
+                    return (
+                      <div className="param-actions">
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          disabled={!canDelete || deletingId === r.id}
+                          title={
+                            canDelete
+                              ? 'Excluir cadastro feito no portal'
+                              : 'Item da base original SAP — não pode ser excluído'
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDelete(r);
+                          }}
+                        >
+                          {deletingId === r.id ? 'Excluindo…' : 'Excluir'}
+                        </button>
+                      </div>
+                    );
+                  },
+                },
+              ]
+            : []),
         ]}
       />
       <PaginationBar page={page} pageSize={pageSize} total={total} onChange={(p) => void load(p)} />

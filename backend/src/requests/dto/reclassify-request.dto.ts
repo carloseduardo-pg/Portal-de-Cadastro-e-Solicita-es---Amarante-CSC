@@ -31,4 +31,13 @@ export class ReclassifyRequestDto {
   @Type(() => Boolean)
   @IsBoolean()
   returnToApprover?: boolean;
+
+  /**
+   * Família sugerida no destino:
+   * - → AF: família de ativo fixo
+   * - → UC: família de uso e consumo
+   * O setor receptor pode alterar depois.
+   */
+  @IsUUID('4')
+  targetFamilyId!: string;
 }

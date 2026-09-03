@@ -147,13 +147,10 @@ async function main() {
     data: { active: false },
   });
 
-  for (const h of hotels) {
-    await prisma.costCenter.upsert({
-      where: { hotelId_code: { hotelId: h.id, code: 'A&B' } },
-      update: { name: `A&B — ${h.code}`, active: true },
-      create: { hotelId: h.id, code: 'A&B', name: `A&B — ${h.code}`, active: true },
-    });
-  }
+  /**
+   * Centros de custo: só a planilha real (`npm run import:catalog-real`).
+   * Não semear stubs (ex.: A&B).
+   */
 
   /**
    * DEMO P3 — atributos por família já importada do SAP.

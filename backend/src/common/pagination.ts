@@ -38,10 +38,7 @@ export function parsePage(page?: string, pageSize?: string): PageParams {
  */
 export function parseCatalogPage(page?: string, pageSize?: string): PageParams {
   const p = Math.max(1, Number(page) || DEFAULT_PAGE);
-  const size = Math.min(
-    MAX_SIZE_CATALOG,
-    Math.max(1, Number(pageSize) || 200),
-  );
+  const size = Math.min(MAX_SIZE_CATALOG, Math.max(1, Number(pageSize) || 200));
   return { page: p, pageSize: size };
 }
 

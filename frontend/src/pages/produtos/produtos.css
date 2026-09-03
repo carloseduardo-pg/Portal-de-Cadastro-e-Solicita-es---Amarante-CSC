@@ -117,9 +117,10 @@
   }
 }
 
+/* Inclusão | Alteração | Bloqueio lado a lado, em uma única linha. */
 .request-type-choice {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
@@ -159,7 +160,7 @@
   box-shadow: inset 0 0 0 1px var(--brand-primary);
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .request-type-choice {
     grid-template-columns: 1fr;
   }
@@ -847,11 +848,12 @@
   font-size: 12px;
 }
 
+/* Lista = uma solicitação por linha (volume alto: varredura vertical). */
 .kanban-list-stage-body {
   padding: 14px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   background: var(--page-bg);
 }
 
@@ -879,6 +881,54 @@
   margin-bottom: 0;
 }
 
+/* Card retangular da lista: tudo em uma faixa horizontal. */
+.kanban-card--list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 10px 16px;
+}
+
+.kanban-card--list .kanban-card-head {
+  flex: 1 1 220px;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.kanban-card--list .kanban-card-title {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.kanban-card--list .kanban-card-stage {
+  margin-bottom: 0;
+}
+
+/* Rótulo e valor na mesma linha: mantém a faixa baixa mesmo com muitos dados. */
+.kanban-card--list .kanban-card-facts {
+  flex: 3 1 460px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 18px;
+}
+
+.kanban-card--list .kanban-card-facts div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.kanban-card--list .kanban-card-facts dd {
+  margin: 0;
+}
+
+.kanban-card--list .kanban-card-sla {
+  margin-top: 0;
+  margin-left: auto;
+}
+
 .kanban-card:hover {
   border-color: var(--brand-primary);
   box-shadow: var(--shadow-md);
@@ -890,6 +940,22 @@
   align-items: flex-start;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.kanban-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.request-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--font-size-small);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--brand-primary);
 }
 
 .kanban-card-head strong {

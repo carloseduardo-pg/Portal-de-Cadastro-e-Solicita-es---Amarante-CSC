@@ -14,8 +14,9 @@
 | Segurança (Helmet, throttle, ValidationPipe) | OK |
 | UI marca Amarante (tokens, logos vazados) | OK |
 | Módulo Produtos (core) | Parcial — telas principais; alguns forms só UI |
+| Alteração / Bloqueio | OK — formulário único pré-preenchido; bloqueio unificado por flags |
 | Fornecedores / Fiscal | Placeholders |
-| Parametrizações — Produtos | Hierarquia SAP real (Famílias→Subgrupos→Grupos), busca servidor, anomalias |
+| Parametrizações — Produtos | CRUD + status em Famílias/Subgrupos/Grupos/Hotéis/Centros de custo/UM |
 | Integrações SAP / V360 / CM | Fora do protótipo (TODOs no schema) |
 | Homologação | Alvo 02/10/2026 |
 
@@ -57,7 +58,7 @@
 | `/produtos/caixa-de-entrada` | `GET /api/requests/queue` |
 | `/produtos/solicitacoes` | `GET /api/requests/kanban` (board + lista, filtros) |
 | `/produtos/solicitacao/:id` | `GET /api/requests/:id` |
-| `/produtos/base` | `GET /api/products/base` (ativos/inativos/todos) |
+| `/produtos/base` | `GET /api/products/base` (sort/dir) · `DELETE /api/products/:id` (admin, sem sap_code) |
 
 Redirects legados: `/produtos/todas-solicitacoes`, `/minhas-solicitacoes` → `/solicitacoes`; `/inativos` → `/base`.
 
@@ -72,7 +73,7 @@ Redirects legados: `/produtos/todas-solicitacoes`, `/minhas-solicitacoes` → `/
 | UI | API |
 |----|-----|
 | `/notificacoes` | `GET /api/notifications` |
-| `/parametrizacoes/produtos` | Famílias / Subgrupos / Grupos (SAP) + hotéis/armazéns/UM |
+| `/parametrizacoes/produtos` | Famílias / Subgrupos / Grupos (SAP) + hotéis/centros de custo/UM |
 | `/parametrizacoes/administrativo` | Stub |
 | `/fiscal/*` | Placeholder (menu desabilitado) |
 

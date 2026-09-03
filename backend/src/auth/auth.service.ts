@@ -90,7 +90,12 @@ export class AuthService implements OnModuleInit {
     return {
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
     };
   }
 
@@ -127,7 +132,12 @@ export class AuthService implements OnModuleInit {
       return {
         accessToken,
         refreshToken: newRefresh,
-        user: { id: user.id, email: user.email, name: user.name, role: user.role },
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
       };
     } catch {
       throw new UnauthorizedException('Sessão inválida');

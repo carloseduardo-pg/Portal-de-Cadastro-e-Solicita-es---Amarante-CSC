@@ -27,7 +27,12 @@ export class SuppliersService {
     const { skip, take } = skipTake(params);
     const [total, data] = await this.prisma.$transaction([
       this.prisma.supplier.count({ where }),
-      this.prisma.supplier.findMany({ where, orderBy: { corporateName: 'asc' }, skip, take }),
+      this.prisma.supplier.findMany({
+        where,
+        orderBy: { corporateName: 'asc' },
+        skip,
+        take,
+      }),
     ]);
     return pageResult(data, total, params);
   }
@@ -37,15 +42,24 @@ export class SuppliersService {
     const where = { active: false };
     const [total, data] = await this.prisma.$transaction([
       this.prisma.supplier.count({ where }),
-      this.prisma.supplier.findMany({ where, orderBy: { corporateName: 'asc' }, skip, take }),
+      this.prisma.supplier.findMany({
+        where,
+        orderBy: { corporateName: 'asc' },
+        skip,
+        take,
+      }),
     ]);
     return pageResult(data, total, params);
   }
 
-  async findRequests(params: { state?: string; mine?: string; userId?: string } & PageParams) {
+  async findRequests(
+    params: { state?: string; mine?: string; userId?: string } & PageParams,
+  ) {
     const where: Prisma.SupplierRequestWhereInput = {};
-    if (params.state) where.state = params.state as Prisma.SupplierRequestWhereInput['state'];
-    if (params.mine === 'true' && params.userId) where.requesterId = params.userId;
+    if (params.state)
+      where.state = params.state as Prisma.SupplierRequestWhereInput['state'];
+    if (params.mine === 'true' && params.userId)
+      where.requesterId = params.userId;
 
     const { skip, take } = skipTake(params);
     const [total, data] = await this.prisma.$transaction([

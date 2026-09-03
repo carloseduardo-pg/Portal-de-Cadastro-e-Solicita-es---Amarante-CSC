@@ -177,6 +177,8 @@ export class RequestsController {
       items?: { itemId: string; ncm: string }[];
       message?: string;
       approvedItemIds?: string[];
+      /** Itens rejeitados a clonar em nova solicitação (rascunho) do solicitante. */
+      returnRejectedItemIds?: string[];
     },
     @Req() req: Request & { user?: { id: string } },
   ) {
@@ -186,6 +188,7 @@ export class RequestsController {
       body.items ?? [],
       body.message,
       body.approvedItemIds,
+      body.returnRejectedItemIds,
     );
   }
 
@@ -195,7 +198,11 @@ export class RequestsController {
     @Body() body: { message?: string },
     @Req() req: Request & { user?: { id: string } },
   ) {
-    return this.requests.returnToRequester(id, req.user?.id ?? '', body.message ?? '');
+    return this.requests.returnToRequester(
+      id,
+      req.user?.id ?? '',
+      body.message ?? '',
+    );
   }
 
   /**
@@ -217,14 +224,23 @@ export class RequestsController {
     @Body() body: { message?: string },
     @Req() req: Request & { user?: { id: string } },
   ) {
-    return this.requests.sendToApprover(id, req.user?.id ?? '', body.message ?? '');
+    return this.requests.sendToApprover(
+      id,
+      req.user?.id ?? '',
+      body.message ?? '',
+    );
   }
 
   /** Imobilizado → Aprovador de cadastro (UC) ou registra na base AF e encerra. */
   @Post(':id/send-from-imobilizado')
   sendFromImobilizado(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { message?: string; items?: { itemId: string; ncm: string }[] },
+    @Body()
+    body: {
+      message?: string;
+      items?: { itemId: string; ncm: string }[];
+      targetFamilyId?: string;
+    },
     @Req() req: Request & { user?: { id: string } },
   ) {
     return this.requests.sendFromImobilizadoToApprover(
@@ -232,6 +248,7 @@ export class RequestsController {
       req.user?.id ?? '',
       body.message ?? '',
       body.items ?? [],
+      body.targetFamilyId,
     );
   }
 
@@ -242,7 +259,11 @@ export class RequestsController {
     @Body() body: { message?: string },
     @Req() req: Request & { user?: { id: string } },
   ) {
-    return this.requests.markAsFixedAsset(id, req.user?.id ?? '', body.message ?? '');
+    return this.requests.markAsFixedAsset(
+      id,
+      req.user?.id ?? '',
+      body.message ?? '',
+    );
   }
 
   /** Aprovador → reclassifica lote como Ativo Fixo (etapa Imobilizado). */

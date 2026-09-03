@@ -1,9 +1,11 @@
 import { DataTable } from './DataTable';
 import { HotelCodeBadges } from './HotelCodeBadges';
+import { ProductStatusDot } from './ProductStatusDot';
 import { formatNcmDisplay } from '../lib/ncm';
 import type { ProductSearchResult } from '../lib/types';
 import './SimilarProductsPanel.css';
 import './HotelCodeBadges.css';
+import './ProductStatusDot.css';
 
 type Props = {
   results: ProductSearchResult[];
@@ -67,13 +69,14 @@ export function SimilarProductsPanel({
       <div className="similar-products-panel-header">
         <p className="form-section-title similar-products-panel-title">
           {selectable
-            ? 'Selecione o produto a atualizar'
+            ? 'Selecione o produto da base'
             : 'Itens parecidos já cadastrados na base'}
         </p>
         {selectable ? (
           <p className="similar-products-advisory-msg">
-            Clique na linha do produto que deseja alterar. A solicitação ficará vinculada a esse
-            item (apenas um produto por solicitação de alteração).
+            Busque por descrição ou por qualquer código (unificado, legado, SAP ou NCM). Clique
+            na linha do produto — a solicitação fica vinculada a esse item (um produto por
+            solicitação).
           </p>
         ) : isAdvisory ? (
           <p className="similar-products-advisory-msg">
@@ -94,6 +97,20 @@ export function SimilarProductsPanel({
           <HotelCodeBadges codes={[]} showLegend />
         </div>
       ) : null}
+      <p className="product-status-legend">
+        <span>
+          <ProductStatusDot active />
+          Ativo
+        </span>
+        <span>
+          <ProductStatusDot active blockState="PARTIAL" />
+          Ativo com bloqueio parcial
+        </span>
+        <span>
+          <ProductStatusDot active={false} />
+          Inativo
+        </span>
+      </p>
       <DataTable
         rows={results}
         rowKey={(r) => r.id}
@@ -103,13 +120,15 @@ export function SimilarProductsPanel({
           {
             key: 'code',
             header: 'Código',
-            render: (r) => r.legacyCode?.trim() || '—',
+            render: (r) =>
+              r.legacyCode?.trim() || r.unifiedCode?.trim() || r.sapCode?.trim() || '—',
           },
           {
             key: 'desc',
             header: 'Descrição',
             render: (r) => (
               <span>
+                <ProductStatusDot active={r.active} blockState={r.blockState} />
                 {r.descriptionShort}
                 {r.similarity >= 0.5 ? (
                   <span className="similarity-warning"> — alta similaridade</span>

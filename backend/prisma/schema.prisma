@@ -13,11 +13,21 @@ datasource db {
 enum RequestType {
   INCLUSAO
   ALTERACAO
+  /**
+   * Bloqueio unificado. Parcial × total é derivado das flags de escopo
+   * (`block_requisition` / `block_purchase`), não do tipo.
+   */
+  BLOQUEIO
+  /** @deprecated Histórico anterior ao bloqueio unificado — não usar em novos registros. */
   BLOQUEIO_PARCIAL
+  /** @deprecated Histórico anterior ao bloqueio unificado — não usar em novos registros. */
   BLOQUEIO_TOTAL
 }
 
-/** Bloqueio aplicado na base após aprovação de solicitação de bloqueio. */
+/**
+ * Bloqueio aplicado na base após aprovação de solicitação de bloqueio.
+ * PARTIAL = um canal (requisição **ou** compras); TOTAL = ambos.
+ */
 enum ProductBlockState {
   NONE
   PARTIAL
@@ -180,6 +190,8 @@ model Subgroup {
 model Group {
   id         String   @id @default(uuid()) @db.Uuid
   code       String   @unique @db.VarChar(64)
+  /** Código real da base SAP/empresa para busca operacional. */
+  catalogCode String? @map("catalog_code") @db.VarChar(64)
   subgroupId String   @map("subgroup_id") @db.Uuid
   name       String
   active     Boolean  @default(true)
@@ -278,6 +290,13 @@ model Product {
   purchaseQtyTotal Decimal?       @map("purchase_qty_total") @db.Decimal(14, 3)
   active           Boolean           @default(true)
   blockState       ProductBlockState @default(NONE) @map("block_state")
+  /**
+   * Escopo do bloqueio vigente — colunas dedicadas para exportação ao CRM.
+   * Ambas true ⇒ `blockState = TOTAL` e `active = false`.
+   * Uma só ⇒ `blockState = PARTIAL` e produto segue ativo.
+   */
+  blockRequisition Boolean           @default(false) @map("block_requisition")
+  blockPurchase    Boolean           @default(false) @map("block_purchase")
 
   /**
    * Assinatura normalizada da descrição (anti-duplicidade).
@@ -404,10 +423,21 @@ model Request {
   /** Família/grupo merceológicos invalidados — Imobilizado deve reclassificar na árvore AF. */
   classificationInvalidated Boolean @default(false) @map("classification_invalidated")
   /**
+   * Escopo do bloqueio pedido (`type = BLOQUEIO`). Pelo menos uma flag é obrigatória.
+   * Ambas ⇒ bloqueio total; apenas uma ⇒ bloqueio parcial.
+   */
+  blockRequisition Boolean @default(false) @map("block_requisition")
+  blockPurchase    Boolean @default(false) @map("block_purchase")
+  /**
    * Vínculo de divisão de lote misto (consumo × AF).
    * Preparado; divisão ainda não implementada — validar com operação.
    */
   parentRequestId String? @map("parent_request_id") @db.Uuid
+  /**
+   * Código interno visível (não UUID). Gerado pelo sistema:
+   * número crescente só com dígitos (1, 2, 17…), sem zeros à esquerda, máx. 10.
+   */
+  code         String       @unique @db.VarChar(10)
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
   submittedAt  DateTime?    @map("submitted_at") @db.Timestamptz
   expiresAt    DateTime?    @map("expires_at") @db.Timestamptz

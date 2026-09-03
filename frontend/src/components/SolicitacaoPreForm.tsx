@@ -117,8 +117,8 @@ export function SolicitacaoPreForm({
             </>
           ) : hideKind ? (
             <>
-              <strong>ITM-11:</strong> selecione as unidades e a família. A classificação final
-              (uso e consumo ou ativo fixo) é feita pelo aprovador - imobilizado.
+              <strong>ITM-11:</strong> selecione as unidades e a família. O destino do fluxo
+              (Administrativo ou Imobilizado) segue o tipo da família escolhida.
             </>
           ) : (
             <>

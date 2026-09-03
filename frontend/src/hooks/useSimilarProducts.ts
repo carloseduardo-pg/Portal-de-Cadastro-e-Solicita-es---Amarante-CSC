@@ -6,15 +6,24 @@ type Options = {
   query: string;
   hotelId?: string;
   itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+  /** Bloqueio: lista apenas itens ativos (só eles podem ser bloqueados). */
+  activeOnly?: boolean;
   enabled?: boolean;
   debounceMs?: number;
 };
 
-/** Busca ao vivo por itens parecidos na base unificada (pg_trgm). */
+/** Mínimo de caracteres — código pode ter 2 dígitos; descrição precisa de 3. */
+const MIN_QUERY_LENGTH = 2;
+
+/**
+ * Busca ao vivo na base unificada: similaridade pg_trgm na descrição
+ * **ou** casamento por código (unificado, legado, SAP, NCM).
+ */
 export function useSimilarProducts({
   query,
   hotelId,
   itemKind,
+  activeOnly,
   enabled = true,
   debounceMs = 300,
 }: Options) {
@@ -23,7 +32,7 @@ export function useSimilarProducts({
   const [searched, setSearched] = useState(false);
 
   useEffect(() => {
-    if (!enabled || query.trim().length < 3) {
+    if (!enabled || query.trim().length < MIN_QUERY_LENGTH) {
       setResults([]);
       setSearched(false);
       setLoading(false);
@@ -33,7 +42,7 @@ export function useSimilarProducts({
     const timer = setTimeout(() => {
       setLoading(true);
       void productsApi
-        .search({ q: query, hotelId, itemKind })
+        .search({ q: query, hotelId, itemKind, activeOnly })
         .then((r) => {
           setResults(r.data);
           setSearched(true);
@@ -46,7 +55,7 @@ export function useSimilarProducts({
     }, debounceMs);
 
     return () => clearTimeout(timer);
-  }, [query, hotelId, itemKind, enabled, debounceMs]);
+  }, [query, hotelId, itemKind, activeOnly, enabled, debounceMs]);
 
   return {
     results,

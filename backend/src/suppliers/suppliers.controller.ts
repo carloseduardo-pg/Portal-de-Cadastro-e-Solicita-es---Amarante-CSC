@@ -1,4 +1,11 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  Req,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { parsePage } from '../common/pagination';
 import { SuppliersService } from './suppliers.service';
@@ -22,7 +29,10 @@ export class SuppliersController {
   }
 
   @Get('inactive')
-  findInactive(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+  findInactive(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     return this.suppliers.findInactive(parsePage(page, pageSize));
   }
 
