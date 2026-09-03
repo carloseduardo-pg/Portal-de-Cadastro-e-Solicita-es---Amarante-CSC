@@ -9,7 +9,12 @@ import './RequestTimeline.css';
 
 type RequestTimelineProps = {
   stages: RequestStage[];
+  onItemClick?: (itemId: string) => void;
 };
+
+function isApprovalOutcome(outcome?: string | null) {
+  return outcome === 'APPROVAL_TOTAL' || outcome === 'APPROVAL_PARTIAL';
+}
 
 function kindLabel(kind?: string) {
   if (kind === 'FIXED_ASSET') return 'Ativo fixo';
@@ -29,6 +34,14 @@ function reclassifySummary(outcome: string, detail?: RequestStageOutcomeDetail |
   return fromTo;
 }
 
+function sanitizeStageMessage(stage: RequestStage) {
+  const raw = stage.message?.trim();
+  if (!raw) return '';
+  if (!isApprovalOutcome(stage.outcome)) return raw;
+  const parts = raw.split(' — Aprovação ');
+  return parts[0]?.trim() || raw;
+}
+
 /** Momento do acontecimento: conclusão se houver; senão início da etapa. */
 function eventAt(stage: RequestStage) {
   return stage.finishedAt ?? stage.startedAt;
@@ -38,10 +51,23 @@ function eventAt(stage: RequestStage) {
  * Log visual das etapas — mais recente primeiro.
  * Data/hora amarela na linha do bullet; bloco tingido com a cor da tag da etapa.
  */
-export function RequestTimeline({ stages }: RequestTimelineProps) {
+export function RequestTimeline({ stages, onItemClick }: RequestTimelineProps) {
   if (!stages.length) return null;
 
-  const ordered = [...stages].sort((a, b) => {
+  const dedupedStages = stages.filter((stage) => {
+    if (stage.stage !== 'ENCERRADO' || !isApprovalOutcome(stage.outcome)) return true;
+    return !stages.some(
+      (other) =>
+        other.id !== stage.id &&
+        other.stage === 'APROVADOR' &&
+        isApprovalOutcome(other.outcome) &&
+        other.finishedAt &&
+        stage.finishedAt &&
+        other.finishedAt === stage.finishedAt,
+    );
+  });
+
+  const ordered = [...dedupedStages].sort((a, b) => {
     const tb = new Date(eventAt(b)).getTime();
     const ta = new Date(eventAt(a)).getTime();
     if (tb !== ta) return tb - ta;
@@ -59,10 +85,10 @@ export function RequestTimeline({ stages }: RequestTimelineProps) {
           const isReclassify =
             s.outcome === 'RECLASSIFY_FIXED_ASSET' ||
             s.outcome === 'RECLASSIFY_CONSUMPTION';
-          const isApproval =
-            s.outcome === 'APPROVAL_TOTAL' || s.outcome === 'APPROVAL_PARTIAL';
+          const isApproval = isApprovalOutcome(s.outcome);
           const isClosed = s.outcome === 'CLOSED';
           const detail = s.outcomeDetail;
+          const userMessage = sanitizeStageMessage(s);
           const when = formatRequestDate(eventAt(s));
           const color = requestStateColor(s.stage);
           return (
@@ -147,14 +173,25 @@ export function RequestTimeline({ stages }: RequestTimelineProps) {
                             ? `, ${detail.rejectedCount} rejeitado(s)`
                             : ''}
                         </p>
+                        <p>
+                          <strong>Resultado:</strong> Solicitação encerrada nesta aprovação.
+                        </p>
                         {detail?.itemsApproved?.length ? (
                           <>
                             <p>
-                              <strong>Itens na base:</strong>
+                              <strong>Itens registrados na base:</strong>
                             </p>
                             <ul className="request-timeline-reclassify-items">
                               {detail.itemsApproved.map((it) => (
-                                <li key={it.id}>{it.descriptionShort}</li>
+                                <li key={it.id}>
+                                  <button
+                                    type="button"
+                                    className="request-timeline-item-link request-timeline-item-link--approved"
+                                    onClick={() => onItemClick?.(it.id)}
+                                  >
+                                    {it.descriptionShort}
+                                  </button>
+                                </li>
                               ))}
                             </ul>
                           </>
@@ -166,7 +203,15 @@ export function RequestTimeline({ stages }: RequestTimelineProps) {
                             </p>
                             <ul className="request-timeline-reclassify-items">
                               {detail.itemsRejected.map((it) => (
-                                <li key={it.id}>{it.descriptionShort}</li>
+                                <li key={it.id}>
+                                  <button
+                                    type="button"
+                                    className="request-timeline-item-link request-timeline-item-link--rejected"
+                                    onClick={() => onItemClick?.(it.id)}
+                                  >
+                                    {it.descriptionShort}
+                                  </button>
+                                </li>
                               ))}
                             </ul>
                           </>
@@ -206,14 +251,14 @@ export function RequestTimeline({ stages }: RequestTimelineProps) {
                         ) : null}
                       </div>
                     ) : null}
-                    {s.message?.trim() ? (
+                    {userMessage ? (
                       <div className="request-timeline-message">
                         <p className="request-timeline-message-label">
                           {isReclassify
                             ? 'Justificativa da reclassificação:'
                             : 'Mensagem do usuário ao concluir etapa:'}
                         </p>
-                        <p>{s.message}</p>
+                        <p>{userMessage}</p>
                       </div>
                     ) : null}
                   </>

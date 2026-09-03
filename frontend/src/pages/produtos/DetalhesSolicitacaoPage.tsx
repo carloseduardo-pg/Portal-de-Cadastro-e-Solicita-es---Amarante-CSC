@@ -908,6 +908,17 @@ export function DetalhesSolicitacaoPage() {
     isExistingProductRequestType(request.type) &&
     Boolean(requestItem?.productId);
 
+  function focusTimelineItem(itemId: string) {
+    const idx = request.items.findIndex((it) => it.id === itemId);
+    if (idx < 0) return;
+    setCurrentItem(idx);
+    requestAnimationFrame(() => {
+      document
+        .getElementById('request-item-form')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   return (
     <section className="dados-item-page detalhes-solicitacao-page">
       <PageStageHeader
@@ -1078,7 +1089,7 @@ export function DetalhesSolicitacaoPage() {
         />
       ) : null}
 
-      <article className="solicitacao-form-card">
+      <article id="request-item-form" className="solicitacao-form-card">
         <header className="solicitacao-form-card-header">
           <h2>Formulário de solicitação de produto</h2>
           <span className="solicitacao-form-item-badge">
@@ -1617,7 +1628,7 @@ export function DetalhesSolicitacaoPage() {
         ) : null}
       </div>
 
-      <RequestTimeline stages={request.stages ?? []} />
+      <RequestTimeline stages={request.stages ?? []} onItemClick={focusTimelineItem} />
 
       <ConfirmDialog
         open={confirmSaveOpen}
