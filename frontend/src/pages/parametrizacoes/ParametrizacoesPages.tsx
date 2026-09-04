@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DataTable } from '../../components/DataTable';
-import { catalogApi } from '../../lib/resources';
+import { USER_ROLE_LABELS } from '../../lib/capabilities';
+import { catalogApi, usersApi } from '../../lib/resources';
 import type {
   CatalogGroup,
   CatalogSubgroup,
@@ -399,12 +400,63 @@ export function ParametrizacoesProdutosPage() {
 }
 
 export function ParametrizacoesAdminPage() {
+  const [users, setUsers] = useState<
+    { id: string; name: string; email: string; role?: string; active: boolean }[]
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    usersApi
+      .list({ pageSize: 100 })
+      .then((r) => {
+        if (!cancelled) setUsers(r.data);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <section>
       <h1 className="module-title">PARAMETRIZAÇÕES — ADMINISTRATIVO</h1>
       <p className="info-banner">
-        Usuários e perfis — CRUD padrão Prottus (referência prints administrativo).
+        Usuários internos e papéis. Só o administrador altera cadastro (API `users.manage`).
       </p>
+      {error ? <p className="form-field-error">{error}</p> : null}
+      {loading ? (
+        <p className="param-count">Carregando…</p>
+      ) : (
+        <DataTable
+          rows={users}
+          rowKey={(row) => row.id}
+          emptyMessage="Nenhum usuário cadastrado."
+          columns={[
+            { key: 'name', header: 'Nome', render: (row) => row.name },
+            { key: 'email', header: 'E-mail', render: (row) => row.email },
+            {
+              key: 'role',
+              header: 'Papel',
+              render: (row) =>
+                USER_ROLE_LABELS[row.role as keyof typeof USER_ROLE_LABELS] ??
+                row.role ??
+                '—',
+            },
+            {
+              key: 'active',
+              header: 'Status',
+              render: (row) => (row.active ? 'Ativo' : 'Inativo'),
+            },
+          ]}
+        />
+      )}
     </section>
   );
 }

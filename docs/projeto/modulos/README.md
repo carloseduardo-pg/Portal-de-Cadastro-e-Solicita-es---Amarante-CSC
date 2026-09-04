@@ -19,12 +19,12 @@ Estado técnico detalhado: [`STATUS_PROTOTIPO.md`](STATUS_PROTOTIPO.md).
 
 ## Menu lateral (AppShell)
 
-Ordem atual:
+Ordem atual (itens somem conforme o papel):
 
 1. **Home** — `/home`
-2. **Produtos** — submenu (Dashboard, Nova Solicitação, Caixa de Entrada, Solicitações, Base)
-3. **Fornecedores** — submenu
-4. **Parametrizações** — submenu
-5. **Fiscal** — desabilitado no menu (rotas placeholder existem)
+2. **Produtos** — submenu (Nova Solicitação só quem cria)
+3. **Fornecedores** — ADMIN e COMPLIANCE
+4. **Parametrizações** — Administrativo (ADMIN); Produtos (ADMIN e aprovadores)
+5. **Fiscal** — desabilitado; só ADMIN vê o item
 6. **Suporte** — `/suporte`
 7. **FAQ** — `/faq`

@@ -1,8 +1,10 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { RequireCap } from '../auth/require-cap.decorator';
 import { parseCatalogPage, parsePage } from '../common/pagination';
 import { CatalogService } from './catalog.service';
 
 @Controller('catalog')
+@RequireCap('products.module')
 export class CatalogController {
   constructor(private readonly catalog: CatalogService) {}
 

@@ -3,6 +3,8 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon, type IconName } from '../components/Icon';
 import { BrandLogo } from '../components/BrandLogo';
+import type { AuthUser } from '../lib/api';
+import { hasCap } from '../lib/capabilities';
 import { findActiveNavChild, isNavChildActive, isNavGroupChildActive } from '../lib/navActive';
 import './AppShell.css';
 
@@ -24,32 +26,38 @@ type NavItem = {
   children?: NavChild[];
 };
 
-const nav: NavItem[] = [
-  { to: '/home', label: 'Home', icon: 'home', end: true },
-  {
-    label: 'Fornecedores',
-    icon: 'users',
-    children: [
-      { to: '/fornecedores', label: 'Dashboard', icon: 'grid', exact: true },
-      { to: '/fornecedores/nova-solicitacao', label: 'Nova Solicitação', icon: 'plus-circle' },
-      { to: '/fornecedores/caixa-de-entrada', label: 'Caixa de Entrada', icon: 'inbox' },
-      { to: '/fornecedores/todas-solicitacoes', label: 'Todas Solicitações', icon: 'list' },
-      { to: '/fornecedores/minhas-solicitacoes', label: 'Minhas Solicitações', icon: 'user-check' },
-      { to: '/fornecedores/base', label: 'Base', icon: 'database', exact: true },
-      { to: '/fornecedores/inativos', label: 'Inativos', icon: 'archive', exact: true },
-    ],
-  },
-  {
-    label: 'Produtos',
-    icon: 'box',
-    children: [
+function navForUser(user: AuthUser | null): NavItem[] {
+  const items: NavItem[] = [{ to: '/home', label: 'Home', icon: 'home', end: true }];
+
+  if (hasCap(user, 'suppliers.module')) {
+    items.push({
+      label: 'Fornecedores',
+      icon: 'users',
+      children: [
+        { to: '/fornecedores', label: 'Dashboard', icon: 'grid', exact: true },
+        { to: '/fornecedores/nova-solicitacao', label: 'Nova Solicitação', icon: 'plus-circle' },
+        { to: '/fornecedores/caixa-de-entrada', label: 'Caixa de Entrada', icon: 'inbox' },
+        { to: '/fornecedores/todas-solicitacoes', label: 'Todas Solicitações', icon: 'list' },
+        { to: '/fornecedores/minhas-solicitacoes', label: 'Minhas Solicitações', icon: 'user-check' },
+        { to: '/fornecedores/base', label: 'Base', icon: 'database', exact: true },
+        { to: '/fornecedores/inativos', label: 'Inativos', icon: 'archive', exact: true },
+      ],
+    });
+  }
+
+  if (hasCap(user, 'products.module')) {
+    const productChildren: NavChild[] = [
       { to: '/produtos', label: 'Dashboard', icon: 'grid', exact: true },
-      {
+    ];
+    if (hasCap(user, 'products.request.create')) {
+      productChildren.push({
         to: '/produtos/nova-solicitacao',
         label: 'Nova Solicitação',
         icon: 'plus-circle',
         alsoActive: ['/produtos/dados-do-item'],
-      },
+      });
+    }
+    productChildren.push(
       { to: '/produtos/caixa-de-entrada', label: 'Caixa de Entrada', icon: 'inbox' },
       {
         to: '/produtos/solicitacoes',
@@ -58,30 +66,49 @@ const nav: NavItem[] = [
         alsoActive: ['/produtos/solicitacao/'],
       },
       { to: '/produtos/base', label: 'Base', icon: 'database', exact: true },
-    ],
-  },
-  {
-    label: 'Fiscal',
-    icon: 'cart',
-    disabled: true,
-    tooltip: 'Em desenvolvimento',
-    children: [
-      { to: '/fiscal/centro-custo', label: 'Centro de Custo e Pagamento', icon: 'wallet' },
-      { to: '/fiscal/notas-sem-cadastro', label: 'Notas sem Cadastro', icon: 'file-alert' },
-      { to: '/fiscal/extemporaneas', label: 'Notas Extemporâneas', icon: 'clock' },
-    ],
-  },
-  {
-    label: 'Parametrizações',
-    icon: 'settings',
-    children: [
-      { to: '/parametrizacoes/administrativo', label: 'Administrativo', icon: 'shield' },
-      { to: '/parametrizacoes/produtos', label: 'Produtos', icon: 'sliders' },
-    ],
-  },
-  { to: '/suporte', label: 'Suporte', icon: 'support', end: true },
-  { to: '/faq', label: 'FAQ', icon: 'help', end: true },
-];
+    );
+    items.push({ label: 'Produtos', icon: 'box', children: productChildren });
+  }
+
+  if (hasCap(user, 'users.manage')) {
+    items.push({
+      label: 'Fiscal',
+      icon: 'cart',
+      disabled: true,
+      tooltip: 'Em desenvolvimento',
+      children: [
+        { to: '/fiscal/centro-custo', label: 'Centro de Custo e Pagamento', icon: 'wallet' },
+        { to: '/fiscal/notas-sem-cadastro', label: 'Notas sem Cadastro', icon: 'file-alert' },
+        { to: '/fiscal/extemporaneas', label: 'Notas Extemporâneas', icon: 'clock' },
+      ],
+    });
+  }
+
+  const paramChildren: NavChild[] = [];
+  if (hasCap(user, 'users.manage')) {
+    paramChildren.push({
+      to: '/parametrizacoes/administrativo',
+      label: 'Administrativo',
+      icon: 'shield',
+    });
+  }
+  if (hasCap(user, 'catalog.params')) {
+    paramChildren.push({
+      to: '/parametrizacoes/produtos',
+      label: 'Produtos',
+      icon: 'sliders',
+    });
+  }
+  if (paramChildren.length) {
+    items.push({ label: 'Parametrizações', icon: 'settings', children: paramChildren });
+  }
+
+  items.push(
+    { to: '/suporte', label: 'Suporte', icon: 'support', end: true },
+    { to: '/faq', label: 'FAQ', icon: 'help', end: true },
+  );
+  return items;
+}
 
 function NavChildLink({
   child,
@@ -236,6 +263,7 @@ export function AppShell() {
   const firstName = user?.name?.split(' ')[0] ?? 'Usuário';
   const [collapsed, setCollapsed] = useState(false);
   const [openFlyout, setOpenFlyout] = useState<string | null>(null);
+  const nav = useMemo(() => navForUser(user), [user]);
 
   const breadcrumb = useMemo(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
@@ -258,7 +286,7 @@ export function AppShell() {
       }
     }
     return { module: null, page: null };
-  }, [location.pathname]);
+  }, [location.pathname, nav]);
 
   useEffect(() => {
     if (!collapsed) setOpenFlyout(null);

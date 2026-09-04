@@ -1,11 +1,15 @@
+import { UserRole } from '@prisma/client';
 import {
   IsBoolean,
   IsEmail,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
+
+const USER_ROLES = Object.values(UserRole);
 
 /**
  * DTO to create a seller user.
@@ -25,6 +29,10 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @IsIn(USER_ROLES)
+  role?: UserRole;
 }
 
 /**
@@ -48,4 +56,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @IsIn(USER_ROLES)
+  role?: UserRole;
 }

@@ -37,7 +37,7 @@ Volumes: árvore de **consumo** + árvore de **ativo fixo** (`item_kind`).
 
 | Aba | Modelo | Prints |
 |-----|--------|--------|
-| Usuários | `users` | `administrativo/print1`–`print9` — perfis/RBAC ainda **não** modelados |
+| Usuários | `users` | Lista com papel; mutações só `users.manage` (ADMIN) |
 
 ## Padrão de tela
 

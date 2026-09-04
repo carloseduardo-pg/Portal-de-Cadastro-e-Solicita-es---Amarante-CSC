@@ -1,6 +1,6 @@
 # Status do protótipo — Portal Amarante CSC
 
-**Atualizado:** 2026-08-24  
+**Atualizado:** 2026-09-03  
 **Produto:** Portal de Cadastro & Solicitação (substitui Semplice)
 
 ---
@@ -11,6 +11,7 @@
 |----------|--------|
 | Domínio Amarante (hotels, requests, PDM) | OK — schema + seed |
 | Auth JWT httpOnly + usuário ativo | OK |
+| Papéis e capacidades (RBAC) | OK — mapa no código + guard + menu |
 | Segurança (Helmet, throttle, ValidationPipe) | OK |
 | UI marca Amarante (tokens, logos vazados) | OK |
 | Módulo Produtos (core) | Parcial — telas principais; alguns forms só UI |

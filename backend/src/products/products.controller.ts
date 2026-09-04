@@ -5,10 +5,12 @@ import {
   ParseUUIDPipe,
   Query,
 } from '@nestjs/common';
+import { RequireCap } from '../auth/require-cap.decorator';
 import { parsePage } from '../common/pagination';
 import { ProductsService } from './products.service';
 
 @Controller('products')
+@RequireCap('products.module')
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}
 

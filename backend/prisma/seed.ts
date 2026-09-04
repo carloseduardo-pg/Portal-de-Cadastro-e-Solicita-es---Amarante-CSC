@@ -40,100 +40,62 @@ async function main() {
 
   const hotelByCode = Object.fromEntries(hotels.map((h) => [h.code, h]));
 
-  await prisma.user.upsert({
-    where: { email: 'admin@amarante.local' },
-    update: {
-      name: 'Administrador CSC',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
-      role: 'ADMIN',
-    },
-    create: {
-      email: 'admin@amarante.local',
-      name: 'Administrador CSC',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
-      role: 'ADMIN',
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: 'solicitante@amarante.local' },
-    update: {
-      name: 'Marcos Vieira',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
-      role: 'SOLICITANTE',
-    },
-    create: {
-      email: 'solicitante@amarante.local',
-      name: 'Marcos Vieira',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
-      role: 'SOLICITANTE',
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: 'erika@amarante.local' },
-    update: {
-      name: 'Erika Fouchard',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
-      role: 'APROVADOR',
-    },
-    create: {
-      email: 'erika@amarante.local',
-      name: 'Erika Fouchard',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
-      role: 'APROVADOR',
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: 'imobilizado@amarante.local' },
-    update: {
-      name: 'Aprovador Imobilizado',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
-      role: 'APROVADOR_IMOBILIZADO',
-    },
-    create: {
+  const seedUsers: {
+    email: string;
+    name: string;
+    role: 'ADMIN' | 'SOLICITANTE' | 'APROVADOR' | 'APROVADOR_IMOBILIZADO' | 'COMPLIANCE';
+  }[] = [
+    { email: 'admin@amarante.local', name: 'Administrador CSC', role: 'ADMIN' },
+    { email: 'solicitante@amarante.local', name: 'Marcos Vieira', role: 'SOLICITANTE' },
+    { email: 'erika@amarante.local', name: 'Erika Fouchard', role: 'APROVADOR' },
+    {
       email: 'imobilizado@amarante.local',
       name: 'Aprovador Imobilizado',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
       role: 'APROVADOR_IMOBILIZADO',
     },
-  });
+    { email: 'compliance@amarante.local', name: 'Compliance CSC', role: 'COMPLIANCE' },
+    {
+      email: 'amanda.cavalcante@amarantehoteis.com.br',
+      name: 'Amanda Cavalcante',
+      role: 'ADMIN',
+    },
+    {
+      email: 'beatriz.barros@amarantehoteis.com.br',
+      name: 'Beatriz Barros',
+      role: 'SOLICITANTE',
+    },
+    {
+      email: 'andresa.ferreira@amarantehoteis.com.br',
+      name: 'Andresa Ferreira',
+      role: 'APROVADOR',
+    },
+    {
+      email: 'erika.fouchard@amarantehoteis.com.br',
+      name: 'Erika Fouchard',
+      role: 'APROVADOR_IMOBILIZADO',
+    },
+  ];
 
-  await prisma.user.upsert({
-    where: { email: 'compliance@amarante.local' },
-    update: {
-      name: 'Compliance CSC',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
-      role: 'COMPLIANCE',
-    },
-    create: {
-      email: 'compliance@amarante.local',
-      name: 'Compliance CSC',
-      passwordHash,
-      active: true,
-      hotelId: hotelByCode.MGI.id,
-      role: 'COMPLIANCE',
-    },
-  });
+  for (const u of seedUsers) {
+    await prisma.user.upsert({
+      where: { email: u.email },
+      update: {
+        name: u.name,
+        passwordHash,
+        active: true,
+        hotelId: hotelByCode.MGI.id,
+        role: u.role,
+      },
+      create: {
+        email: u.email,
+        name: u.name,
+        passwordHash,
+        active: true,
+        hotelId: hotelByCode.MGI.id,
+        role: u.role,
+      },
+    });
+  }
 
   for (const u of REAL_MEASURE_UNITS) {
     await prisma.measureUnit.upsert({
@@ -262,7 +224,12 @@ async function main() {
     console.log(`    Removidas ${removedFamilies} famílias PDM legadas (sem SAP)`);
   }
   console.log('    Catálogo: npm run import:sap');
-  console.log('    admin@amarante.local / amarante123');
+  console.log('    Login seed (senha amarante123):');
+  console.log('      amanda.cavalcante@amarantehoteis.com.br — ADMIN');
+  console.log('      beatriz.barros@amarantehoteis.com.br — SOLICITANTE');
+  console.log('      andresa.ferreira@amarantehoteis.com.br — APROVADOR');
+  console.log('      erika.fouchard@amarantehoteis.com.br — APROVADOR_IMOBILIZADO');
+  console.log('      admin@amarante.local — ADMIN (dev)');
 }
 
 main()

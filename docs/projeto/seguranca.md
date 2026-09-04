@@ -10,7 +10,7 @@ Referência Prottus aplicada ao protótipo Amarante. Metodologia: [`docs/prottus
 |------|---------------|
 | Auth | JWT access + refresh em cookies **httpOnly** |
 | Token no browser | Proibido em `localStorage` / `sessionStorage` |
-| API | `JwtAuthGuard` global; `@Public()` em login, refresh, logout e health |
+| API | `JwtAuthGuard` + `CapabilitiesGuard`; `@Public()` em login, refresh, logout e health |
 | Usuário inativo | Mesma mensagem que credencial inválida |
 | Headers | Helmet (CSP relaxado em dev para Swagger) |
 | Rate limit | `@nestjs/throttler` |
@@ -35,6 +35,15 @@ Refresh: `POST /api/auth/refresh` — frontend retenta uma vez em 401.
 ## Seed local
 
 `SEED_DEMO_USER_ON_BOOT=true` cria `admin@amarante.local` — **apenas desenvolvimento**. Produção: `false` ou omitir.
+
+Usuários CSC (senha seed `amarante123` — trocar fora do protótipo):
+
+| E-mail | Papel |
+|--------|-------|
+| `amanda.cavalcante@amarantehoteis.com.br` | ADMIN |
+| `beatriz.barros@amarantehoteis.com.br` | SOLICITANTE |
+| `andresa.ferreira@amarantehoteis.com.br` | APROVADOR |
+| `erika.fouchard@amarantehoteis.com.br` | APROVADOR_IMOBILIZADO |
 
 ---
 

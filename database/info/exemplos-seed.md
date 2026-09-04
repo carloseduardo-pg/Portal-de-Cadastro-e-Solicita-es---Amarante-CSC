@@ -22,14 +22,21 @@ Seed principal: `backend/prisma/seed.ts` (via `database/scripts/seed.sh` ou `npx
 
 ---
 
-## Usuários locais
+## Usuários
 
-| E-mail | Senha | Papel |
-|--------|-------|-------|
-| `admin@amarante.local` | `amarante123` | **ADMIN** (vê todas as etapas da caixa) |
-| `solicitante@amarante.local` | `amarante123` | SOLICITANTE |
-| `erika@amarante.local` | `amarante123` | APROVADOR |
-| `compliance@amarante.local` | `amarante123` | COMPLIANCE |
+Senha seed (protótipo): `amarante123`.
+
+| E-mail | Papel |
+|--------|-------|
+| `amanda.cavalcante@amarantehoteis.com.br` | **ADMIN** |
+| `beatriz.barros@amarantehoteis.com.br` | SOLICITANTE |
+| `andresa.ferreira@amarantehoteis.com.br` | APROVADOR (Administrativo) |
+| `erika.fouchard@amarantehoteis.com.br` | APROVADOR_IMOBILIZADO |
+| `admin@amarante.local` | ADMIN (dev) |
+| `solicitante@amarante.local` | SOLICITANTE (dev) |
+| `erika@amarante.local` | APROVADOR (dev) |
+| `imobilizado@amarante.local` | APROVADOR_IMOBILIZADO (dev) |
+| `compliance@amarante.local` | COMPLIANCE (dev) |
 
 ---
 

@@ -17,6 +17,7 @@ const userSelect = {
   id: true,
   name: true,
   email: true,
+  role: true,
   active: true,
   createdAt: true,
   updatedAt: true,
@@ -81,6 +82,7 @@ export class UsersService {
         email,
         passwordHash,
         active: dto.active ?? true,
+        role: dto.role ?? 'SOLICITANTE',
       },
       select: userSelect,
     });
@@ -102,6 +104,7 @@ export class UsersService {
       name: dto.name,
       email: dto.email?.toLowerCase(),
       active: dto.active,
+      role: dto.role,
     };
     if (dto.password) {
       data.passwordHash = await bcrypt.hash(dto.password, 10);

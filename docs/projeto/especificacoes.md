@@ -87,7 +87,7 @@ Integrações reais ficam fora do protótipo; schema e TODOs preparados.
 
 | Modelo | Descrição |
 |--------|-----------|
-| `users` | Auth interna (flag `active`; RBAC ainda não modelado) |
+| `users` | Auth interna (`active` + `UserRole`; capacidades no código) |
 | `notifications` | Sinalização acionável |
 | `audit_log` | Auditoria (padrão Prottus) |
 

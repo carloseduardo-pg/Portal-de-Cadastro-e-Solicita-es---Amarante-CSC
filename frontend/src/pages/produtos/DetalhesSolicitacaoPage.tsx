@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
+import { hasCap } from '../../lib/capabilities';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ItemClassificationFields } from '../../components/ItemClassificationFields';
 import { ItemPrimaryFields } from '../../components/ItemPrimaryFields';
@@ -93,6 +95,10 @@ function stageLabel(state: string) {
 export function DetalhesSolicitacaoPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canActSolicitante = hasCap(user, 'products.request.create');
+  const canApproveAdmin = hasCap(user, 'products.request.approve.admin');
+  const canApproveImob = hasCap(user, 'products.request.approve.imobilizado');
   const [request, setRequest] = useState<Request | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -259,13 +265,15 @@ export function DetalhesSolicitacaoPage() {
   );
 
   const isDraft =
-    request?.state === 'RASCUNHO' ||
-    request?.state === 'SOLICITANTE' ||
-    request?.state === 'RETORNO_SOLICITANTE';
-  const isSolicitante = request?.state === 'SOLICITANTE';
-  const isReturnToRequester = request?.state === 'RETORNO_SOLICITANTE';
-  const isApprover = request?.state === 'APROVADOR';
-  const isImobilizado = request?.state === 'IMOBILIZADO';
+    canActSolicitante &&
+    (request?.state === 'RASCUNHO' ||
+      request?.state === 'SOLICITANTE' ||
+      request?.state === 'RETORNO_SOLICITANTE');
+  const isSolicitante = canActSolicitante && request?.state === 'SOLICITANTE';
+  const isReturnToRequester =
+    canActSolicitante && request?.state === 'RETORNO_SOLICITANTE';
+  const isApprover = canApproveAdmin && request?.state === 'APROVADOR';
+  const isImobilizado = canApproveImob && request?.state === 'IMOBILIZADO';
   const canSendToApprover = isSolicitante || isReturnToRequester;
   const canConcludeStage = canSendToApprover || isApprover || isImobilizado;
   /** Rascunho direto, solicitante ou retorno — pode encerrar. */

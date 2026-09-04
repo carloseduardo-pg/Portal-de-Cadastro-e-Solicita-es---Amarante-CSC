@@ -4,13 +4,14 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { CapabilitiesGuard } from './capabilities.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 /** Módulo de autenticação JWT (cookies) + export do guard global. */
 @Module({
   imports: [PassportModule, JwtModule.register({})],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard],
-  exports: [AuthService, JwtAuthGuard],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, CapabilitiesGuard],
+  exports: [AuthService, JwtAuthGuard, CapabilitiesGuard],
 })
 export class AuthModule {}
