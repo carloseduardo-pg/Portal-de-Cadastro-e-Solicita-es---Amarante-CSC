@@ -74,21 +74,31 @@ export function CaixaDeEntradaPage() {
   }, [view]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(true);
+    const filters = {
+      search: search || undefined,
+      type: typeFilter || undefined,
+      familyIds: familyIds.length ? familyIds : undefined,
+      hotelIds: hotelIds.length ? hotelIds : undefined,
+      requesterIds: requesterIds.length ? requesterIds : undefined,
+    };
+
+    function loadInbox(showSpinner: boolean) {
+      if (showSpinner) setLoading(true);
       void requestsApi
-        .inbox({
-          search: search || undefined,
-          type: typeFilter || undefined,
-          familyIds: familyIds.length ? familyIds : undefined,
-          hotelIds: hotelIds.length ? hotelIds : undefined,
-          requesterIds: requesterIds.length ? requesterIds : undefined,
-        })
+        .inbox(filters)
         .then(setBoard)
         .catch(console.error)
-        .finally(() => setLoading(false));
-    }, 300);
-    return () => clearTimeout(timer);
+        .finally(() => {
+          if (showSpinner) setLoading(false);
+        });
+    }
+
+    const timer = setTimeout(() => loadInbox(true), 300);
+    const poll = window.setInterval(() => loadInbox(false), 12_000);
+    return () => {
+      clearTimeout(timer);
+      window.clearInterval(poll);
+    };
   }, [search, typeFilter, familyIds, hotelIds, requesterIds]);
 
   const rows = board?.data ?? [];

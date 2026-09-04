@@ -80,3 +80,15 @@ export function logoutRequest() {
 export function meRequest() {
   return apiFetch<AuthUser>('/auth/me');
 }
+
+/**
+ * Remove presença ao fechar a aba (keepalive sobrevive ao unload).
+ * Não usa apiFetch — não pode esperar JSON nem retry.
+ */
+export function leaveRequestPresenceKeepalive(requestId: string) {
+  void fetch(`${API_BASE}/requests/${requestId}/presence`, {
+    method: 'DELETE',
+    credentials: 'include',
+    keepalive: true,
+  }).catch(() => undefined);
+}

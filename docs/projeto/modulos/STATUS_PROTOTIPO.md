@@ -1,6 +1,6 @@
 # Status do protótipo — Portal Amarante CSC
 
-**Atualizado:** 2026-09-03  
+**Atualizado:** 2026-09-04  
 **Produto:** Portal de Cadastro & Solicitação (substitui Semplice)
 
 ---
@@ -55,9 +55,9 @@
 | `/produtos` | `GET /api/dashboard/products` |
 | `/produtos/nova-solicitacao` | `GET /api/products/search` + `GET /api/catalog/*` |
 | `/produtos/dados-do-item` | `POST/PATCH /api/requests` + catálogo |
-| `/produtos/caixa-de-entrada` | `GET /api/requests/queue` |
+| `/produtos/caixa-de-entrada` | `GET /api/requests/inbox` (poll 12s; `viewers` nos cards) |
 | `/produtos/solicitacoes` | `GET /api/requests/kanban` (board + lista, filtros) |
-| `/produtos/solicitacao/:id` | `GET /api/requests/:id` |
+| `/produtos/solicitacao/:id` | `GET /api/requests/:id` + `PUT/DELETE /api/requests/:id/presence` |
 | `/produtos/base` | `GET /api/products/base` (ativos/inativos/todos) |
 
 Redirects legados: `/produtos/todas-solicitacoes`, `/minhas-solicitacoes` → `/solicitacoes`; `/inativos` → `/base`.
@@ -86,7 +86,7 @@ Redirects legados: `/produtos/todas-solicitacoes`, `/minhas-solicitacoes` → `/
 | `auth` | `/api/auth` | users, sessão JWT |
 | `users` | `/api/users` | users |
 | `products` | `/api/products` | products, product_hotels |
-| `requests` | `/api/requests` | requests, request_items, stages |
+| `requests` | `/api/requests` | requests, request_items, stages, request_viewers |
 | `catalog` | `/api/catalog` | families, groups, busca PDM |
 | `suppliers` | `/api/suppliers` | suppliers |
 | `dashboard` | `/api/dashboard` | agregados |

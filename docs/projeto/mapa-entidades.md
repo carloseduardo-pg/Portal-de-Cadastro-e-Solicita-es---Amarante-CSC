@@ -17,7 +17,8 @@ hotels ──┐
          │
 requests ── request_items ── (products em rascunho)
     │
-    └── request_stages (timeline / SLA)
+    ├── request_stages (timeline / SLA)
+    └── request_viewers (presença na tela)
 ```
 
 | Entidade | Tabela | Descrição |
@@ -30,6 +31,7 @@ requests ── request_items ── (products em rascunho)
 | Solicitação | `requests` | Fluxo aprovação cadastro |
 | Item da solicitação | `request_items` | Linhas / lote |
 | Estágios | `request_stages` | Histórico status + SLA |
+| Presença | `request_viewers` | Quem está com a solicitação aberta (TTL) |
 | Sugestão NCM | `ncm_suggestions` | Candidatos (≠ NCM confirmado); score = similaridade real |
 | Catálogo NCM | `ncm_codes` | TIPI 8 dígitos; FK em `products` / `request_items` |
 

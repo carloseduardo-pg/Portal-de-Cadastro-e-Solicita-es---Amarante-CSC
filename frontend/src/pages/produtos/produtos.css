@@ -1040,6 +1040,17 @@
   margin: 0 0 16px;
 }
 
+.detalhes-solicitacao-page .request-viewers-flag {
+  display: flex;
+  width: fit-content;
+  margin: 0 0 12px;
+}
+
+.kanban-card .request-viewers-flag {
+  display: flex;
+  width: fit-content;
+}
+
 .detalhes-solicitacao-page .detalhes-ncm-block {
   margin-top: 24px;
 }

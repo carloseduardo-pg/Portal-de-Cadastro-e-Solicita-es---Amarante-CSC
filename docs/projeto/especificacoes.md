@@ -72,6 +72,7 @@ Integrações reais ficam fora do protótipo; schema e TODOs preparados.
 | `product_attributes`, `product_attribute_values` | PDM por família |
 | `requests`, `request_items` | Solicitações e itens |
 | `request_stages` | Timeline / SLA |
+| `request_viewers` | Presença: quem está com a solicitação aberta |
 | `ncm_suggestions` | Candidatos (separado de `ncm_code` confirmado) |
 | `business_calendar` | Dias úteis para SLA |
 | `measure_units`, `warehouses`, `cost_centers` | Parametrização |

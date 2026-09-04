@@ -1,0 +1,23 @@
+.request-viewers-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--brand-accent) 22%, white);
+  border: 1px solid var(--brand-accent);
+  color: #6b5210;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.request-viewers-flag--compact {
+  padding: 2px 8px;
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+.request-viewers-flag svg {
+  flex-shrink: 0;
+}

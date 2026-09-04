@@ -84,6 +84,7 @@ Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQ
 - Aprovador - Administrativo: finalização com NCM (ITM-09). Em **INCLUSÃO com 2+ itens**, popup permite aprovar um/alguns/todos — **aprovação total** ou **parcial** (`APPROVAL_TOTAL` / `APPROVAL_PARTIAL`). Não selecionados são rejeitados na mesma ação; solicitação encerra. API: `POST /api/requests/:id/approve` com `approvedItemIds` opcional.
 - Caixa de entrada = etapas operacionais (Solicitante / Aprovador - Imobilizado / Aprovador - Administrativo)
 - Ao concluir cada etapa: comentário obrigatório em `request_stages.message`
+- Presença: ao abrir o detalhe, heartbeat `PUT /api/requests/:id/presence` (TTL 45s). Flag na caixa e no detalhe para os demais usuários. Sem WebSocket — poll da caixa a cada 12s.
 
 ## API
 
@@ -94,7 +95,9 @@ Tipos de solicitação: `INCLUSAO` · `ALTERACAO` · `BLOQUEIO_PARCIAL` · `BLOQ
 | `GET /api/products/base` | Base ativos/inativos/todos; filtro `item_kind` (abas UC \| AF) |
 | `GET /api/requests/kanban` | Board + lista unificada |
 | `GET /api/requests/queue` | Caixa de entrada / fila |
-| `GET /api/requests/:id` | Detalhe |
+| `GET /api/requests/:id` | Detalhe (inclui `viewers` ativos) |
+| `PUT /api/requests/:id/presence` | Heartbeat de presença |
+| `DELETE /api/requests/:id/presence` | Sai da tela da solicitação |
 | `POST /api/requests` | Criar rascunho ou enviar solicitação |
 | `PATCH /api/requests/:id` | Atualizar rascunho |
 | `POST /api/requests/:id/return-to-requester` | Devolver ao solicitante (reset SLA) |
