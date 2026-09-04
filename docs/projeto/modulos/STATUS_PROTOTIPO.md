@@ -58,9 +58,9 @@
 | `/produtos/nova-solicitacao` | `GET /api/products/search` + `GET /api/catalog/*` |
 | `/produtos/dados-do-item` | `POST/PATCH /api/requests` + catálogo |
 | `/produtos/produto-existente` | `GET /api/products/:id` + `POST/PATCH /api/requests` |
-| `/produtos/caixa-de-entrada` | `GET /api/requests/inbox` |
+| `/produtos/caixa-de-entrada` | `GET /api/requests/inbox` (poll 12s; `viewers` nos cards) |
 | `/produtos/solicitacoes` | `GET /api/requests/queue` |
-| `/produtos/solicitacao/:id` | `GET /api/requests/:id` |
+| `/produtos/solicitacao/:id` | `GET /api/requests/:id` + `PUT/DELETE /api/requests/:id/presence` |
 | `/produtos/base` | `GET /api/products/base` · `DELETE /api/products/:id` (admin, sem sap_code) |
 
 `GET /api/requests/kanban` existe só para testes de carga — a UI não usa.
@@ -91,7 +91,7 @@ Redirects legados: `/produtos/todas-solicitacoes`, `/minhas-solicitacoes` → `/
 | `auth` | `/api/auth` | users, sessão JWT |
 | `users` | `/api/users` | users |
 | `products` | `/api/products` | products, product_hotels |
-| `requests` | `/api/requests` | requests, request_items, stages |
+| `requests` | `/api/requests` | requests, request_items, stages, request_viewers |
 | `catalog` | `/api/catalog` | families, groups, subgroups, hotels, centros, UM |
 | `suppliers` | `/api/suppliers` | suppliers |
 | `dashboard` | `/api/dashboard` | agregados |

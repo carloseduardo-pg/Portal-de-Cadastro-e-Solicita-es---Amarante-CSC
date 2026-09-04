@@ -15,6 +15,7 @@ import type {
   ProductSearchResult,
   QueueResult,
   Request,
+  RequestViewer,
   InboxBoardResult,
   Supplier,
   SupplierRequest,
@@ -379,6 +380,16 @@ export const requestsApi = {
     apiFetch<unknown>(`/requests/items/${itemId}/ncm`, {
       method: 'PATCH',
       body: JSON.stringify({ ncm }),
+    }),
+  /** Heartbeat de presença na tela da solicitação. */
+  heartbeatPresence: (id: string) =>
+    apiFetch<{ viewers: RequestViewer[] }>(`/requests/${id}/presence`, {
+      method: 'PUT',
+    }),
+  /** Sai da tela da solicitação. */
+  leavePresence: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/requests/${id}/presence`, {
+      method: 'DELETE',
     }),
 };
 

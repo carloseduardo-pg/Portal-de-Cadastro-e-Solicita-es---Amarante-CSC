@@ -24,7 +24,8 @@ export type IconName =
   | 'sliders'
   | 'pencil'
   | 'check'
-  | 'x';
+  | 'x'
+  | 'eye';
 
 const paths: Record<IconName, string> = {
   home: 'M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1v-10.5z',
@@ -56,6 +57,7 @@ const paths: Record<IconName, string> = {
   pencil: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5',
   check: 'M20 6L9 17l-5-5',
   x: 'M18 6L6 18M6 6l12 12',
+  eye: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
 };
 
 /** Ícone SVG outline — sem emojis (padrão Prottus). */

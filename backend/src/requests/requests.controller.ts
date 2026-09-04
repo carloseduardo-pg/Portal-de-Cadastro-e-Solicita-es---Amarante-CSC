@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
@@ -162,6 +164,24 @@ export class RequestsController {
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.requests.findOne(id);
+  }
+
+  /** Heartbeat: usuário está com a solicitação aberta. */
+  @Put(':id/presence')
+  heartbeatPresence(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    return this.requests.heartbeatPresence(id, req.user?.id ?? '');
+  }
+
+  /** Sai da tela da solicitação — remove a presença. */
+  @Delete(':id/presence')
+  leavePresence(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    return this.requests.leavePresence(id, req.user?.id ?? '');
   }
 
   @Patch(':id')

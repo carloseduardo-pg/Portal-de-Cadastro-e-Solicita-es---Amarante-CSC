@@ -129,6 +129,7 @@ Se o produto já tiver unidades vinculadas, elas são exibidas e preservadas.
 - Aprovador - Administrativo: finalização com NCM (ITM-09). Em **INCLUSÃO com 2+ itens**, popup permite aprovar um/alguns/todos — **aprovação total** ou **parcial** (`APPROVAL_TOTAL` / `APPROVAL_PARTIAL`). Não selecionados são rejeitados na mesma ação; solicitação encerra. Em parcial, flag opcional devolve rejeitados escolhidos em **nova solicitação** (estado Solicitante, novo código, `parentRequestId`) via `returnRejectedItemIds`. Encaminhar ao Imobilizado exige família AF (`reclassify-fixed-asset` + `targetFamilyId`).
 - Caixa de entrada = etapas operacionais (Solicitante / Aprovador - Imobilizado / Aprovador - Administrativo)
 - Ao concluir cada etapa: comentário obrigatório em `request_stages.message`
+- Presença: ao abrir o detalhe, heartbeat `PUT /api/requests/:id/presence` (TTL 45s). Flag na caixa e no detalhe para os demais usuários. Sem WebSocket — poll da caixa a cada 12s.
 
 ## API
 
@@ -137,10 +138,12 @@ Se o produto já tiver unidades vinculadas, elas são exibidas e preservadas.
 | `GET /api/products/search` | Busca por descrição (similaridade) ou qualquer código; `item_kind`, `active_only` |
 | `GET /api/products/exact-count` | Contagem por descrição exata (ativo fixo) |
 | `GET /api/products/base` | Base ativos/inativos/todos; filtro `item_kind` (abas UC \| AF) |
-| `GET /api/requests/inbox` | Caixa de entrada (prioridade Novas / Do dia / Atrasadas) |
+| `GET /api/requests/inbox` | Caixa de entrada (prioridade Novas / Do dia / Atrasadas; `viewers`) |
 | `GET /api/requests/queue` | Registro de solicitações (lista paginada) |
 | `GET /api/requests/kanban` | Endpoint legado — só testes de carga |
-| `GET /api/requests/:id` | Detalhe |
+| `GET /api/requests/:id` | Detalhe (inclui `viewers` ativos) |
+| `PUT /api/requests/:id/presence` | Heartbeat de presença |
+| `DELETE /api/requests/:id/presence` | Sai da tela da solicitação |
 | `POST /api/requests` | Criar rascunho ou enviar solicitação |
 | `PATCH /api/requests/:id` | Atualizar rascunho |
 | `POST /api/requests/:id/return-to-requester` | Devolver ao solicitante (reset SLA) |

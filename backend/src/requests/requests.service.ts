@@ -31,6 +31,7 @@ import {
   isBlockRequestType,
   isExistingProductRequestType,
 } from './request-type.helpers';
+import { mapActiveViewers, presenceCutoff } from './request-presence';
 
 const ACTIONABLE_STATES: RequestState[] = [
   RequestState.SOLICITANTE,
@@ -535,7 +536,10 @@ export class RequestsService {
       take: 500,
     });
     return {
-      data,
+      data: data.map((row) => ({
+        ...row,
+        viewers: mapActiveViewers(row.viewers),
+      })),
       total: data.length,
       role,
       inboxStages: inboxStates,
@@ -3087,6 +3091,16 @@ export class RequestsService {
         orderBy: { startedAt: 'desc' as const },
         take: 1,
       },
+      viewers: this.activeViewerInclude(),
+    };
+  }
+
+  /** Viewers com heartbeat dentro do TTL. */
+  private activeViewerInclude() {
+    return {
+      where: { lastSeenAt: { gte: presenceCutoff() } },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { lastSeenAt: 'asc' as const },
     };
   }
 
@@ -3117,6 +3131,7 @@ export class RequestsService {
           orderBy: { startedAt: 'asc' },
           include: { user: { select: { name: true } } },
         },
+        viewers: this.activeViewerInclude(),
       },
     });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
@@ -3143,6 +3158,7 @@ export class RequestsService {
 
     return {
       ...request,
+      viewers: mapActiveViewers(request.viewers),
       items: request.items.map((it) => ({
         ...it,
         ncmSuggestions: (it.ncmSuggestions ?? []).map((s) => ({
@@ -3153,6 +3169,52 @@ export class RequestsService {
         })),
       })),
     };
+  }
+
+  /**
+   * Heartbeat de presença: o usuário está com a solicitação aberta.
+   * Remove linhas expiradas e devolve a lista ativa.
+   */
+  async heartbeatPresence(requestId: string, userId: string) {
+    const exists = await this.prisma.request.findUnique({
+      where: { id: requestId },
+      select: { id: true },
+    });
+    if (!exists) throw new NotFoundException('Solicitação não encontrada');
+
+    await this.prisma.requestViewer.upsert({
+      where: { requestId_userId: { requestId, userId } },
+      create: { requestId, userId },
+      update: { lastSeenAt: new Date() },
+    });
+    await this.prisma.requestViewer.deleteMany({
+      where: { lastSeenAt: { lt: presenceCutoff() } },
+    });
+    return this.listPresence(requestId);
+  }
+
+  /** Sai da solicitação — remove a presença do usuário. */
+  async leavePresence(requestId: string, userId: string) {
+    await this.prisma.requestViewer.deleteMany({
+      where: { requestId, userId },
+    });
+    return { ok: true as const };
+  }
+
+  /** Lista viewers ativos da solicitação. */
+  async listPresence(requestId: string) {
+    const exists = await this.prisma.request.findUnique({
+      where: { id: requestId },
+      select: { id: true },
+    });
+    if (!exists) throw new NotFoundException('Solicitação não encontrada');
+
+    const rows = await this.prisma.requestViewer.findMany({
+      where: { requestId, lastSeenAt: { gte: presenceCutoff() } },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { lastSeenAt: 'asc' },
+    });
+    return { viewers: mapActiveViewers(rows) };
   }
 
   /**

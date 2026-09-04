@@ -234,6 +234,14 @@ export type Request = {
   };
   items: RequestItem[];
   stages?: RequestStage[];
+  /** Quem está com a solicitação aberta agora (TTL no backend). */
+  viewers?: RequestViewer[];
+};
+
+export type RequestViewer = {
+  id: string;
+  name: string;
+  lastSeenAt?: string;
 };
 
 export type RequestStageOutcomeDetail = {

@@ -3,7 +3,7 @@
 Registro vivo das conversas com o agente neste projeto.
 
 **Repositório:** Portal Amarante CSC  
-**Última atualização:** 2026-09-04  
+**Última atualização:** 2026-09-04 (presença na caixa/detalhe)  
 **Local:** `.cursor/agents/cursor-charlysaugusto.md`
 
 ---
@@ -19,6 +19,19 @@ Registro vivo das conversas com o agente neste projeto.
 ---
 
 ## Histórico de sessões
+
+### 2026-09-04 — Flag de presença na solicitação
+
+**Objetivo:** quando um usuário abre o detalhe a partir da caixa, os demais veem quem está visualizando.
+
+**Decisões:**
+- Tabela efêmera `request_viewers` (sem audit — heartbeat alto).
+- Sem WebSocket: `PUT/DELETE /requests/:id/presence` + poll da caixa a 12s; TTL 45s.
+- Flag amarela (acento) no card da caixa e no detalhe (omite o próprio usuário no detalhe).
+
+**Arquivos:** schema/migration `add_request_viewers`, `requests.service/controller`, `useRequestPresence`, `RequestViewersFlag`, caixa e detalhe.
+
+---
 
 ### 2026-09-04 — Setup DB Fedora (peer)
 

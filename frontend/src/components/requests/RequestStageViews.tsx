@@ -7,6 +7,7 @@ import {
 } from '../../lib/requestLabels';
 import type { Request } from '../../lib/types';
 import { slaBadge } from '../../lib/types';
+import { RequestViewersFlag } from './RequestViewersFlag';
 
 export type StageColumn = {
   state: string;
@@ -299,6 +300,7 @@ export function RequestInboxCard({
       {r.stages?.length ? (
         <span className={`kanban-card-sla ${badge.className}`}>{badge.label}</span>
       ) : null}
+      <RequestViewersFlag viewers={r.viewers} compact />
     </Link>
   );
 }

@@ -107,6 +107,7 @@ model User {
   hotel              Hotel?           @relation(fields: [hotelId], references: [id])
   requests           Request[]        @relation("RequestRequester")
   requestStages      RequestStage[]
+  requestViewers     RequestViewer[]
   supplierRequests   SupplierRequest[]
   notifications      Notification[]
   ncmConfirmations   Product[]        @relation("NcmConfirmedBy")
@@ -453,6 +454,7 @@ model Request {
   items     RequestItem[]
   stages    RequestStage[]
   hotels    RequestHotel[]
+  viewers   RequestViewer[]
 
   @@index([state])
   @@index([hotelId])
@@ -566,6 +568,20 @@ model RequestStage {
 
   @@index([requestId])
   @@map("request_stages")
+}
+
+/** Presença efêmera: quem está com a solicitação aberta (TTL no serviço). */
+model RequestViewer {
+  requestId  String   @map("request_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  lastSeenAt DateTime @default(now()) @updatedAt @map("last_seen_at") @db.Timestamptz
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([requestId, userId])
+  @@index([lastSeenAt])
+  @@map("request_viewers")
 }
 
 model NcmSuggestion {

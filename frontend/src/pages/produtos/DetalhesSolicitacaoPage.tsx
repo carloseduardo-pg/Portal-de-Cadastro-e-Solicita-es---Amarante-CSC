@@ -31,6 +31,8 @@ import {
 import { toFormUppercase } from '../../lib/formText';
 import { formatNcmDisplay } from '../../lib/ncm';
 import { catalogApi, productsApi, requestsApi } from '../../lib/resources';
+import { useRequestPresence } from '../../hooks/useRequestPresence';
+import { RequestViewersFlag } from '../../components/requests/RequestViewersFlag';
 import type {
   CatalogGroup,
   CatalogSubgroup,
@@ -104,6 +106,7 @@ export function DetalhesSolicitacaoPage() {
   const canApproveImob = hasCap(user, 'products.request.approve.imobilizado');
   const [request, setRequest] = useState<Request | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const liveViewers = useRequestPresence(id);
 
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [groups, setGroups] = useState<CatalogGroup[]>([]);
@@ -838,6 +841,11 @@ export function DetalhesSolicitacaoPage() {
       <PageStageHeader
         title={request.code ? `Solicitação ${request.code}` : 'Detalhes da Solicitação'}
         stage={stageLabel(request)}
+      />
+
+      <RequestViewersFlag
+        viewers={liveViewers.length ? liveViewers : request.viewers}
+        currentUserId={user?.id}
       />
 
       <p className="derived-field detalhes-meta">
