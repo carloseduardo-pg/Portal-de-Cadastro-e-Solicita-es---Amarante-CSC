@@ -24,7 +24,7 @@ type Props = {
 
 /**
  * Modal de reclassificação Aprovador ↔ Imobilizado.
- * Exige família sugerida no destino (facilitação; o receptor pode alterar depois).
+ * Exige família do destino (ITM-11 / FLX-01). Sem família adequada a transferência não segue.
  */
 export function ReclassifyRequestDialog({
   open,

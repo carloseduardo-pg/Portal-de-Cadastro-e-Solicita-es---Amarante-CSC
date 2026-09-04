@@ -20,7 +20,10 @@ const REAL_MEASURE_UNITS = [
 async function main() {
   console.log('==> Amarante seed (infra — catálogo via import:sap)');
 
-  const passwordHash = await bcrypt.hash('amarante123', 10);
+  const allowDemoUsers = process.env.NODE_ENV !== 'production';
+  const passwordHash = allowDemoUsers
+    ? await bcrypt.hash('amarante123', 10)
+    : '';
 
   const hotels = await Promise.all(
     [
@@ -40,6 +43,9 @@ async function main() {
 
   const hotelByCode = Object.fromEntries(hotels.map((h) => [h.code, h]));
 
+  if (!allowDemoUsers) {
+    console.log('==> Seed de usuários demo omitido (NODE_ENV=production)');
+  } else {
   await prisma.user.upsert({
     where: { email: 'admin@amarante.local' },
     update: {
@@ -134,6 +140,7 @@ async function main() {
       role: 'COMPLIANCE',
     },
   });
+  }
 
   for (const u of REAL_MEASURE_UNITS) {
     await prisma.measureUnit.upsert({

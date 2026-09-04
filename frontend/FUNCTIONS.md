@@ -13,7 +13,7 @@ Camada compartilhada (`lib/`, `auth/`, `components/`). Pages não entram neste �
 | `meRequest` | `src/lib/api.ts` | GET /auth/me |
 | `dashboardApi` | `src/lib/resources.ts` | Resumo produtos |
 | `productsApi` | `src/lib/resources.ts` | Busca, base, inativos |
-| `requestsApi` | `src/lib/resources.ts` | Kanban, fila, detalhe |
+| `requestsApi` | `src/lib/resources.ts` | Inbox (caixa), queue (registro), detalhe |
 | `catalogApi` | `src/lib/resources.ts` | Hotéis, famílias, PDM |
 | `suppliersApi` | `src/lib/resources.ts` | Fornecedores |
 | `notificationsApi` | `src/lib/resources.ts` | Notificações |

@@ -13,7 +13,7 @@ Do amplo para o específico, depois auxiliares:
 | 2 | Subgrupos | `subgroups` | ~58; coluna pai (família) + grupos + itens |
 | 3 | Grupos | `groups` | ~98; pai família/subgrupo + itens — `pageSize` até **500** |
 | 4 | Hotéis | `hotels` | |
-| 5 | Armazéns | `warehouses` | |
+| 5 | Centros de custo | `cost_centers` | Códigos da planilha real |
 | 6 | Unidade Medida | `measure_units` | |
 
 Volumes: árvore de **consumo** + árvore de **ativo fixo** (`item_kind`).
@@ -37,7 +37,7 @@ Volumes: árvore de **consumo** + árvore de **ativo fixo** (`item_kind`).
 
 | Aba | Modelo | Prints |
 |-----|--------|--------|
-| Usuários | `users` | `administrativo/print1`–`print9` — perfis/RBAC ainda **não** modelados |
+| Usuários | `users` | RBAC operacional no fluxo Produtos (`UserRole`); CRUD de usuários na UI ainda stub |
 
 ## Padrão de tela
 

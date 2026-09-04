@@ -264,7 +264,7 @@ async function main() {
   const results = []; // { name, pass, detail }
 
   log(line('═'));
-  log(`  DISTAC — teste de carga & segurança`);
+  log(`  PORTAL AMARANTE CSC — teste de carga & segurança`);
   log(`  Nível: ${profile.label}  (${profile.name})`);
   log(`  ${profile.description}`);
   log(line('═'));

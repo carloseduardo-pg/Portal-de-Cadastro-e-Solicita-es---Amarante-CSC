@@ -46,12 +46,11 @@ Substitui o Semplice. Prioridade máxima do projeto.
 
 | Momento | Disparo |
 |---------|---------|
-| Criar já enviando à aprovação | `create` com `targetStage=APROVADOR` → chega em `IMOBILIZADO` |
-| Atualizar rascunho e enviar | `update` com envio (não edição de aprovador) → `IMOBILIZADO` |
-| Enviar da etapa Solicitante / Retorno | `POST …/send-to-approver` |
-| Imobilizado marca como ativo fixo | `POST …/mark-fixed-asset` (recalcula contra base AF) |
-| Imobilizado encaminha UC ao Administrativo | `send-from-imobilizado` (recalcula contra base UC) |
-| Reclassificações AF ↔ UC | `reclassify-fixed-asset` / `reclassify-consumption` (já existentes) |
+| Criar já enviando à aprovação | `create` com `targetStage=APROVADOR` → destino = `firstApprovalState(família)` |
+| Atualizar rascunho e enviar | `update` com envio (não edição de aprovador) |
+| Enviar da etapa Solicitante / Retorno | `POST …/send-to-approver` (UC → Administrativo; AF → Imobilizado) |
+| Imobilizado registra na base AF | `send-from-imobilizado` com lote já AF |
+| Transferências AF ↔ UC | `reclassify-fixed-asset` / `reclassify-consumption` (família do destino obrigatória) |
 
 ITM-09 permanece: sugestão não preenche NCM automaticamente — confirmação humana obrigatória.
 
@@ -62,13 +61,11 @@ Pipeline (Produtos) — destino pela **família** do lote (**FLX-01**):
 `SOLICITANTE` →
 
 - Família **uso e consumo** → `APROVADOR` (**Aprovador - Administrativo**) → `ENCERRADO` (base UC)
-- Família **ativo fixo** → `IMOBILIZADO` (**Aprovador - Imobilizado**) →
-  - Flag **SIM** → permanece / registra na base AF → `ENCERRADO`
-  - Flag **NÃO** → escolhe família UC sugerida → `APROVADOR` → …
+- Família **ativo fixo** → `IMOBILIZADO` (**Aprovador - Imobilizado**) → registra na base AF → `ENCERRADO`
 
-Administrativo só encaminha ao Imobilizado se perceber erro de setor (escolhe família AF sugerida). O receptor pode alterar a família depois.
+Não existe flag “É ativo fixo?”. Se o lote chegou no setor errado, o aprovador **transfere** e **obrigatoriamente** escolhe a família adequada ao destino (ITM-11).
 
-O solicitante **não** escolhe manualmente o destino: a família define o roteamento. Bases na UI: abas separadas em `/produtos/base`.
+O solicitante **não** escolhe o destino: a família define o roteamento. Bases na UI: abas separadas em `/produtos/base`.
 
 Rótulos de UI (nunca só “Aprovador”): ver `frontend/src/lib/requestLabels.ts`.
 
@@ -124,13 +121,12 @@ Se o produto já tiver unidades vinculadas, elas são exibidas e preservadas.
 - Solicitante escolhe família UC ou AF; o sistema rota automaticamente
 - Match 100% / `pdm_signature`: **só CONSUMPTION** — bloqueia inclusão (ativos **e** inativos/bloqueados; msg própria se bloqueado)
 - Constraint `UNIQUE(pdm_family_id, pdm_signature)` parcial para CONSUMPTION: migration detecta colisões antes; com legado sujo (41 dups) a unique fica **adiada** e o trigger impede **novas** duplicatas. Relatório: `base-sap/pdm-signature-collisions.md` + tabela `_pdm_signature_collisions`
-- Formulário AF (após triagem): sem UM / qty compra / atributos PDM; obrigatórios `unitQuantity` + `physicalLocation`; contábeis opcionais (nullable)
+- Formulário AF (família de ativo fixo): sem UM / qty compra / atributos PDM; obrigatórios `unitQuantity` + `physicalLocation`; contábeis opcionais (nullable)
 - `GET /api/products/exact-count?q=&item_kind=` e filtro `item_kind` em `/products/search` e `/products/base`
 - Devolução ao solicitante reinicia SLA (`POST /api/requests/:id/return-to-requester`) — Aprovador - Imobilizado ou Aprovador - Administrativo
 - Encerrar sem promover à base (`POST /api/requests/:id/close` → `REPROVADO`): solicitante (rascunho/retorno, motivo opcional) ou aprovadores (motivo pré + observação obrigatória). Não reabre.
-- Imobilizado classifica AF: flag **É ativo fixo? SIM | NÃO** no final da etapa (obrigatória). SIM → permanece no Imobilizado (caixa filtrada); opção de **registrar automaticamente** na base AF. NÃO → escolhe família UC sugerida → Administrativo. Bloco de NCM no Imobilizado **só aparece após SIM / já classificado como AF** (opcional na 1ª passagem; obrigatório ao registrar na base). API: `POST …/mark-fixed-asset` + `send-from-imobilizado` (`targetFamilyId` quando NÃO)
-- Imobilizado conclui: `POST /api/requests/:id/send-from-imobilizado` (AF → base AF + encerra; UC → Administrativo com família sugerida)
-- Aprovador - Administrativo: finalização com NCM (ITM-09). Em **INCLUSÃO com 2+ itens**, popup permite aprovar um/alguns/todos — **aprovação total** ou **parcial** (`APPROVAL_TOTAL` / `APPROVAL_PARTIAL`). Não selecionados são rejeitados na mesma ação; solicitação encerra. Em parcial, flag opcional devolve rejeitados escolhidos em **nova solicitação** (estado Solicitante, novo código, `parentRequestId`) via `returnRejectedItemIds`. API: `POST /api/requests/:id/approve` com `approvedItemIds` e `returnRejectedItemIds` opcionais. Encaminhar ao Imobilizado exige família AF sugerida (`reclassify-fixed-asset` + `targetFamilyId`).
+- Imobilizado conclui: `POST /api/requests/:id/send-from-imobilizado` registra na base AF. Encaminhar ao Administrativo usa `reclassify-consumption` + `targetFamilyId` (família UC obrigatória).
+- Aprovador - Administrativo: finalização com NCM (ITM-09). Em **INCLUSÃO com 2+ itens**, popup permite aprovar um/alguns/todos — **aprovação total** ou **parcial** (`APPROVAL_TOTAL` / `APPROVAL_PARTIAL`). Não selecionados são rejeitados na mesma ação; solicitação encerra. Em parcial, flag opcional devolve rejeitados escolhidos em **nova solicitação** (estado Solicitante, novo código, `parentRequestId`) via `returnRejectedItemIds`. Encaminhar ao Imobilizado exige família AF (`reclassify-fixed-asset` + `targetFamilyId`).
 - Caixa de entrada = etapas operacionais (Solicitante / Aprovador - Imobilizado / Aprovador - Administrativo)
 - Ao concluir cada etapa: comentário obrigatório em `request_stages.message`
 
@@ -141,20 +137,22 @@ Se o produto já tiver unidades vinculadas, elas são exibidas e preservadas.
 | `GET /api/products/search` | Busca por descrição (similaridade) ou qualquer código; `item_kind`, `active_only` |
 | `GET /api/products/exact-count` | Contagem por descrição exata (ativo fixo) |
 | `GET /api/products/base` | Base ativos/inativos/todos; filtro `item_kind` (abas UC \| AF) |
-| `GET /api/requests/kanban` | Board + lista unificada |
-| `GET /api/requests/queue` | Caixa de entrada / fila |
+| `GET /api/requests/inbox` | Caixa de entrada (prioridade Novas / Do dia / Atrasadas) |
+| `GET /api/requests/queue` | Registro de solicitações (lista paginada) |
+| `GET /api/requests/kanban` | Endpoint legado — só testes de carga |
 | `GET /api/requests/:id` | Detalhe |
 | `POST /api/requests` | Criar rascunho ou enviar solicitação |
 | `PATCH /api/requests/:id` | Atualizar rascunho |
 | `POST /api/requests/:id/return-to-requester` | Devolver ao solicitante (reset SLA) |
 | `POST /api/requests/:id/close` | Encerrar sem base (`REPROVADO`; motivo pré + obs.) |
-| `POST /api/requests/:id/mark-fixed-asset` | Imobilizado marca como AF (permanece na etapa) |
-| `POST /api/requests/:id/send-from-imobilizado` | Imobilizado: AF → base AF; UC → Administrativo |
+| `POST /api/requests/:id/send-from-imobilizado` | Imobilizado registra na base AF |
+| `POST /api/requests/:id/reclassify-fixed-asset` | Administrativo → Imobilizado (exige família AF) |
+| `POST /api/requests/:id/reclassify-consumption` | Imobilizado → Administrativo (exige família UC) |
 | `POST /api/requests/:id/approve` | Administrativo finaliza (opcional `approvedItemIds` para parcial em INCLUSÃO 2+) |
 | `PATCH /api/requests/items/:itemId/ncm` | Confirmação NCM (ITM-09) |
 | `GET /api/catalog/hotels` · `families` · `groups` | Formulário / filtros |
 
-`POST /api/requests` (persistir nova solicitação) ainda é parcial no protótipo.
+`POST /api/requests` persiste inclusão, alteração e bloqueio (rascunho ou envio).
 
 ## TODO (decisão PO)
 

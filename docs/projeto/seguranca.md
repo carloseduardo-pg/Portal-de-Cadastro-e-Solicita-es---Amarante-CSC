@@ -34,7 +34,9 @@ Refresh: `POST /api/auth/refresh` — frontend retenta uma vez em 401.
 
 ## Seed local
 
-`SEED_DEMO_USER_ON_BOOT=true` cria `admin@amarante.local` — **apenas desenvolvimento**. Produção: `false` ou omitir.
+`SEED_DEMO_USER_ON_BOOT=true` cria `admin@amarante.local` — **apenas desenvolvimento**.  
+`.env.example` vem com `false`. `npm run setup` semeia usuários locais; `npm run migrate` **não** semeia.  
+`backend/prisma/seed.ts` não cria senhas conhecidas quando `NODE_ENV=production`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Passo a passo no browser — Portal Amarante CSC
 
-Pré-requisito: API em `http://localhost:3000/api` e UI em `http://localhost:5173`. Fluxo completo: [`fluxo-aplicacao.md`](fluxo-aplicacao.md).
+Pré-requisito: API em `http://localhost:3000/api` e UI em `http://localhost:5180`. Fluxo completo: [`fluxo-aplicacao.md`](fluxo-aplicacao.md).
 
 ---
 
@@ -28,13 +28,14 @@ Pré-requisito: API em `http://localhost:3000/api` e UI em `http://localhost:517
 
 | # | Ação | Esperado |
 |---|------|----------|
-| 1 | Abrir `/produtos/solicitacoes` | Kanban ou lista com cards |
+| 1 | Abrir `/produtos/solicitacoes` | Lista em faixa ou quadro |
 | 2 | Alternar board ↔ lista | Mesmos dados, layout diferente |
 | 3 | Busca ao vivo | Filtra por texto |
 | 4 | Filtros família/hotel/solicitante | MultiFilter aplica query |
 | 5 | Abrir `/produtos/base` | Produtos ativos; filtro inativos/todos |
 | 6 | `/produtos/caixa-de-entrada` | Itens pendentes do usuário |
 | 7 | Clicar card → `/produtos/solicitacao/:id` | Detalhe carrega |
+| 8 | Nova solicitação tipo Alteração/Bloqueio | Abre `/produtos/produto-existente` com o item da base |
 
 ---
 

@@ -1,7 +1,7 @@
 # Sessões — Cadu (Portal Amarante CSC)
 
 **Repositório:** Portal Amarante CSC — Cadastro & Solicitação  
-**Atualizado:** 2026-09-03
+**Atualizado:** 2026-09-04
 
 ---
 
@@ -18,6 +18,7 @@
 
 ## Entregas recentes
 
+- **Higienização Distac + oficialização Amarante:** comentários Distac/`vendedor@` nos `.env` locais; banner de carga; porta UI **5180** em todos os guias; status/fluxos/rotas alinhados (inbox/queue, produto-existente, Parametrizações CRUD). Flag **É ativo fixo?** removida — destino e transferência só pela família. Seed demo não roda em `migrate` nem em produção; Swagger sem senha real.
 - **Caixa de entrada — modo Lista em faixa:** pedido dos operadores (volume alto de solicitações). No modo **Lista** cada solicitação vira uma faixa de largura total, uma embaixo da outra, ordenada da **mais recente para a mais antiga**; blocos Novas / Do dia / Atrasadas mantidos. O modo **Quadro** segue igual (cards e FIFO por tempo na etapa).
 - **Bloqueio unificado + formulário pré-preenchido (alteração/bloqueio):**
   - Busca de produto passa a casar **qualquer código** (unificado, legado, SAP, NCM) além da descrição; código exato = 100%, prefixo = 95%. Mínimo cai para 2 caracteres. Novo `active_only=true` (bloqueio só sobre item ativo).

@@ -23,7 +23,7 @@ Este repo é o **Portal de Cadastro & Solicitação** da Amarante CSC (stack Pro
 | **ITM-01** | Todo dado de item gravado em CAIXA ALTA (trigger no banco, não só UI) |
 | **ITM-09** | NCM nunca gravado sem confirmação humana explícita (`ncm_confirmed_by`) |
 | **ITM-11** | Lote = uma única família por solicitação (`requests.family_id`) |
-| **FLX-01** | Destino pela **família** do lote: uso e consumo → Aprovador - Administrativo; ativo fixo → Aprovador - Imobilizado. Imobilizado confirma flag **É ativo fixo? SIM|NÃO** (NÃO exige família UC sugerida). Administrativo só encaminha ao Imobilizado se veio errado (exige família AF sugerida). |
+| **FLX-01** | Destino pela **família** do lote: uso e consumo → Aprovador - Administrativo; ativo fixo → Aprovador - Imobilizado. Não há flag “É ativo fixo?”. Transferência entre aprovadores exige selecionar a família adequada ao destino. |
 | **FIS-04** | Fornecedor externo vê exclusivamente dados do próprio CNPJ |
 | **FIS-17** | Fluxo fiscal no V360 — portal alimenta, não substitui |
 

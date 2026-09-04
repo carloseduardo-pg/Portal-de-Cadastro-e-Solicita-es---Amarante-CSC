@@ -3,8 +3,9 @@
   "private": true,
   "description": "Portal Amarante CSC — scripts de orquestração do mono-repo",
   "scripts": {
-    "setup": "bash database/scripts/setup.sh && bash database/scripts/migrate.sh && bash database/scripts/check.sh",
+    "setup": "bash database/scripts/setup.sh && RUN_SEED=true bash database/scripts/migrate.sh && bash database/scripts/check.sh",
     "migrate": "bash database/scripts/migrate.sh",
+    "seed": "bash database/scripts/seed.sh",
     "import:sap": "npm run import:sap --prefix backend",
     "import:catalog-real": "npm run import:catalog-real --prefix backend",
     "check:db": "bash database/scripts/check.sh",

@@ -8,7 +8,7 @@ Protótipo web do **Portal de Cadastro & Solicitação** da Amarante (Centro de 
 
 ## O que é
 
-Cadastro de itens (PDM), solicitações, fornecedores, parametrizações e módulo fiscal (placeholder). Substitui o Semplice no cadastro de itens; o V360 permanece no fluxo fiscal.
+Cadastro de itens (PDM), solicitações, fornecedores, parametrizações e módulo fiscal (fora do protótipo de telas internas). Substitui o Semplice no cadastro de itens; o V360 permanece no fluxo fiscal.
 
 Documentação: [`docs/projeto/README.md`](docs/projeto/README.md).
 
@@ -37,11 +37,11 @@ npm run setup
 npm run dev
 ```
 
-Sobe **API** (`:3000`) e **UI** (`:5173`) juntos. Para subir só um serviço:
+Sobe **API** (`:3000`) e **UI** (`:5180`) juntos. Para subir só um serviço:
 
 ```bash
 npm run dev:api   # http://localhost:3000/api/docs
-npm run dev:web   # http://localhost:5173
+npm run dev:web   # http://localhost:5180
 ```
 
 ### Login local
@@ -74,11 +74,11 @@ tests/load/   Smoke tests de API
 | Módulo | Rotas | Status |
 |--------|-------|--------|
 | Home | `/home` | OK |
-| Produtos | `/produtos/*` | Protótipo funcional |
-| Fornecedores | `/fornecedores/*` | Placeholders |
-| Parametrizações | `/parametrizacoes/*` | Placeholders |
+| Produtos | `/produtos/*` | Funcional (inclusão, alteração, bloqueio) |
+| Fornecedores | `/fornecedores/*` | Parcial (consultas; nova solicitação sem persistência) |
+| Parametrizações | `/parametrizacoes/*` | CRUD de catálogo (famílias, hotéis, centros, UM) |
 | Fiscal | `/fiscal/*` | Desabilitado no menu |
-| Suporte / FAQ | `/suporte`, `/faq` | Placeholders |
+| Suporte / FAQ | `/suporte`, `/faq` | FAQ operacional; suporte sem canal oficial |
 
 Detalhe: [`docs/projeto/modulos/STATUS_PROTOTIPO.md`](docs/projeto/modulos/STATUS_PROTOTIPO.md).
 
@@ -89,8 +89,9 @@ Detalhe: [`docs/projeto/modulos/STATUS_PROTOTIPO.md`](docs/projeto/modulos/STATU
 | Comando | Descrição |
 |---------|-----------|
 | `npm run dev` | API + frontend em paralelo |
-| `npm run setup` | Cria DB, migrate, seed, check |
-| `npm run migrate` | Aplica migrations Prisma |
+| `npm run setup` | Cria DB, migrate, seed local, check |
+| `npm run migrate` | Aplica migrations Prisma (sem seed) |
+| `npm run seed` | Seed local explícito |
 | `npm run check:db` | Valida tabelas |
 | `npm run lint` | Lint backend + frontend |
 | `npm run test:smoke` | Smoke auth + endpoints |

@@ -29,7 +29,10 @@ Seed principal: `backend/prisma/seed.ts` (via `database/scripts/seed.sh` ou `npx
 | `admin@amarante.local` | `amarante123` | **ADMIN** (vê todas as etapas da caixa) |
 | `solicitante@amarante.local` | `amarante123` | SOLICITANTE |
 | `erika@amarante.local` | `amarante123` | APROVADOR |
+| `imobilizado@amarante.local` | `amarante123` | APROVADOR_IMOBILIZADO |
 | `compliance@amarante.local` | `amarante123` | COMPLIANCE |
+
+Usuários demo **não** são criados quando `NODE_ENV=production`. `npm run migrate` não semeia sozinho — use `npm run setup` ou `npm run seed` no ambiente local.
 
 ---
 

@@ -2809,9 +2809,9 @@ export class RequestsService {
   }
 
   /**
-   * Conclusão da etapa Imobilizado (triagem):
-   * - fixedAsset=true → registra na base AF e encerra (não passa pelo Administrativo)
-   * - fixedAsset=false → encaminha ao Aprovador - Administrativo como uso e consumo
+   * Conclusão da etapa Imobilizado:
+   * - família AF (fixedAsset) → registra na base AF e encerra
+   * - família UC → encaminha ao Administrativo (exige targetFamilyId)
    */
   async sendFromImobilizadoToApprover(
     requestId: string,
@@ -2933,7 +2933,7 @@ export class RequestsService {
         data: {
           finishedAt: now,
           userId,
-          message: `${trimmed} — Não é ativo fixo; encaminhado ao aprovador - administrativo`,
+          message: `${trimmed} — Encaminhado ao aprovador - administrativo (família de uso e consumo)`,
         },
       });
       await tx.request.update({

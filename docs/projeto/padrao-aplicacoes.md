@@ -67,6 +67,7 @@ Fiscal existe como rota stub; item do menu **desabilitado**.
 | Dashboard | `/produtos` |
 | Nova solicitação | `/produtos/nova-solicitacao` |
 | Dados do item | `/produtos/dados-do-item` |
+| Alteração / bloqueio | `/produtos/produto-existente` |
 | Caixa de entrada | `/produtos/caixa-de-entrada` |
 | Solicitações | `/produtos/solicitacoes` |
 | Detalhe | `/produtos/solicitacao/:id` |
