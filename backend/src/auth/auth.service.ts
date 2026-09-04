@@ -7,7 +7,9 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { StringValue } from 'ms';
 import * as bcrypt from 'bcrypt';
+import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { capabilitiesForRole } from './capabilities';
 import { LoginDto } from './dto/login.dto';
 
 const SEED_EMAIL = 'admin@amarante.local';
@@ -93,12 +95,7 @@ export class AuthService implements OnModuleInit {
     return {
       accessToken,
       refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
+      user: this.toPublicUser(user),
     };
   }
 
@@ -135,12 +132,7 @@ export class AuthService implements OnModuleInit {
       return {
         accessToken,
         refreshToken: newRefresh,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        },
+        user: this.toPublicUser(user),
       };
     } catch {
       throw new UnauthorizedException('Sessão inválida');
@@ -153,6 +145,21 @@ export class AuthService implements OnModuleInit {
     if (!user || !user.active) {
       throw new UnauthorizedException();
     }
-    return { id: user.id, email: user.email, name: user.name, role: user.role };
+    return this.toPublicUser(user);
+  }
+
+  private toPublicUser(user: {
+    id: string;
+    email: string;
+    name: string;
+    role: UserRole;
+  }) {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      capabilities: capabilitiesForRole(user.role),
+    };
   }
 }

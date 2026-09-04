@@ -36,7 +36,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   /**
-   * Rejects inactive/missing users and exposes `{ id, email, name }` on `req.user`.
+   * Rejects inactive/missing users and exposes `{ id, email, name, role }` on `req.user`.
    */
   async validate(payload: JwtPayload) {
     const user = await this.prisma.user.findFirst({

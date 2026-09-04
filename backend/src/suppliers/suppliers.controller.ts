@@ -7,10 +7,12 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { RequireCap } from '../auth/require-cap.decorator';
 import { parsePage } from '../common/pagination';
 import { SuppliersService } from './suppliers.service';
 
 @Controller('suppliers')
+@RequireCap('suppliers.module')
 export class SuppliersController {
   constructor(private readonly suppliers: SuppliersService) {}
 

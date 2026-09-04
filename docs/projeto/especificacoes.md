@@ -87,7 +87,7 @@ Integrações reais ficam fora do protótipo; schema e TODOs preparados.
 
 | Modelo | Descrição |
 |--------|-----------|
-| `users` | Auth interna (`active` + `UserRole`: ADMIN, SOLICITANTE, APROVADOR, APROVADOR_IMOBILIZADO, COMPLIANCE) |
+| `users` | Auth interna (`active` + `UserRole`: ADMIN, SOLICITANTE, APROVADOR, APROVADOR_IMOBILIZADO, COMPLIANCE; capacidades no código, não no banco) |
 | `notifications` | Sinalização acionável |
 | `audit_log` | Auditoria (padrão Prottus) |
 
@@ -108,7 +108,7 @@ Integrações reais ficam fora do protótipo; schema e TODOs preparados.
 |------|-------|
 | Interno | JWT httpOnly — login e-mail/senha |
 | Externo (Fiscal) | **A definir** — trava módulo Fiscal |
-| Guard | Global; `@Public()` só login/refresh/logout/health |
+| Guard | JWT global; `@Public()` só login/refresh/logout/health. `CapabilitiesGuard` + `@RequireCap` nas rotas de negócio |
 
 ---
 

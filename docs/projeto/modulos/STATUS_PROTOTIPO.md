@@ -11,6 +11,7 @@
 |----------|--------|
 | Domínio Amarante (hotels, requests, PDM) | OK — schema + seed + catálogo SAP |
 | Auth JWT httpOnly + usuário ativo | OK |
+| Papéis e capacidades (RBAC) | OK — mapa no código + guard + menu |
 | Segurança (Helmet, throttle, ValidationPipe) | OK |
 | UI marca Amarante (tokens, logos vazados) | OK |
 | Módulo Produtos (core) | OK — inclusão, alteração, bloqueio, fila e base |

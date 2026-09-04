@@ -11,12 +11,14 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
+import { RequireCap } from '../auth/require-cap.decorator';
 import { parsePage } from '../common/pagination';
 import { CreateRequestDto, UpdateRequestDto } from './dto/create-request.dto';
 import { ReclassifyRequestDto } from './dto/reclassify-request.dto';
 import { RequestsService } from './requests.service';
 
 @Controller('requests')
+@RequireCap('products.module')
 export class RequestsController {
   constructor(private readonly requests: RequestsService) {}
 
@@ -121,6 +123,7 @@ export class RequestsController {
   }
 
   @Post()
+  @RequireCap('products.request.create')
   create(
     @Body() dto: CreateRequestDto,
     @Req() req: Request & { user?: { id: string } },
@@ -147,6 +150,7 @@ export class RequestsController {
   }
 
   @Patch('items/:itemId/ncm')
+  @RequireCap('products.request.approve.admin', 'products.request.approve.imobilizado')
   confirmNcm(
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body('ncm') ncm: string,
@@ -161,6 +165,11 @@ export class RequestsController {
   }
 
   @Patch(':id')
+  @RequireCap(
+    'products.request.create',
+    'products.request.approve.admin',
+    'products.request.approve.imobilizado',
+  )
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequestDto,
@@ -170,6 +179,7 @@ export class RequestsController {
   }
 
   @Post(':id/approve')
+  @RequireCap('products.request.approve.admin')
   approve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body()
@@ -193,6 +203,7 @@ export class RequestsController {
   }
 
   @Post(':id/return-to-requester')
+  @RequireCap('products.request.return')
   returnToRequester(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { message?: string },
@@ -210,6 +221,7 @@ export class RequestsController {
    * Solicitante: motivo opcional. Aprovadores: motivo + observação obrigatórios.
    */
   @Post(':id/close')
+  @RequireCap('products.request.close')
   close(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { reasonCode?: string; observation?: string },
@@ -219,6 +231,7 @@ export class RequestsController {
   }
 
   @Post(':id/send-to-approver')
+  @RequireCap('products.request.create')
   sendToApprover(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { message?: string },
@@ -233,6 +246,7 @@ export class RequestsController {
 
   /** Imobilizado → Aprovador de cadastro (UC) ou registra na base AF e encerra. */
   @Post(':id/send-from-imobilizado')
+  @RequireCap('products.request.approve.imobilizado')
   sendFromImobilizado(
     @Param('id', ParseUUIDPipe) id: string,
     @Body()
@@ -254,6 +268,7 @@ export class RequestsController {
 
   /** Imobilizado classifica o lote como Ativo Fixo (permanece na etapa). */
   @Post(':id/mark-fixed-asset')
+  @RequireCap('products.request.approve.imobilizado')
   markFixedAsset(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { message?: string },
@@ -268,6 +283,7 @@ export class RequestsController {
 
   /** Aprovador → reclassifica lote como Ativo Fixo (etapa Imobilizado). */
   @Post(':id/reclassify-fixed-asset')
+  @RequireCap('products.request.approve.admin')
   reclassifyFixedAsset(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReclassifyRequestDto,
@@ -278,6 +294,7 @@ export class RequestsController {
 
   /** Imobilizado → reclassifica lote como Uso e Consumo (etapa Aprovador). */
   @Post(':id/reclassify-consumption')
+  @RequireCap('products.request.approve.imobilizado')
   reclassifyConsumption(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReclassifyRequestDto,
@@ -287,6 +304,7 @@ export class RequestsController {
   }
 
   @Post(':id/submit')
+  @RequireCap('products.request.create')
   submit(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request & { user?: { id: string } },

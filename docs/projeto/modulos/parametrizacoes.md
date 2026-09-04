@@ -37,7 +37,7 @@ Volumes: árvore de **consumo** + árvore de **ativo fixo** (`item_kind`).
 
 | Aba | Modelo | Prints |
 |-----|--------|--------|
-| Usuários | `users` | RBAC operacional no fluxo Produtos (`UserRole`); CRUD de usuários na UI ainda stub |
+| Usuários | `users` | Lista com papel; mutações só `users.manage` (ADMIN) |
 
 ## Padrão de tela
 
