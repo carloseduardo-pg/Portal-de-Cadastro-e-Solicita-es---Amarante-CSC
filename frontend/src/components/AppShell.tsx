@@ -54,7 +54,7 @@ function navForUser(user: AuthUser | null): NavItem[] {
         to: '/produtos/nova-solicitacao',
         label: 'Nova Solicitação',
         icon: 'plus-circle',
-        alsoActive: ['/produtos/dados-do-item'],
+        alsoActive: ['/produtos/dados-do-item', '/produtos/produto-existente'],
       });
     }
     productChildren.push(
@@ -269,6 +269,7 @@ export function AppShell() {
     const path = location.pathname.replace(/\/$/, '') || '/';
     const pageOverrides: Record<string, string> = {
       '/produtos/dados-do-item': 'Dados do Item',
+      '/produtos/produto-existente': 'Alteração / Bloqueio',
     };
 
     for (const item of nav) {

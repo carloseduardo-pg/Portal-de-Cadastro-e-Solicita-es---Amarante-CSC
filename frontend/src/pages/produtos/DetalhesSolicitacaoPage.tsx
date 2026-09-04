@@ -18,11 +18,13 @@ import { ApproveItemsDialog } from '../../components/ApproveItemsDialog';
 import { RequestDescriptionBlock } from '../../components/RequestDescriptionBlock';
 import { RequestItemCompareTable } from '../../components/requests/RequestItemCompareTable';
 import { RequestTimeline } from '../../components/RequestTimeline';
-import { SearchableSelect } from '../../components/SearchableSelect';
 import { SolicitacaoPreForm } from '../../components/SolicitacaoPreForm';
 import { findFamilyById } from '../../lib/pdmFolders';
 import {
+  blockScopeLabel,
+  isBlockRequestType,
   isExistingProductRequestType,
+  requestDestinationLabel,
   requestStateLabel,
   requestTypeLabel,
 } from '../../lib/requestLabels';
@@ -87,8 +89,9 @@ type ViewItem = {
   ncmConfirmed: boolean;
 };
 
-function stageLabel(state: string) {
-  return requestStateLabel(state);
+/** Rótulo do cabeçalho — finalizadas como Aprovado/Reprovado. */
+function stageLabel(request: Request) {
+  return requestDestinationLabel(request);
 }
 
 /**
@@ -117,16 +120,9 @@ export function DetalhesSolicitacaoPage() {
   const [selectedNcm, setSelectedNcm] = useState<Record<string, string>>({});
   const [customNcm, setCustomNcm] = useState<Record<string, string>>({});
   const [stageComment, setStageComment] = useState('');
-  /** Triagem Imobilizado: null = ainda não respondeu. */
-  const [afFlag, setAfFlag] = useState<boolean | null>(null);
-  /** Com SIM: registrar na base AF na mesma aprovação (opcional). */
-  const [autoRegisterAf, setAutoRegisterAf] = useState(false);
-  /** Famílias FIXED_ASSET para a triagem Imobilizado. */
+  /** Famílias para transferência entre aprovadores (exige família do destino). */
   const [afFamilies, setAfFamilies] = useState<Family[]>([]);
-  /** Seleção pendente no picker abaixo da flag SIM. */
-  const [afFamilyPickId, setAfFamilyPickId] = useState('');
-  /** Família AF confirmada (obrigatória para seguir com SIM). */
-  const [afFamilyConfirmed, setAfFamilyConfirmed] = useState(false);
+  const [ucFamilies, setUcFamilies] = useState<Family[]>([]);
   const [editNote, setEditNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [baseProduct, setBaseProduct] = useState<ProductBase | null>(null);
@@ -152,17 +148,6 @@ export function DetalhesSolicitacaoPage() {
       catalogApi.measureUnits().then((r) => setMeasureUnits(r.data)),
     ]).catch(console.error);
   }, []);
-
-  useEffect(() => {
-    const kind = editFixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
-    void catalogApi
-      .families({ pageSize: 500, itemKind: kind })
-      .then((r) => {
-        setFamilies(r.data);
-        setEditFamilyId((prev) => (prev && r.data.some((f) => f.id === prev) ? prev : ''));
-      })
-      .catch(console.error);
-  }, [editFixedAsset]);
 
   useEffect(() => {
     if (!id) return;
@@ -219,26 +204,16 @@ export function DetalhesSolicitacaoPage() {
     setEditHotelIds(ids);
     setEditFamilyId(request.family?.id ?? '');
     setEditFixedAsset(Boolean(request.fixedAsset));
-    setAfFlag(request.fixedAsset ? true : null);
-    setAfFamilyConfirmed(Boolean(request.fixedAsset));
-    setAfFamilyPickId(request.fixedAsset ? request.family?.id ?? '' : '');
     setDirty(false);
     setCurrentItem(0);
-    // Só reage a `request` — incluir `families` reinicia a flag SIM ao trocar o catálogo AF.
   }, [request]);
 
-  /** Default de “registrar agora” só ao abrir a solicitação (não a cada reload pós-confirmação). */
   useEffect(() => {
-    if (!request) return;
-    setAutoRegisterAf(Boolean(request.fixedAsset));
-  }, [request?.id]);
-
-  useEffect(() => {
-    if (request?.state !== 'IMOBILIZADO') return;
-    void catalogApi
-      .families({ pageSize: 500, itemKind: 'FIXED_ASSET' })
-      .then((r) => setAfFamilies(r.data))
-      .catch(console.error);
+    if (request?.state !== 'IMOBILIZADO' && request?.state !== 'APROVADOR') return;
+    void Promise.all([
+      catalogApi.families({ pageSize: 500, itemKind: 'FIXED_ASSET' }).then((r) => setAfFamilies(r.data)),
+      catalogApi.families({ pageSize: 500, itemKind: 'CONSUMPTION' }).then((r) => setUcFamilies(r.data)),
+    ]).catch(console.error);
   }, [request?.state]);
 
   const hotelIds = editHotelIds;
@@ -289,6 +264,32 @@ export function DetalhesSolicitacaoPage() {
   const imobilizadoEditable = isImobilizado;
   const classificationEditable =
     imobilizadoEditable || (isApprover && Boolean(request?.classificationInvalidated));
+
+  useEffect(() => {
+    if (isDraft) {
+      void catalogApi
+        .families({ pageSize: 500 })
+        .then((r) => setFamilies(r.data))
+        .catch(console.error);
+      return;
+    }
+    const kind = editFixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
+    void catalogApi
+      .families({ pageSize: 500, itemKind: kind })
+      .then((r) => {
+        setFamilies(r.data);
+        setEditFamilyId((prev) => (prev && r.data.some((f) => f.id === prev) ? prev : ''));
+      })
+      .catch(console.error);
+  }, [editFixedAsset, isDraft]);
+
+  useEffect(() => {
+    if (!isDraft || !editFamilyId) return;
+    const selected = families.find((f) => f.id === editFamilyId);
+    if (!selected) return;
+    const nextAf = selected.itemKind === 'FIXED_ASSET';
+    setEditFixedAsset((prev) => (prev === nextAf ? prev : nextAf));
+  }, [editFamilyId, families, isDraft]);
 
   useEffect(() => {
     const productId = requestItem?.productId;
@@ -532,10 +533,15 @@ export function DetalhesSolicitacaoPage() {
       alert('Escreva um comentário sobre a conclusão desta etapa antes de prosseguir.');
       return;
     }
+    const toAf = request.family?.itemKind === 'FIXED_ASSET' || request.fixedAsset;
     setBusy(true);
     try {
       await requestsApi.sendToApprover(request.id, stageComment.trim());
-      alert('Solicitação enviada ao aprovador - imobilizado (triagem inicial).');
+      alert(
+        toAf
+          ? 'Solicitação enviada ao aprovador de ativo fixo.'
+          : 'Solicitação enviada ao aprovador.',
+      );
       navigate('/produtos/caixa-de-entrada');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Falha ao enviar ao aprovador.');
@@ -574,134 +580,23 @@ export function DetalhesSolicitacaoPage() {
     requestSendToApprover();
   }
 
-  /** Confirma família AF abaixo da flag SIM — troca a família do lote para FIXED_ASSET. */
-  async function confirmAfFamily() {
-    if (!request) return;
-    if (!afFamilyPickId) {
-      alert('Selecione uma família de ativo fixo.');
-      return;
-    }
-    const picked = afFamilies.find((f) => f.id === afFamilyPickId);
-    if (!picked) {
-      alert('Família de ativo fixo inválida.');
-      return;
-    }
-
-    setBusy(true);
-    try {
-      if (!request.fixedAsset) {
-        const msg =
-          stageComment.trim() ||
-          `Classificado como ativo fixo — família ${picked.code} ${picked.name}`;
-        await requestsApi.markFixedAsset(request.id, msg);
-      }
-      const clearedItems = items.map((it) => ({
-        productId: it.productId ?? undefined,
-        groupId: undefined,
-        descriptionShort: it.descriptionShort,
-        descriptionLong: it.descriptionLong || undefined,
-        measureUnitId: undefined,
-        costCenterId: it.costCenterId || undefined,
-        source: it.source,
-        itemValue: it.itemValue ? Number(it.itemValue) : undefined,
-        unitQuantity: Math.max(1, Math.floor(Number(it.unitQuantity) || 1)),
-        physicalLocation: it.physicalLocation.trim() || undefined,
-        assetTag: it.assetTag.trim() || undefined,
-        acquisitionValue: it.acquisitionValue ? Number(it.acquisitionValue) : undefined,
-        acquisitionDate: it.acquisitionDate || undefined,
-        usefulLifeMonths: it.usefulLifeMonths
-          ? Math.floor(Number(it.usefulLifeMonths))
-          : undefined,
-        depreciationRate: it.depreciationRate ? Number(it.depreciationRate) : undefined,
-        supplierDocument: it.supplierDocument.trim() || undefined,
-        invoiceNumber: it.invoiceNumber.trim() || undefined,
-        unifiedCode: it.unifiedCode.trim() || undefined,
-        legacyCode: it.legacyCode.trim() || undefined,
-        productLinks: it.productLinks.filter(Boolean),
-        itemObservation: it.itemObservation.trim() || undefined,
-        sortOrder: undefined as number | undefined,
-      }));
-      await requestsApi.update(request.id, {
-        familyId: afFamilyPickId,
-        fixedAsset: true,
-        editNote: `Família alterada para ativo fixo: ${picked.code} — ${picked.name}`,
-        items: clearedItems.map((it, idx) => ({ ...it, sortOrder: idx })),
-      });
-      setEditFixedAsset(true);
-      setEditFamilyId(afFamilyPickId);
-      setAfFamilyConfirmed(true);
-      setAfFlag(true);
-      setAutoRegisterAf(false);
-      setDirty(false);
-      await reloadRequest();
-      alert(
-        `Família de ativo fixo confirmada: ${picked.code} — ${picked.name}. Complete grupo/subgrupo se for registrar na base.`,
-      );
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao confirmar família de ativo fixo.');
-      await reloadRequest();
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function concludeImobilizado() {
     if (!request) return;
     if (!stageComment.trim()) {
       alert('Escreva um comentário sobre a conclusão da etapa Aprovador - Imobilizado.');
       return;
     }
-    if (afFlag === null) {
-      alert('Responda a flag obrigatória: este item é ativo fixo? SIM ou NÃO.');
-      return;
-    }
-
-    // NÃO → uso e consumo → Administrativo
-    if (afFlag === false) {
-      setBusy(true);
-      try {
-        await requestsApi.sendFromImobilizado(request.id, stageComment.trim());
-        alert('Não é ativo fixo — encaminhado ao aprovador - administrativo.');
-        navigate('/produtos/caixa-de-entrada');
-      } catch (e) {
-        alert(e instanceof Error ? e.message : 'Falha ao encaminhar ao administrativo.');
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
-
-    if (!afFamilyConfirmed || !editFamilyId) {
+    if (!request.fixedAsset) {
       alert(
-        'Selecione e confirme uma família de ativo fixo abaixo da flag SIM antes de aprovar.',
+        'Esta solicitação não está em família de ativo fixo. Encaminhe ao Administrativo selecionando a família de uso e consumo.',
       );
       return;
     }
-
-    // SIM → fluxo AF (só registra na base se o usuário pediu registro automático)
-    const registerNow = Boolean(autoRegisterAf);
-
-    if (!registerNow) {
-      // Família AF já confirmada via picker; só devolve à caixa filtrada.
-      alert(
-        'Classificado como ativo fixo. A solicitação permanece na caixa do aprovador - imobilizado para completar NCM/registro na base.',
-      );
-      navigate('/produtos/caixa-de-entrada');
-      return;
-    }
-
-    // SIM + registrar agora (ou 2ª passagem já AF)
-    if (!editFamilyId && !request.fixedAsset) {
-      alert(
-        'Para registrar agora, selecione a família de ativo fixo nos campos acima (ou desmarque o registro automático e aprove só a classificação).',
-      );
-      return;
-    }
-    if (dirty && request.fixedAsset) {
+    if (dirty) {
       alert('Salve as alterações da classificação antes de registrar na base de ativos fixos.');
       return;
     }
-    if (request.fixedAsset && request.classificationInvalidated) {
+    if (request.classificationInvalidated) {
       alert(
         'Classificação invalidada: escolha a família e os grupos de Ativo Fixo e salve antes de registrar na base.',
       );
@@ -709,7 +604,7 @@ export function DetalhesSolicitacaoPage() {
     }
 
     for (const it of items) {
-      if (editFixedAsset && (!it.groupId || !it.subgroupId)) {
+      if (!it.groupId || !it.subgroupId) {
         alert('Informe grupo e subgrupo de todos os itens na árvore de Ativo Fixo antes de registrar.');
         return;
       }
@@ -727,15 +622,6 @@ export function DetalhesSolicitacaoPage() {
 
     setBusy(true);
     try {
-      if (!request.fixedAsset) {
-        await requestsApi.markFixedAsset(request.id, stageComment.trim());
-        await requestsApi.update(request.id, {
-          familyId: editFamilyId,
-          fixedAsset: true,
-          editNote: 'Classificação AF na mesma aprovação (registro automático).',
-          items: buildItemsPayload(),
-        });
-      }
       await requestsApi.sendFromImobilizado(request.id, stageComment.trim(), itemNcms);
       alert('Item(ns) registrados na base de ativos fixos. Solicitação encerrada.');
       navigate('/produtos/base');
@@ -750,6 +636,7 @@ export function DetalhesSolicitacaoPage() {
   async function confirmReclassify(payload: {
     justification: string;
     itemIds: string[];
+    targetFamilyId: string;
     returnToApprover?: boolean;
   }) {
     if (!request) return;
@@ -762,11 +649,13 @@ export function DetalhesSolicitacaoPage() {
           justification: payload.justification,
           itemIds: payload.itemIds,
           returnToApprover: payload.returnToApprover,
+          targetFamilyId: payload.targetFamilyId,
         });
       } else {
         updated = await requestsApi.reclassifyConsumption(request.id, {
           justification: payload.justification,
           itemIds: payload.itemIds,
+          targetFamilyId: payload.targetFamilyId,
         });
       }
       setReclassifyOpen(false);
@@ -838,7 +727,10 @@ export function DetalhesSolicitacaoPage() {
     }
   }
 
-  async function finalize(approvedItemIds?: string[]) {
+  async function finalize(
+    approvedItemIds?: string[],
+    returnRejectedItemIds?: string[],
+  ) {
     if (!request) return;
     if (!stageComment.trim()) {
       alert('Escreva um comentário sobre a conclusão desta etapa antes de finalizar.');
@@ -867,18 +759,31 @@ export function DetalhesSolicitacaoPage() {
     const isPartial = idsToApprove.length < request.items.length;
     setBusy(true);
     try {
-      await requestsApi.approve(
+      const result = await requestsApi.approve(
         request.id,
         itemNcms,
         stageComment.trim(),
         approvedItemIds,
+        returnRejectedItemIds,
       );
       setApproveOpen(false);
-      alert(
-        isPartial
-          ? `Aprovação parcial: ${idsToApprove.length} item(ns) na base; ${request.items.length - idsToApprove.length} rejeitado(s). Solicitação encerrada.`
-          : 'Aprovação total. Os itens foram cadastrados na Base de Produtos. Solicitação encerrada.',
-      );
+      const draftCode =
+        result.stages
+          ?.map((s) => s.outcomeDetail?.returnedDraftRequestCode)
+          .filter((c): c is string => Boolean(c))
+          .at(-1) ?? result.childRequests?.at(-1)?.code;
+      if (isPartial) {
+        const rejected = request.items.length - idsToApprove.length;
+        alert(
+          draftCode
+            ? `Aprovação parcial: ${idsToApprove.length} item(ns) na base; ${rejected} rejeitado(s). Nova solicitação ${draftCode} criada para o solicitante. Solicitação encerrada.`
+            : `Aprovação parcial: ${idsToApprove.length} item(ns) na base; ${rejected} rejeitado(s). Solicitação encerrada.`,
+        );
+      } else {
+        alert(
+          'Aprovação total. Os itens foram cadastrados na Base de Produtos. Solicitação encerrada.',
+        );
+      }
       navigate('/produtos/base');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Falha ao finalizar solicitação.');
@@ -920,6 +825,7 @@ export function DetalhesSolicitacaoPage() {
     Boolean(requestItem?.productId);
 
   function focusTimelineItem(itemId: string) {
+    if (!request) return;
     const idx = request.items.findIndex((it) => it.id === itemId);
     if (idx < 0) return;
     setCurrentItem(idx);
@@ -933,8 +839,8 @@ export function DetalhesSolicitacaoPage() {
   return (
     <section className="dados-item-page detalhes-solicitacao-page">
       <PageStageHeader
-        title="Detalhes da Solicitação"
-        stage={stageLabel(request.state)}
+        title={request.code ? `Solicitação ${request.code}` : 'Detalhes da Solicitação'}
+        stage={stageLabel(request)}
       />
 
       <RequestViewersFlag
@@ -943,7 +849,9 @@ export function DetalhesSolicitacaoPage() {
       />
 
       <p className="derived-field detalhes-meta">
+        {request.code ? `${request.code} · ` : ''}
         {requestTypeLabel(request.type)}
+        {isBlockRequestType(request.type) ? ` · ${blockScopeLabel(request)}` : ''}
         {request.fixedAsset ? ' · Ativo fixo' : ''}
         {request.family ? ` · ${request.family.code} — ${request.family.name}` : ''}
         {` · ${request.items.length} item(ns)`}
@@ -971,7 +879,7 @@ export function DetalhesSolicitacaoPage() {
             className="btn-link"
             onClick={() => navigate(`/produtos/solicitacao/${request.parentRequest!.id}`)}
           >
-            {request.parentRequest.id.slice(0, 8)}…
+            {request.parentRequest.code ?? request.parentRequest.id.slice(0, 8)}
           </button>
           {request.parentRequest.fixedAsset ? ' (ativo fixo)' : ' (uso e consumo)'}.
         </p>
@@ -988,7 +896,7 @@ export function DetalhesSolicitacaoPage() {
                 className="btn-link"
                 onClick={() => navigate(`/produtos/solicitacao/${c.id}`)}
               >
-                {c.id.slice(0, 8)}… ({c.fixedAsset ? 'AF' : 'consumo'} · {requestStateLabel(c.state)})
+                {c.code ?? c.id.slice(0, 8)} ({c.fixedAsset ? 'AF' : 'consumo'} · {requestStateLabel(c.state)})
               </button>
             </span>
           ))}
@@ -1102,6 +1010,8 @@ export function DetalhesSolicitacaoPage() {
           baseProduct={baseProduct}
           item={requestItem}
           loading={baseLoading}
+          request={request}
+          isBlockRequest={isBlockRequestType(request.type)}
         />
       ) : null}
 
@@ -1210,14 +1120,11 @@ export function DetalhesSolicitacaoPage() {
             }
           />
 
-          {isApprover ||
-          (isImobilizado && (request.fixedAsset || afFlag === true)) ? (
+          {isApprover || (isImobilizado && request.fixedAsset) ? (
             <div className="solicitacao-form-section detalhes-ncm-block">
               <p className="form-section-title">NCM — candidatos do histórico</p>
               <div className="ncm-warning">
-                {isImobilizado && !request.fixedAsset
-                  ? 'Opcional nesta passagem: confirme o NCM se for registrar na base agora. Caso contrário, classifique como ativo fixo e o NCM será exigido na próxima abertura. (ITM-09)'
-                  : 'Nenhum NCM é gravado sem você confirmar. (ITM-09)'}
+                Nenhum NCM é gravado sem você confirmar. (ITM-09)
               </div>
               {item.ncmConfirmed && item.ncmCode ? (
                 <p className="info-banner form-success">
@@ -1366,134 +1273,11 @@ export function DetalhesSolicitacaoPage() {
       {canConcludeStage ? (
         <div className="stage-conclude-block">
           {isImobilizado ? (
-            <div className="af-flag-block">
-              <p className="af-flag-block__label">
-                É ativo fixo? <span className="required-mark">*</span>
-              </p>
-              <p className="af-flag-block__hint">
-                Obrigatório antes de aprovar. SIM mantém o fluxo no imobilizado (aí aparece o NCM);
-                NÃO encaminha ao administrativo (uso e consumo) sem pedir NCM aqui.
-              </p>
-              <div className="af-flag-segment" role="radiogroup" aria-label="É ativo fixo?">
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={afFlag === true}
-                  disabled={busy || request.fixedAsset}
-                  className={`af-flag-segment__btn${afFlag === true ? ' af-flag-segment__btn--active' : ''}`}
-                  onClick={() => {
-                    setAfFlag(true);
-                    setEditFixedAsset(true);
-                    if (!request.fixedAsset) {
-                      setAfFamilyConfirmed(false);
-                      setAfFamilyPickId('');
-                    }
-                  }}
-                >
-                  SIM
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={afFlag === false}
-                  disabled={busy || request.fixedAsset}
-                  className={`af-flag-segment__btn${afFlag === false ? ' af-flag-segment__btn--active' : ''}`}
-                  onClick={() => {
-                    setAfFlag(false);
-                    setEditFixedAsset(false);
-                    setAutoRegisterAf(false);
-                    setAfFamilyConfirmed(false);
-                    setAfFamilyPickId('');
-                  }}
-                >
-                  NÃO
-                </button>
-              </div>
-              {afFlag === true ? (
-                <div className="af-family-pick">
-                  <p className="af-flag-block__label">
-                    Família de ativo fixo <span className="required-mark">*</span>
-                  </p>
-                  <p className="af-flag-block__hint">
-                    {request.fixedAsset
-                      ? 'Família patrimonial do lote. Troque e confirme se precisar de outra família AF.'
-                      : 'A família atual da solicitação é de uso e consumo. Selecione e confirme uma família patrimonial para reclassificar o lote.'}
-                  </p>
-                  {afFamilyConfirmed && request.fixedAsset ? (
-                    <p className="info-banner form-success" style={{ marginBottom: 10 }}>
-                      Família AF confirmada:{' '}
-                      <strong>
-                        {request.family
-                          ? `${request.family.code} — ${request.family.name}`
-                          : editFamilyId}
-                      </strong>
-                    </p>
-                  ) : null}
-                  <SearchableSelect
-                    label=""
-                    options={afFamilies
-                      .slice()
-                      .sort(
-                        (a, b) =>
-                          a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
-                          a.code.localeCompare(b.code),
-                      )
-                      .map((f) => ({
-                        id: f.id,
-                        label: `${f.code} — ${f.name}`,
-                        searchText: `${f.code} ${f.name}`,
-                      }))}
-                    value={afFamilyPickId}
-                    onChange={(id) => {
-                      setAfFamilyPickId(id);
-                      if (id !== editFamilyId || !request.fixedAsset) {
-                        setAfFamilyConfirmed(false);
-                      }
-                    }}
-                    placeholder="Digite código ou nome da família AF…"
-                    emptyLabel="Selecione a família de ativo fixo…"
-                    disabled={busy}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    style={{ marginTop: 10 }}
-                    disabled={busy || !afFamilyPickId || afFamilyConfirmed}
-                    onClick={() => void confirmAfFamily()}
-                  >
-                    Confirmar família de ativo fixo
-                  </button>
-                </div>
-              ) : null}
-              {afFlag === true ? (
-                <label className="af-flag-autoregister">
-                  <input
-                    type="checkbox"
-                    checked={autoRegisterAf}
-                    disabled={busy || !afFamilyConfirmed}
-                    onChange={(e) => setAutoRegisterAf(e.target.checked)}
-                  />
-                  <span>
-                    Registrar automaticamente na base de ativos fixos ao aprovar (exige NCM e
-                    grupo/subgrupo AF). Sem marcar, a solicitação volta à caixa do imobilizado já
-                    como ativo fixo.
-                  </span>
-                </label>
-              ) : null}
-              {request.fixedAsset ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost af-flag-undo"
-                  disabled={busy}
-                  onClick={() => {
-                    setReclassifyDirection('consumption');
-                    setReclassifyOpen(true);
-                  }}
-                >
-                  Desfazer — é uso e consumo
-                </button>
-              ) : null}
-            </div>
+            <p className="info-banner">
+              O tipo (uso e consumo ou ativo fixo) vem da <strong>família</strong> do lote.
+              Se chegou no setor errado, encaminhe ao Administrativo escolhendo a família de
+              uso e consumo.
+            </p>
           ) : null}
           <label className="form-field">
             <span>Observação da etapa</span>
@@ -1531,10 +1315,24 @@ export function DetalhesSolicitacaoPage() {
               className="btn btn-outline"
               disabled={busy}
               onClick={() =>
-                navigate('/produtos/dados-do-item', { state: { requestId: request.id } })
+                // Alteração/bloqueio usam o formulário pré-preenchido do item existente.
+                isExistingProductRequestType(request.type)
+                  ? navigate('/produtos/produto-existente', {
+                      state: {
+                        requestId: request.id,
+                        type: isBlockRequestType(request.type)
+                          ? 'BLOQUEIO'
+                          : 'ALTERACAO',
+                      },
+                    })
+                  : navigate('/produtos/dados-do-item', {
+                      state: { requestId: request.id },
+                    })
               }
             >
-              Editar itens do lote
+              {isExistingProductRequestType(request.type)
+                ? 'Editar solicitação'
+                : 'Editar itens do lote'}
             </button>
           </>
         ) : null}
@@ -1545,7 +1343,7 @@ export function DetalhesSolicitacaoPage() {
             disabled={busy}
             onClick={() => void sendToApprover()}
           >
-            Enviar ao aprovador - imobilizado
+            Enviar ao aprovador
           </button>
         ) : null}
         {canCloseAsSolicitante ? (
@@ -1578,17 +1376,22 @@ export function DetalhesSolicitacaoPage() {
             </button>
             <button
               type="button"
+              className="btn btn-outline"
+              disabled={busy}
+              onClick={() => {
+                setReclassifyDirection('consumption');
+                setReclassifyOpen(true);
+              }}
+            >
+              Encaminhar ao Administrativo
+            </button>
+            <button
+              type="button"
               className="btn btn-primary"
-              disabled={busy || afFlag === null || (afFlag === true && !afFamilyConfirmed)}
+              disabled={busy || !request.fixedAsset}
               onClick={() => void concludeImobilizado()}
             >
-              {afFlag === false
-                    ? 'Aprovar e encaminhar ao administrativo'
-                    : !afFamilyConfirmed
-                      ? 'Aprovar (confirme a família de ativo fixo)'
-                      : autoRegisterAf
-                        ? 'Aprovar e registrar na base de ativos fixos'
-                        : 'Aprovar como ativo fixo'}
+              Aprovar e registrar na base de ativos fixos
             </button>
           </>
         ) : null}
@@ -1712,6 +1515,7 @@ export function DetalhesSolicitacaoPage() {
         open={reclassifyOpen}
         direction={reclassifyDirection}
         items={request.items}
+        families={reclassifyDirection === 'fixed-asset' ? afFamilies : ucFamilies}
         busy={busy}
         onClose={() => setReclassifyOpen(false)}
         onConfirm={(payload) => void confirmReclassify(payload)}
@@ -1736,7 +1540,9 @@ export function DetalhesSolicitacaoPage() {
           resolvedNcm: selectedNcm[it.id] || customNcm[it.id] || it.ncmCode,
         }))}
         onClose={() => setApproveOpen(false)}
-        onConfirm={({ approvedItemIds }) => void finalize(approvedItemIds)}
+        onConfirm={({ approvedItemIds, returnRejectedItemIds }) =>
+          void finalize(approvedItemIds, returnRejectedItemIds)
+        }
       />
     </section>
   );

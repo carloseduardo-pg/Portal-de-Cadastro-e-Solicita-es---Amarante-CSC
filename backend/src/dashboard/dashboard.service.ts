@@ -19,7 +19,9 @@ export class DashboardService {
           },
         },
       }),
-      this.prisma.requestStage.count({ where: { isLate: true, finishedAt: null } }),
+      this.prisma.requestStage.count({
+        where: { isLate: true, finishedAt: null },
+      }),
       this.prisma.product.count({ where: { active: true } }),
       this.prisma.family.count({ where: { active: true } }),
       this.prisma.request.findMany({

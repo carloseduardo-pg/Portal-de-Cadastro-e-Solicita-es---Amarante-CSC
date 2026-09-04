@@ -29,7 +29,10 @@ export class AuthService implements OnModuleInit {
    * Default false evita credencial demo em clones/templates esquecidos.
    */
   async onModuleInit() {
-    if (!this.config.get<boolean>('SEED_DEMO_USER_ON_BOOT')) {
+    if (
+      process.env.NODE_ENV === 'production' ||
+      !this.config.get<boolean>('SEED_DEMO_USER_ON_BOOT')
+    ) {
       return;
     }
     const existing = await this.prisma.user.findUnique({

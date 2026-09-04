@@ -41,7 +41,7 @@ Mapa: `backend/src/auth/capabilities.ts`. CRUD de usuário (`POST/PATCH/DELETE /
 
 ## Fora deste protótipo
 
-- Autenticação do **fornecedor externo** (módulo Fiscal) — decisão pendente Q11 PRD.
+- Autenticação do **fornecedor externo** (módulo Fiscal) — decisão em aberto; ver [`requisitos/requisito.md`](../requisitos/requisito.md).
 
 ## Referência visual
 

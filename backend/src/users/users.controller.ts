@@ -18,6 +18,7 @@ import { UsersService } from './users.service';
  * REST API for seller users.
  */
 @Controller('users')
+@RequireCap('users.manage')
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 

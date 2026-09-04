@@ -1,5 +1,10 @@
+/* oxlint-disable react/only-export-components */
 import { Link } from 'react-router-dom';
-import { REQUEST_STATE_COLORS, REQUEST_STATE_LABELS } from '../../lib/requestLabels';
+import {
+  REQUEST_STATE_COLORS,
+  REQUEST_STATE_LABELS,
+  requestTypeLabel,
+} from '../../lib/requestLabels';
 import type { Request } from '../../lib/types';
 import { slaBadge } from '../../lib/types';
 import { RequestViewersFlag } from './RequestViewersFlag';
@@ -58,19 +63,28 @@ export function inboxPriorityBucket(r: Request): InboxPriorityBucket {
   return 'doDia';
 }
 
-/** Agrupa solicitações da fila por coluna de prioridade (FIFO na etapa atual). */
-export function groupRequestsByPriority(rows: Request[]) {
+/**
+ * Agrupa solicitações da fila por coluna de prioridade.
+ * `asc` = FIFO na etapa atual (quadro); `desc` = mais recente primeiro (lista).
+ */
+export function groupRequestsByPriority(
+  rows: Request[],
+  order: 'asc' | 'desc' = 'asc',
+) {
   const map = new Map<InboxPriorityBucket, Request[]>(
     INBOX_PRIORITY_COLUMNS.map((c) => [c.id, []]),
   );
   rows.forEach((r) => {
     map.get(inboxPriorityBucket(r))!.push(r);
   });
+  const direction = order === 'desc' ? -1 : 1;
   for (const col of INBOX_PRIORITY_COLUMNS) {
     const list = map.get(col.id)!;
     list.sort(
       (a, b) =>
-        new Date(openStageStartedAt(a)).getTime() - new Date(openStageStartedAt(b)).getTime(),
+        direction *
+        (new Date(openStageStartedAt(a)).getTime() -
+          new Date(openStageStartedAt(b)).getTime()),
     );
   }
   return map;
@@ -137,7 +151,7 @@ export function requestTitle(r: Request) {
 }
 
 function typeLabel(type: string) {
-  return type === 'ALTERACAO' ? 'Alteração' : 'Inclusão';
+  return requestTypeLabel(type);
 }
 
 function formatStageDate(r: Request) {
@@ -231,7 +245,10 @@ export function RequestInboxCard({
       className={`kanban-card ${compact ? 'kanban-card--list' : ''}`}
     >
       <div className="kanban-card-head">
-        <strong>{requestTitle(r)}</strong>
+        <div className="kanban-card-title">
+          {r.code ? <span className="request-code">{r.code}</span> : null}
+          <strong>{requestTitle(r)}</strong>
+        </div>
         <span className="kanban-card-type">{typeLabel(r.type)}</span>
       </div>
       {showStageBadge && col ? (

@@ -1,3 +1,4 @@
+/* oxlint-disable react/only-export-components */
 /** Blocos de etapa principal na tela Solicitações (lista analítica). */
 export type RegistryStageTab = 'solicitante' | 'imobilizado' | 'aprovador' | 'encerrado';
 
@@ -31,9 +32,9 @@ export const REGISTRY_STAGE_BLOCKS: BlockDef[] = [
   },
   {
     id: 'encerrado',
-    label: 'Encerrado',
+    label: 'Finalizadas',
     color: '#094111',
-    hint: 'Encerradas — aprovadas, reprovadas ou expiradas',
+    hint: 'Aprovadas (total/parcial), reprovadas ou expiradas',
   },
 ];
 

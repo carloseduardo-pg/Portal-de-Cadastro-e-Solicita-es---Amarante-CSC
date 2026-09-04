@@ -32,9 +32,10 @@ Refresh automático via interceptor em `api.ts` quando access expira.
 
 ### 3.2 Nova solicitação
 
-1. `/produtos/nova-solicitacao` — busca similaridade (ITM anti-duplicidade)
-2. `/produtos/dados-do-item` — formulário PDM por família, lote (ITM-11)
-3. Submissão → entra na fila (persistência POST — parcial no protótipo)
+1. `/produtos/nova-solicitacao` — tipo (inclusão / alteração / bloqueio) + busca por descrição ou código
+2. Inclusão → `/produtos/dados-do-item` — formulário PDM por família, lote (ITM-11)
+3. Alteração / bloqueio → `/produtos/produto-existente` — formulário pré-preenchido da base
+4. Submissão → `POST /api/requests` (rascunho ou envio ao aprovador definido pela família)
 
 ### 3.3 Caixa de entrada
 
@@ -46,9 +47,9 @@ Refresh automático via interceptor em `api.ts` quando access expira.
 
 - Rota: `/produtos/solicitacoes`
 - Substitui antigas "Todas" e "Minhas"
-- Modos: **Kanban** e **Lista**
+- Modos: **Quadro** e **Lista** (lista = uma faixa por solicitação, mais recente no topo)
 - Filtros: busca ao vivo, família, hotel, solicitante
-- API: `GET /api/requests/kanban`
+- API: `GET /api/requests/queue`
 
 ### 3.5 Detalhe / aprovação
 
@@ -69,10 +70,11 @@ Refresh automático via interceptor em `api.ts` quando access expira.
 
 | Módulo | Estado |
 |--------|--------|
-| Fornecedores | Telas placeholder + API parcial |
-| Parametrizações | Placeholder |
+| Fornecedores | Telas + API de consulta; nova solicitação sem persistência |
+| Parametrizações | CRUD de catálogo em `/parametrizacoes/produtos` |
 | Fiscal | Menu desabilitado; rotas stub |
-| Suporte / FAQ | Placeholder |
+| FAQ | Conteúdo operacional |
+| Suporte | Página de contato (canal oficial ainda não definido) |
 | Notificações | `/notificacoes` — lista API |
 
 ---

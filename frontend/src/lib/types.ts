@@ -6,12 +6,13 @@ export type PageResult<T> = {
   totalPages?: number;
 };
 
-export type Hotel = { id: string; code: string; name: string };
+export type Hotel = { id: string; code: string; name: string; active?: boolean };
 
 export type CostCenter = {
   id: string;
   code: string;
   name: string;
+  active?: boolean;
   hotel?: Hotel;
 };
 
@@ -19,6 +20,7 @@ export type MeasureUnit = {
   id: string;
   code: string;
   name: string;
+  active?: boolean;
 };
 
 export type ProductSearchResult = {
@@ -26,6 +28,8 @@ export type ProductSearchResult = {
   unifiedCode: string | null;
   /** Código legado da planilha SAP (coluna "Código Legado"). */
   legacyCode?: string | null;
+  /** Código da importação SAP — também pesquisável. */
+  sapCode?: string | null;
   descriptionShort: string;
   familyName: string;
   familyCode: string;
@@ -50,14 +54,30 @@ export type ProductBase = {
   descriptionLong: string | null;
   ncmCode: string | null;
   active: boolean;
+  blockState?: 'NONE' | 'PARTIAL' | 'TOTAL' | string;
+  /** Escopo do bloqueio vigente (colunas dedicadas para exportação ao CRM). */
+  blockRequisition?: boolean;
+  blockPurchase?: boolean;
   itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
   fixedAsset?: boolean;
   hotelCodes?: string[];
   possibleDuplicate?: boolean;
   similarTo?: string | null;
-  family?: { code: string; name: string; subgroup?: { code: string; name: string; group?: { code: string; name: string } } };
-  measureUnit?: { code: string; name: string };
+  createdAt?: string;
+  /** True quando veio da importação SAP (base original — não excluível). */
+  fromOriginalBase?: boolean;
+  family?: { id?: string; code: string; name: string; subgroup?: { code: string; name: string; group?: { code: string; name: string } } };
+  measureUnit?: { id?: string; code: string; name: string };
   hotels?: { hotel: Hotel }[];
+  /** Folha SAP do produto — origem do subgrupo/grupo no formulário de alteração. */
+  groupId?: string;
+  group?: { id: string; code: string; name: string; subgroupId?: string; subgroup?: { id: string; code: string; name: string; familyId?: string } };
+  measureUnitId?: string | null;
+  costCenterId?: string | null;
+  source?: 'NATIONAL' | 'FOREIGN';
+  law116?: string | null;
+  productLink?: string | null;
+  notes?: string | null;
   physicalLocation?: string | null;
   assetTag?: string | null;
   acquisitionValue?: number | string | null;
@@ -80,6 +100,7 @@ export type Family = {
   id: string;
   code: string;
   name: string;
+  active?: boolean;
   itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
   attributesCount?: number;
   subgroupsCount?: number;
@@ -90,7 +111,9 @@ export type Family = {
 export type CatalogGroup = {
   id: string;
   code: string;
+  catalogCode?: string | null;
   name: string;
+  active?: boolean;
   subgroupId?: string;
   familyId?: string;
   itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
@@ -104,6 +127,7 @@ export type CatalogSubgroup = {
   id: string;
   code: string;
   name: string;
+  active?: boolean;
   familyId?: string;
   itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
   groupsCount?: number;
@@ -174,17 +198,22 @@ export type NcmSuggestion = {
 
 export type Request = {
   id: string;
+  /** Código interno visível (número crescente, só dígitos, máx. 10). */
+  code?: string;
   state: string;
   type: string;
   fixedAsset?: boolean;
+  /** Escopo do bloqueio pedido — ambas as flags = bloqueio total. */
+  blockRequisition?: boolean;
+  blockPurchase?: boolean;
   /** Após AF no Imobilizado: true = volta ao Aprovador; false = Imobilizado encerra. */
   returnToApprover?: boolean;
   /** Classificação merceológica invalidada — exige árvore AF antes de enviar. */
   classificationInvalidated?: boolean;
   /** Vínculo de divisão de lote misto. */
   parentRequestId?: string | null;
-  parentRequest?: { id: string; state: string; fixedAsset?: boolean } | null;
-  childRequests?: { id: string; state: string; fixedAsset?: boolean; createdAt: string }[];
+  parentRequest?: { id: string; code?: string; state: string; fixedAsset?: boolean } | null;
+  childRequests?: { id: string; code?: string; state: string; fixedAsset?: boolean; createdAt: string }[];
   observation?: string | null;
   requestDescription?: string | null;
   createdAt: string;
@@ -230,6 +259,10 @@ export type RequestStageOutcomeDetail = {
   rejectedCount?: number;
   itemsApproved?: { id: string; descriptionShort: string }[];
   itemsRejected?: { id: string; descriptionShort: string }[];
+  /** Nova solicitação (rascunho) criada com itens rejeitados devolvidos. */
+  returnedDraftRequestId?: string;
+  returnedDraftRequestCode?: string;
+  returnedItemIds?: string[];
   /** Encerramento voluntário (CLOSED). */
   reasonCode?: string | null;
   reasonLabel?: string | null;

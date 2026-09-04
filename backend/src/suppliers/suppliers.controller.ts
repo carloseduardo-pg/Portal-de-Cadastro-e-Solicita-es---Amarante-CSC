@@ -1,4 +1,11 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  Req,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { RequireCap } from '../auth/require-cap.decorator';
 import { parsePage } from '../common/pagination';
@@ -24,7 +31,10 @@ export class SuppliersController {
   }
 
   @Get('inactive')
-  findInactive(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+  findInactive(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     return this.suppliers.findInactive(parsePage(page, pageSize));
   }
 

@@ -28,7 +28,7 @@ requests ── request_items ── (products em rascunho)
 | Produto | `products` | Item único; descrição curta CAIXA ALTA |
 | Produto × Hotel | `product_hotels` | N:N — um produto em vários hotéis |
 | Atributos PDM | `product_attributes`, `product_attribute_values` | Por família |
-| Solicitação | `requests` | Fluxo aprovação cadastro |
+| Solicitação | `requests` | Fluxo aprovação cadastro; `code` numérico crescente (máx. 10 dígitos) |
 | Item da solicitação | `request_items` | Linhas / lote |
 | Estágios | `request_stages` | Histórico status + SLA |
 | Presença | `request_viewers` | Quem está com a solicitação aberta (TTL) |

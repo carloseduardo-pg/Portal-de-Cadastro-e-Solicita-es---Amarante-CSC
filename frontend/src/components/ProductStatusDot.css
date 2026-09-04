@@ -1,0 +1,39 @@
+.product-status-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+}
+
+.product-status-dot--active {
+  background: var(--success, #1e7a3c);
+}
+
+/** Bloqueio parcial: item segue ativo, mas com um canal bloqueado. */
+.product-status-dot--partial {
+  background: var(--success, #1e7a3c);
+  box-shadow: inset 0 -5px 0 0 var(--warning, #f8ab2b);
+}
+
+.product-status-dot--inactive {
+  background: var(--danger, #dc2626);
+}
+
+.product-status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #4a5545);
+}
+
+.product-status-legend span {
+  display: inline-flex;
+  align-items: center;
+}

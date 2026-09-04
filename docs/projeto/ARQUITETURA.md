@@ -38,7 +38,7 @@ Visão técnica do mono-repo Amarante. Metodologia Prottus: [`docs/prottus/metod
 ## Fluxo HTTP típico
 
 ```
-Browser (:5173)
+Browser (:5180)
     │  fetch credentials:include
     ▼
 Vite dev proxy / API_URL

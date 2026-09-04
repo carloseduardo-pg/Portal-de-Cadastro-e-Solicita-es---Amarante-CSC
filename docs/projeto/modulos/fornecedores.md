@@ -8,7 +8,7 @@ Replicar o Semplice **AS-IS** com design Amarante. Apenas **Pessoa Jurídica (CN
 
 Fluxo completo do PDF oficial: CPF, órgão público, internacional, compliance, 4 status, formulário externo.
 
-> TODO no código: especificação completa no PRD Parte V.
+> Fora do repositório: especificação completa do cliente (fluxo CPF / órgão / internacional).
 
 ## Telas (espelho Semplice)
 

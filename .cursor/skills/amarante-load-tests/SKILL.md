@@ -19,7 +19,8 @@ node tests/load/run-node.mjs normal
 node tests/load/run-node.mjs heavy
 ```
 
-Rotas: `/dashboard/summary`, `/requests/kanban`, `/products/base`, `/catalog/families`
+Rotas: `/dashboard/summary`, `/requests/kanban` (legado, só carga), `/products/base`, `/catalog/families`.  
+UI usa `inbox` (caixa) e `queue` (solicitações).
 
 **429 na carga = Throttler, não bug.**  
 **fail** = HTTP ≠ 429 (ex.: 500).

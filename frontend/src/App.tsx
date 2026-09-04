@@ -7,6 +7,7 @@ import { LoginPage } from './pages/LoginPage';
 import { ProdutosDashboardPage } from './pages/produtos/ProdutosDashboardPage';
 import { NovaSolicitacaoPage } from './pages/produtos/NovaSolicitacaoPage';
 import { DadosDoItemPage } from './pages/produtos/DadosDoItemPage';
+import { ProdutoExistentePage } from './pages/produtos/ProdutoExistentePage';
 import { CaixaDeEntradaPage } from './pages/produtos/CaixaDeEntradaPage';
 import { DetalhesSolicitacaoPage } from './pages/produtos/DetalhesSolicitacaoPage';
 import { BasePage } from './pages/produtos/BasePage';
@@ -56,6 +57,7 @@ export default function App() {
                 <Route element={<RequireCapRoute cap="products.request.create" />}>
                   <Route path="produtos/nova-solicitacao" element={<NovaSolicitacaoPage />} />
                   <Route path="produtos/dados-do-item" element={<DadosDoItemPage />} />
+                  <Route path="produtos/produto-existente" element={<ProdutoExistentePage />} />
                 </Route>
                 <Route path="produtos/caixa-de-entrada" element={<CaixaDeEntradaPage />} />
                 <Route path="produtos/solicitacoes" element={<SolicitacoesPage />} />

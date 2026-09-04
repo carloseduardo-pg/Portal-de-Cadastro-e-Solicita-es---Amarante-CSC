@@ -12,8 +12,8 @@ import { requestTitle } from '../../components/requests/RequestStageViews';
 import {
   formatRequestDate,
   REGISTRY_STAGE_FILTER_OPTIONS,
-  requestMainStageLabel,
-  requestStateColor,
+  requestDestinationColor,
+  requestDestinationLabel,
   stageTint,
 } from '../../lib/requestLabels';
 import { requestsApi } from '../../lib/resources';
@@ -142,7 +142,7 @@ export function SolicitacoesPage() {
         }}
       >
         <input
-          placeholder="Descrição do produto"
+          placeholder="ID da solicitação ou descrição"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -154,8 +154,7 @@ export function SolicitacoesPage() {
           <option value="">Tipo (todos)</option>
           <option value="INCLUSAO">Inclusão</option>
           <option value="ALTERACAO">Alteração</option>
-          <option value="BLOQUEIO_PARCIAL">Bloqueio parcial</option>
-          <option value="BLOQUEIO_TOTAL">Bloqueio total</option>
+          <option value="BLOQUEIO">Bloqueio</option>
         </select>
         <select
           aria-label="Quantidade de itens"
@@ -183,6 +182,11 @@ export function SolicitacoesPage() {
         rows={data?.data ?? []}
         rowKey={(r) => r.id}
         columns={[
+          {
+            key: 'code',
+            header: 'ID',
+            render: (r: Request) => r.code ?? '—',
+          },
           {
             key: 'sla',
             header: 'SLA',
@@ -226,7 +230,7 @@ export function SolicitacoesPage() {
             key: 'state',
             header: 'Etapa / Destino',
             render: (r) => {
-              const color = requestStateColor(r.state);
+              const color = requestDestinationColor(r);
               return (
                 <span
                   className="inbox-stage-pill"
@@ -236,7 +240,7 @@ export function SolicitacoesPage() {
                     border: `1px solid ${color}`,
                   }}
                 >
-                  {requestMainStageLabel(r.state)}
+                  {requestDestinationLabel(r)}
                 </span>
               );
             },

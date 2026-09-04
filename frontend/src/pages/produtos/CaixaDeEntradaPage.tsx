@@ -16,6 +16,7 @@ import './produtos.css';
 type ViewMode = 'board' | 'list';
 
 const VIEW_STORAGE_KEY = 'amarante-caixa-view';
+const EMPTY_REQUESTS: InboxBoardResult['data'] = [];
 
 function toggleBucketSet(list: Set<string>, id: string) {
   const next = new Set(list);
@@ -101,9 +102,13 @@ export function CaixaDeEntradaPage() {
     };
   }, [search, typeFilter, familyIds, hotelIds, requesterIds]);
 
-  const rows = board?.data ?? [];
+  const rows = board?.data ?? EMPTY_REQUESTS;
 
-  const grouped = useMemo(() => groupRequestsByPriority(rows), [rows]);
+  // Lista: mais recente no topo. Quadro segue FIFO (mais tempo parado primeiro).
+  const grouped = useMemo(
+    () => groupRequestsByPriority(rows, view === 'list' ? 'desc' : 'asc'),
+    [rows, view],
+  );
 
   const visibleColumns = useMemo(() => {
     if (!hideEmpty) return INBOX_PRIORITY_COLUMNS;
@@ -146,7 +151,7 @@ export function CaixaDeEntradaPage() {
         <div>
           <h1 className="module-title">CAIXA DE ENTRADA</h1>
           <p className="info-banner solicitacoes-intro">
-            {roleHint} Prioridade pelo tempo na etapa (Novas · Do dia · Atrasadas). Encerradas em{' '}
+            {roleHint} Prioridade pelo tempo na etapa (Novas · Do dia · Atrasadas). Finalizadas em{' '}
             <Link to="/produtos/solicitacoes">Solicitações</Link>.
           </p>
         </div>
@@ -180,7 +185,7 @@ export function CaixaDeEntradaPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Descrição, família, hotel ou solicitante..."
+          placeholder="ID da solicitação, descrição, família, hotel ou solicitante..."
           />
         </label>
 
@@ -190,8 +195,7 @@ export function CaixaDeEntradaPage() {
             <option value="">Todos</option>
             <option value="INCLUSAO">Inclusão</option>
             <option value="ALTERACAO">Alteração</option>
-            <option value="BLOQUEIO_PARCIAL">Bloqueio parcial</option>
-            <option value="BLOQUEIO_TOTAL">Bloqueio total</option>
+            <option value="BLOQUEIO">Bloqueio</option>
           </select>
         </label>
 

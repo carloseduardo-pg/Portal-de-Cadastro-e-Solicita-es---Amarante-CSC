@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Aplica migrations pendentes + seed de exemplos Amarante
+# Aplica migrations pendentes. Seed só com RUN_SEED=true (npm run setup).
 # Usa `migrate deploy` (não interativo) — evita migrations acidentais tipo "cadu".
 set -euo pipefail
 
@@ -25,6 +25,10 @@ echo "OK  migrations aplicadas"
 echo "==> Amarante triggers / pg_trgm / ITM"
 bash "$ROOT/database/scripts/apply-triggers.sh"
 
-echo "==> Amarante seed"
-npx prisma db seed
-echo "OK  seed infra (catálogo: npm run import:sap)"
+if [ "${RUN_SEED:-}" = "true" ]; then
+  echo "==> Amarante seed (RUN_SEED=true)"
+  npx prisma db seed
+  echo "OK  seed infra (catálogo: npm run import:sap)"
+else
+  echo "OK  seed omitido — para popular dados locais: RUN_SEED=true npm run migrate  ou  npm run seed"
+fi

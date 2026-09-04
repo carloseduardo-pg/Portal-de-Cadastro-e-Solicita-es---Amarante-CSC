@@ -9,7 +9,6 @@ const CLOSED_ATTR_NAMES = new Set([
   'TAMANHO',
   'CONSERVACAO',
   'EMBALAGEM',
-  'TIPO',
   'PECA',
   'COR',
   'FORMATO',

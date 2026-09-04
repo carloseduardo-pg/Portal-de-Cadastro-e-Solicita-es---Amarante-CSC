@@ -16,7 +16,9 @@ import { LoginDto } from './dto/login.dto';
 
 const isProd = process.env.NODE_ENV === 'production';
 
-type AuthedRequest = Request & { user: { id: string; email: string; name: string } };
+type AuthedRequest = Request & {
+  user: { id: string; email: string; name: string };
+};
 
 /** Grava access/refresh como cookies httpOnly (nunca no body JSON). */
 function setAuthCookies(

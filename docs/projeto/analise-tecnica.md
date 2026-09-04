@@ -1,6 +1,6 @@
 # Análise técnica — Portal Amarante CSC
 
-**Atualizado:** 2026-08-24
+**Atualizado:** 2026-09-04
 
 ---
 
@@ -26,8 +26,8 @@ Integrações SAP/V360/CM preparadas no desenho mas **fora** do protótipo.
 
 ## Pendências técnicas
 
-- POST completo para nova solicitação
-- Módulos Fornecedores/Fiscal/Parametrizações — stubs
+- Fornecedores: persistência da nova solicitação CNPJ
+- Fiscal e CRUD de usuários na UI
 - CI/CD homolog Amarante
 
 Ver [`modulos/STATUS_PROTOTIPO.md`](modulos/STATUS_PROTOTIPO.md).

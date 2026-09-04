@@ -1,0 +1,10 @@
+.param-create-dialog {
+  display: grid;
+  gap: 10px;
+}
+
+.param-actions {
+  display: flex;
+  gap: 8px;
+}
+

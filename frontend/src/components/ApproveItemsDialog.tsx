@@ -12,18 +12,25 @@ export type ApproveDialogItem = Pick<
   resolvedNcm?: string | null;
 };
 
+export type ApproveItemsConfirmPayload = {
+  approvedItemIds: string[];
+  /** Itens rejeitados a clonar em nova solicitação do solicitante (rascunho). */
+  returnRejectedItemIds?: string[];
+};
+
 type Props = {
   open: boolean;
   items: ApproveDialogItem[];
   stageComment: string;
   busy?: boolean;
   onClose: () => void;
-  onConfirm: (payload: { approvedItemIds: string[] }) => void;
+  onConfirm: (payload: ApproveItemsConfirmPayload) => void;
 };
 
 /**
  * Popup de finalização no Aprovador - Administrativo (INCLUSÃO com 2+ itens).
- * Seleção parcial: aprovados → base; não selecionados → rejeitados na mesma ação.
+ * Seleção parcial: aprovados → base; não selecionados → rejeitados.
+ * Opcional: devolver alguns rejeitados em nova solicitação (rascunho) ao solicitante.
  */
 export function ApproveItemsDialog({
   open,
@@ -35,17 +42,34 @@ export function ApproveItemsDialog({
 }: Props) {
   const allIds = useMemo(() => items.map((i) => i.id), [items]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [returnAsDraft, setReturnAsDraft] = useState(false);
+  const [returnIds, setReturnIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) return;
     setSelectedIds(allIds);
+    setReturnAsDraft(false);
+    setReturnIds([]);
   }, [open, allIds]);
 
   const allSelected =
     selectedIds.length === allIds.length &&
     allIds.every((id) => selectedIds.includes(id));
   const isPartial = selectedIds.length > 0 && !allSelected;
-  const rejectedCount = items.length - selectedIds.length;
+  const rejectedItems = useMemo(
+    () => items.filter((it) => !selectedIds.includes(it.id)),
+    [items, selectedIds],
+  );
+  const rejectedCount = rejectedItems.length;
+
+  useEffect(() => {
+    if (!isPartial) {
+      setReturnAsDraft(false);
+      setReturnIds([]);
+      return;
+    }
+    setReturnIds((prev) => prev.filter((id) => !selectedIds.includes(id)));
+  }, [isPartial, selectedIds]);
 
   function toggleItem(id: string) {
     setSelectedIds((prev) =>
@@ -55,6 +79,12 @@ export function ApproveItemsDialog({
 
   function toggleAll(checked: boolean) {
     setSelectedIds(checked ? allIds : []);
+  }
+
+  function toggleReturnItem(id: string) {
+    setReturnIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   }
 
   function handleConfirm() {
@@ -72,7 +102,25 @@ export function ApproveItemsDialog({
         return;
       }
     }
-    onConfirm({ approvedItemIds: selectedIds });
+    if (isPartial && returnAsDraft) {
+      if (!returnIds.length) {
+        alert(
+          'Selecione ao menos um item rejeitado para devolver em nova solicitação, ou desmarque a opção.',
+        );
+        return;
+      }
+      for (const id of returnIds) {
+        if (selectedIds.includes(id)) {
+          alert('Só é possível devolver itens que não foram aprovados.');
+          return;
+        }
+      }
+    }
+    onConfirm({
+      approvedItemIds: selectedIds,
+      returnRejectedItemIds:
+        isPartial && returnAsDraft && returnIds.length ? returnIds : undefined,
+    });
   }
 
   return (
@@ -167,6 +215,51 @@ export function ApproveItemsDialog({
             </p>
           ) : null}
         </fieldset>
+
+        {isPartial ? (
+          <fieldset className="approve-items-dialog__return" disabled={busy}>
+            <legend>Devolver ao solicitante?</legend>
+            <label className="approve-items-dialog__return-flag">
+              <input
+                type="checkbox"
+                checked={returnAsDraft}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setReturnAsDraft(on);
+                  if (!on) setReturnIds([]);
+                }}
+              />
+              <span>
+                Deseja devolver algum dos itens rejeitados ao solicitante em uma{' '}
+                <strong>nova solicitação</strong> (rascunho), com novo ID, para ele avaliar?
+              </span>
+            </label>
+            {returnAsDraft ? (
+              <>
+                <p className="approve-items-dialog__return-hint">
+                  Selecione quais dos itens rejeitados vão para a nova solicitação. Os demais
+                  rejeitados permanecem só nesta aprovação (sem nova solicitação).
+                </p>
+                <ul>
+                  {rejectedItems.map((it) => (
+                    <li key={it.id}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={returnIds.includes(it.id)}
+                          onChange={() => toggleReturnItem(it.id)}
+                        />
+                        <span className="approve-items-dialog__item-body">
+                          <strong>{it.descriptionShort}</strong>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </fieldset>
+        ) : null}
 
         {stageComment.trim() ? (
           <div className="approve-items-dialog__comment">

@@ -20,7 +20,10 @@ const REAL_MEASURE_UNITS = [
 async function main() {
   console.log('==> Amarante seed (infra — catálogo via import:sap)');
 
-  const passwordHash = await bcrypt.hash('amarante123', 10);
+  const allowDemoUsers = process.env.NODE_ENV !== 'production';
+  const passwordHash = allowDemoUsers
+    ? await bcrypt.hash('amarante123', 10)
+    : '';
 
   const hotels = await Promise.all(
     [
@@ -40,61 +43,70 @@ async function main() {
 
   const hotelByCode = Object.fromEntries(hotels.map((h) => [h.code, h]));
 
-  const seedUsers: {
-    email: string;
-    name: string;
-    role: 'ADMIN' | 'SOLICITANTE' | 'APROVADOR' | 'APROVADOR_IMOBILIZADO' | 'COMPLIANCE';
-  }[] = [
-    { email: 'admin@amarante.local', name: 'Administrador CSC', role: 'ADMIN' },
-    { email: 'solicitante@amarante.local', name: 'Marcos Vieira', role: 'SOLICITANTE' },
-    { email: 'erika@amarante.local', name: 'Erika Fouchard', role: 'APROVADOR' },
-    {
-      email: 'imobilizado@amarante.local',
-      name: 'Aprovador Imobilizado',
-      role: 'APROVADOR_IMOBILIZADO',
-    },
-    { email: 'compliance@amarante.local', name: 'Compliance CSC', role: 'COMPLIANCE' },
-    {
-      email: 'amanda.cavalcante@amarantehoteis.com.br',
-      name: 'Amanda Cavalcante',
-      role: 'ADMIN',
-    },
-    {
-      email: 'beatriz.barros@amarantehoteis.com.br',
-      name: 'Beatriz Barros',
-      role: 'SOLICITANTE',
-    },
-    {
-      email: 'andresa.ferreira@amarantehoteis.com.br',
-      name: 'Andresa Ferreira',
-      role: 'APROVADOR',
-    },
-    {
-      email: 'erika.fouchard@amarantehoteis.com.br',
-      name: 'Erika Fouchard',
-      role: 'APROVADOR_IMOBILIZADO',
-    },
-  ];
+  if (!allowDemoUsers) {
+    console.log('==> Seed de usuários demo omitido (NODE_ENV=production)');
+  } else {
+    const seedUsers: {
+      email: string;
+      name: string;
+      role:
+        | 'ADMIN'
+        | 'SOLICITANTE'
+        | 'APROVADOR'
+        | 'APROVADOR_IMOBILIZADO'
+        | 'COMPLIANCE';
+    }[] = [
+      { email: 'admin@amarante.local', name: 'Administrador CSC', role: 'ADMIN' },
+      { email: 'solicitante@amarante.local', name: 'Marcos Vieira', role: 'SOLICITANTE' },
+      { email: 'erika@amarante.local', name: 'Erika Fouchard', role: 'APROVADOR' },
+      {
+        email: 'imobilizado@amarante.local',
+        name: 'Aprovador Imobilizado',
+        role: 'APROVADOR_IMOBILIZADO',
+      },
+      { email: 'compliance@amarante.local', name: 'Compliance CSC', role: 'COMPLIANCE' },
+      {
+        email: 'amanda.cavalcante@amarantehoteis.com.br',
+        name: 'Amanda Cavalcante',
+        role: 'ADMIN',
+      },
+      {
+        email: 'beatriz.barros@amarantehoteis.com.br',
+        name: 'Beatriz Barros',
+        role: 'SOLICITANTE',
+      },
+      {
+        email: 'andresa.ferreira@amarantehoteis.com.br',
+        name: 'Andresa Ferreira',
+        role: 'APROVADOR',
+      },
+      {
+        email: 'erika.fouchard@amarantehoteis.com.br',
+        name: 'Erika Fouchard',
+        role: 'APROVADOR_IMOBILIZADO',
+      },
+    ];
 
-  for (const u of seedUsers) {
-    await prisma.user.upsert({
-      where: { email: u.email },
-      update: {
-        name: u.name,
-        passwordHash,
-        active: true,
-        hotelId: hotelByCode.MGI.id,
-        role: u.role,
-      },
-      create: {
-        email: u.email,
-        name: u.name,
-        passwordHash,
-        active: true,
-        hotelId: hotelByCode.MGI.id,
-        role: u.role,
-      },
-    });
+    for (const u of seedUsers) {
+      await prisma.user.upsert({
+        where: { email: u.email },
+        update: {
+          name: u.name,
+          passwordHash,
+          active: true,
+          hotelId: hotelByCode.MGI.id,
+          role: u.role,
+        },
+        create: {
+          email: u.email,
+          name: u.name,
+          passwordHash,
+          active: true,
+          hotelId: hotelByCode.MGI.id,
+          role: u.role,
+        },
+      });
+    }
   }
 
   for (const u of REAL_MEASURE_UNITS) {
@@ -109,13 +121,10 @@ async function main() {
     data: { active: false },
   });
 
-  for (const h of hotels) {
-    await prisma.costCenter.upsert({
-      where: { hotelId_code: { hotelId: h.id, code: 'A&B' } },
-      update: { name: `A&B — ${h.code}`, active: true },
-      create: { hotelId: h.id, code: 'A&B', name: `A&B — ${h.code}`, active: true },
-    });
-  }
+  /**
+   * Centros de custo: só a planilha real (`npm run import:catalog-real`).
+   * Não semear stubs (ex.: A&B).
+   */
 
   /**
    * DEMO P3 — atributos por família já importada do SAP.

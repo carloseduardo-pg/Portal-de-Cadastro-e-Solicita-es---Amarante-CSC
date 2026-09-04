@@ -256,6 +256,53 @@ button {
   letter-spacing: 0.03em;
 }
 
+.data-table th.data-table-th--sortable {
+  padding: 0;
+}
+
+.data-table-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.data-table-sort:hover,
+.data-table-sort:focus-visible {
+  background: color-mix(in srgb, white 14%, transparent);
+}
+
+.data-table-sort-caret {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0.35;
+}
+
+.data-table-sort-caret--asc {
+  border-top: 0;
+  border-bottom: 5px solid currentColor;
+  opacity: 1;
+}
+
+.data-table-sort-caret--desc {
+  opacity: 1;
+}
+
 .data-table tbody tr:hover td {
   background: color-mix(in srgb, var(--brand-primary) 3%, white);
 }

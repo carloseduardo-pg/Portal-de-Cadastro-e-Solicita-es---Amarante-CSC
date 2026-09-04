@@ -1,3 +1,4 @@
+/* oxlint-disable react/only-export-components */
 import type { Family, Hotel } from '../../lib/types';
 import { REGISTRY_STAGE_FILTER_OPTIONS } from '../../lib/requestLabels';
 import { MultiFilter } from './RequestStageViews';
@@ -46,7 +47,7 @@ const OPERATOR_STAGE_OPTIONS = [
   { value: 'IMOBILIZADO', label: 'Aprovador - Imobilizado' },
   { value: 'APROVADOR', label: 'Aprovador - Administrativo' },
   { value: 'RETORNO_SOLICITANTE', label: 'Retorno solicitante' },
-  { value: 'ENCERRADO', label: 'Encerramento' },
+  { value: 'ENCERRADO', label: 'Finalizadas' },
 ];
 
 type RequestRegistrySearchProps = {
@@ -130,7 +131,7 @@ export function RequestRegistrySearch({
         <input
           value={filters.search}
           onChange={(e) => onChange(patch(filters, { search: e.target.value }))}
-          placeholder="Descrição, código, NCM, família, hotel, solicitante, operador ou comentário de etapa…"
+          placeholder="ID da solicitação, descrição, código, NCM, família, hotel, solicitante, operador ou comentário de etapa…"
         />
       </label>
 
@@ -144,8 +145,7 @@ export function RequestRegistrySearch({
             <option value="">Todos</option>
             <option value="INCLUSAO">Inclusão</option>
             <option value="ALTERACAO">Alteração</option>
-            <option value="BLOQUEIO_PARCIAL">Bloqueio parcial</option>
-            <option value="BLOQUEIO_TOTAL">Bloqueio total</option>
+            <option value="BLOQUEIO">Bloqueio</option>
           </select>
         </label>
 

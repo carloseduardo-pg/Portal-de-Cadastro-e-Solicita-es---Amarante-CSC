@@ -7,9 +7,15 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 /** Origens permitidas no CORS (lista separada por vírgula no .env). */
-function resolveCorsOrigins(raw: string | undefined, nodeEnv: string): string[] {
+function resolveCorsOrigins(
+  raw: string | undefined,
+  nodeEnv: string,
+): string[] {
   const fromEnv = raw?.trim()
-    ? raw.split(',').map((o) => o.trim()).filter(Boolean)
+    ? raw
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean)
     : [];
 
   if (nodeEnv === 'development') {
@@ -29,7 +35,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
   const nodeEnv = config.get<string>('NODE_ENV') || 'development';
-  const corsOrigins = resolveCorsOrigins(config.get<string>('CORS_ORIGIN'), nodeEnv);
+  const corsOrigins = resolveCorsOrigins(
+    config.get<string>('CORS_ORIGIN'),
+    nodeEnv,
+  );
 
   app.use(
     helmet({

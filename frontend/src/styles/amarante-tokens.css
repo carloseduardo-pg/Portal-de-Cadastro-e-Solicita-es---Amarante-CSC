@@ -103,7 +103,7 @@
   --danger-border: color-mix(in srgb, var(--danger) 30%, white);
 
   /* ── Tipografia ──────────────────────────────────────────────────── */
-  --font-family: "Inter", "Segoe UI", sans-serif;
+  --font-family: "Source Sans 3", "Segoe UI", sans-serif;
   --font-size-body: 16px;
   --font-size-small: 14px;
   --font-size-title: 20px;

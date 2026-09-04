@@ -3,11 +3,11 @@ import { ApiProperty } from '@nestjs/swagger';
 
 /** Body de POST /auth/login. */
 export class LoginDto {
-  @ApiProperty({ example: 'admin@amarante.local' })
+  @ApiProperty({ example: 'usuario@exemplo.com' })
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: 'amarante123', minLength: 6 })
+  @ApiProperty({ example: 'sua-senha', minLength: 6 })
   @IsString()
   @MinLength(6)
   password!: string;

@@ -53,7 +53,7 @@ Integrações reais ficam fora do protótipo; schema e TODOs preparados.
 |------|-------|
 | Postgres | `127.0.0.1:5432` |
 | API | `:3000` |
-| UI | `:5173` |
+| UI | `:5180` |
 | Database | `amarante` |
 | Setup | `npm run setup` |
 
@@ -88,7 +88,7 @@ Integrações reais ficam fora do protótipo; schema e TODOs preparados.
 
 | Modelo | Descrição |
 |--------|-----------|
-| `users` | Auth interna (`active` + `UserRole`; capacidades no código) |
+| `users` | Auth interna (`active` + `UserRole`: ADMIN, SOLICITANTE, APROVADOR, APROVADOR_IMOBILIZADO, COMPLIANCE; capacidades no código, não no banco) |
 | `notifications` | Sinalização acionável |
 | `audit_log` | Auditoria (padrão Prottus) |
 
@@ -109,7 +109,7 @@ Integrações reais ficam fora do protótipo; schema e TODOs preparados.
 |------|-------|
 | Interno | JWT httpOnly — login e-mail/senha |
 | Externo (Fiscal) | **A definir** — trava módulo Fiscal |
-| Guard | Global; `@Public()` só login/refresh/logout/health |
+| Guard | JWT global; `@Public()` só login/refresh/logout/health. `CapabilitiesGuard` + `@RequireCap` nas rotas de negócio |
 
 ---
 
@@ -145,9 +145,10 @@ Integrações reais ficam fora do protótipo; schema e TODOs preparados.
 | — | Home | `/home` |
 | — | Dashboard produtos | `/produtos` |
 | 1 | Busca / prevenção duplicidade | `/produtos/nova-solicitacao` |
-| 2 | Dados do item | `/produtos/dados-do-item` |
+| 2 | Dados do item (inclusão) | `/produtos/dados-do-item` |
+| — | Alteração / bloqueio pré-preenchido | `/produtos/produto-existente` |
 | 3 | Caixa de entrada | `/produtos/caixa-de-entrada` |
-| — | Solicitações (kanban + lista) | `/produtos/solicitacoes` |
+| — | Solicitações (lista + quadro) | `/produtos/solicitacoes` |
 | 4 | Detalhes / NCM | `/produtos/solicitacao/:id` |
 | 5 | Base produtos (ativos/inativos) | `/produtos/base` |
 | — | Parametrizações | `/parametrizacoes/*` |

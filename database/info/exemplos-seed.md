@@ -38,6 +38,8 @@ Senha seed (protótipo): `amarante123`.
 | `imobilizado@amarante.local` | APROVADOR_IMOBILIZADO (dev) |
 | `compliance@amarante.local` | COMPLIANCE (dev) |
 
+Usuários demo **não** são criados quando `NODE_ENV=production`. `npm run migrate` não semeia sozinho — use `npm run setup` ou `npm run seed` no ambiente local.
+
 ---
 
 ## Limpar solicitações de teste e reaplicar catálogo

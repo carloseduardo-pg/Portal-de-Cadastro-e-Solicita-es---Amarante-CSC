@@ -47,6 +47,8 @@ import '../../components/ItemCompletionSection.css';
 type RequestType =
   | 'INCLUSAO'
   | 'ALTERACAO'
+  | 'BLOQUEIO'
+  // Histórico anterior ao bloqueio unificado — só aparece em rascunhos antigos.
   | 'BLOQUEIO_PARCIAL'
   | 'BLOQUEIO_TOTAL';
 
@@ -179,6 +181,7 @@ export function DadosDoItemPage() {
   const nav = (location.state ?? {}) as NavState;
 
   const [requestId, setRequestId] = useState<string | undefined>(nav.requestId);
+  const [requestCode, setRequestCode] = useState<string | undefined>();
   const [requestType, setRequestType] = useState<RequestType>(nav.type ?? 'INCLUSAO');
   const [hotelIds, setHotelIds] = useState<string[]>(
     nav.hotelIds?.length ? nav.hotelIds : nav.hotelId ? [nav.hotelId] : [],
@@ -274,15 +277,18 @@ export function DadosDoItemPage() {
   }, []);
 
   useEffect(() => {
-    const kind = fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
     void catalogApi
-      .families({ pageSize: 500, itemKind: kind })
-      .then((r) => {
-        setFamilies(r.data);
-        setFamilyId((prev) => (prev && r.data.some((f) => f.id === prev) ? prev : ''));
-      })
+      .families({ pageSize: 500 })
+      .then((r) => setFamilies(r.data))
       .catch(console.error);
-  }, [fixedAsset]);
+  }, []);
+
+  useEffect(() => {
+    const selected = families.find((f) => f.id === familyId);
+    if (!selected) return;
+    const nextAf = selected.itemKind === 'FIXED_ASSET';
+    setFixedAsset((prev) => (prev === nextAf ? prev : nextAf));
+  }, [familyId, families]);
 
   useEffect(() => {
     if (!fixedAsset || !isInclusionItem || item.descriptionShort.trim().length < 3) {
@@ -329,6 +335,7 @@ export function DadosDoItemPage() {
     if (nav.requestId) {
       void requestsApi.get(nav.requestId).then((req) => {
         setRequestId(req.id);
+        setRequestCode(req.code);
         setRequestType(req.type as RequestType);
         const ids = req.hotels?.map((rh) => rh.hotel.id) ?? (req.hotel?.id ? [req.hotel.id] : []);
         setHotelIds(ids);
@@ -456,7 +463,7 @@ export function DadosDoItemPage() {
         ]);
       }).catch(console.error);
     }
-  }, [nav.requestId, nav.existingProductId, nav.templateProductId, nav.searchQuery, families, measureUnits]);
+  }, [nav.requestId, nav.existingProductId, nav.templateProductId, nav.searchQuery, nav.type, families, measureUnits]);
 
   function handleFamilyChange(nextId: string) {
     const prevId = familyId;
@@ -814,15 +821,19 @@ export function DadosDoItemPage() {
         ? await requestsApi.update(requestId, payload)
         : await requestsApi.create(payload);
 
+      const codeLabel = result.code ? ` ${result.code}` : '';
       setRequestId(result.id);
+      setRequestCode(result.code);
       setSendDialogOpen(false);
 
       navigate('/produtos/caixa-de-entrada', {
         state: {
           flash:
             targetStage === 'APROVADOR'
-              ? `Solicitação enviada ao aprovador - imobilizado — ${result.items.length} item(ns).`
-              : `Rascunho na caixa do solicitante — ${result.items.length} item(ns).`,
+              ? fixedAsset
+                ? `Solicitação${codeLabel} enviada ao aprovador de ativo fixo — ${result.items.length} item(ns).`
+                : `Solicitação${codeLabel} enviada ao aprovador — ${result.items.length} item(ns).`
+              : `Rascunho${codeLabel} na caixa do solicitante — ${result.items.length} item(ns).`,
         },
       });
     } catch (e) {
@@ -846,7 +857,10 @@ export function DadosDoItemPage() {
 
   return (
     <section className="dados-item-page">
-      <PageStageHeader title="Detalhes da Solicitação" stage="Formulário" />
+      <PageStageHeader
+        title={requestCode ? `Solicitação ${requestCode}` : 'Detalhes da Solicitação'}
+        stage="Formulário"
+      />
 
       {error ? <p className="form-error">{error}</p> : null}
       {success ? <p className="info-banner form-success">{success}</p> : null}
@@ -1066,7 +1080,7 @@ export function DadosDoItemPage() {
                   }}
                   onClearError={(key) => clearFieldError(key)}
                 />
-              </div>
+      </div>
 
               {item.groupId && item.subgroupId ? (
                 <>
@@ -1088,8 +1102,8 @@ export function DadosDoItemPage() {
                     <p className="info-banner" style={{ marginTop: 16 }}>
                       Sem atributos para esta família no catálogo de teste. Rode o seed ou troque a
                       família (base real Amarante substituirá depois).
-                    </p>
-                  ) : null}
+          </p>
+        ) : null}
 
                   <ItemCompletionSection
                     value={{
@@ -1113,7 +1127,7 @@ export function DadosDoItemPage() {
                   Selecione grupo e subgrupo deste item para continuar o cadastro.
                 </p>
               )}
-            </div>
+      </div>
           </article>
 
           <div className="search-actions">
@@ -1144,10 +1158,14 @@ export function DadosDoItemPage() {
       <SendRequestDialog
         open={sendDialogOpen}
         title="Enviar solicitação"
-        message="Tem certeza de que deseja enviar? Toda solicitação vai primeiro à caixa do aprovador - imobilizado, que decide se o item é ativo fixo ou uso e consumo. Você não poderá mais alterar nesta etapa. Se preferir revisar depois, salve como rascunho."
+        message={
+          fixedAsset
+            ? 'Tem certeza de que deseja enviar? Esta solicitação será encaminhada ao aprovador de ativo fixo para análise.'
+            : 'Tem certeza de que deseja enviar ao aprovador? Se preferir revisar depois, salve como rascunho.'
+        }
         cancelLabel="Cancelar"
         draftLabel="Salvar como rascunho"
-        confirmLabel="Enviar ao aprovador - imobilizado"
+        confirmLabel="Enviar ao aprovador"
         onCancel={() => setSendDialogOpen(false)}
         onDraft={() => void persist('SOLICITANTE')}
         onConfirm={() => void persist('APROVADOR')}

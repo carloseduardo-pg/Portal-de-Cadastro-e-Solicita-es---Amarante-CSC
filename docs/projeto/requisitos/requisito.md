@@ -52,7 +52,7 @@ Portal com dois módulos: **Cadastro de Itens** (substitui Semplice) e **Fiscal*
 
 | ID | Requisito | Protótipo |
 |----|-----------|-----------|
-| RF-FOR-01 | Replicar Semplice AS-IS (só CNPJ) | Sim |
+| RF-FOR-01 | Replicar Semplice AS-IS (só CNPJ) | Parcial — consultas; nova solicitação sem persistência |
 | RF-FOR-02 | SLA igual produtos | Sim |
 | RF-FOR-03 | Coluna `origin_base` (SEMPLICE \| CM) | Sim |
 | RF-FOR-04 | Fluxo CPF/órgão/internacional/compliance | Fase 2 |
@@ -75,7 +75,7 @@ SAP, V360, CM, Sienge (?) — credenciais e ambientes pendentes Amarante TI.
 
 ## 8. Critérios de aceite do protótipo
 
-Ver checklist Parte 4 em `PROMPTS Prototipo Portal Amarante Cursor.md`:
+Checklist de aceite do protótipo:
 
 - [ ] `npm run setup` sobe limpo
 - [ ] Login JWT httpOnly

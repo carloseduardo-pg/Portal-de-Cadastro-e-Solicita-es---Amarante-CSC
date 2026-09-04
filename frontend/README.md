@@ -24,12 +24,12 @@ public/marca/     logos Amarante (vazado completo/simples)
 
 ```bash
 npm install
-npm run dev      # :5173
+npm run dev      # :5180
 npm run build
 npm run lint
 ```
 
-UI: http://127.0.0.1:5173
+UI: http://127.0.0.1:5180
 
 Login dev: `admin@amarante.local` / `amarante123`
 

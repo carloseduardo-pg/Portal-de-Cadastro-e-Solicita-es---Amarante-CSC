@@ -77,7 +77,8 @@ export function validateEnv(config: Record<string, unknown>) {
     ...config,
     PORT: config.PORT ? Number(config.PORT) : 3000,
     NODE_ENV: nodeEnv,
-    CORS_ORIGIN: config.CORS_ORIGIN || 'http://localhost:5180,http://127.0.0.1:5180',
+    CORS_ORIGIN:
+      config.CORS_ORIGIN || 'http://localhost:5180,http://127.0.0.1:5180',
     JWT_ACCESS_EXPIRES: config.JWT_ACCESS_EXPIRES || '15m',
     JWT_REFRESH_EXPIRES: config.JWT_REFRESH_EXPIRES || '7d',
     // default false (seguro em prod/template); dev local seta true no .env

@@ -16,6 +16,21 @@ function isApprovalOutcome(outcome?: string | null) {
   return outcome === 'APPROVAL_TOTAL' || outcome === 'APPROVAL_PARTIAL';
 }
 
+/** Rótulo da etapa na timeline (aprovado parcial/total ou reprovado). */
+function timelineStageLabel(stage: RequestStage) {
+  if (stage.outcome === 'APPROVAL_PARTIAL') return 'Aprovado parcial';
+  if (stage.outcome === 'APPROVAL_TOTAL') return 'Aprovado total';
+  if (stage.outcome === 'CLOSED' || stage.stage === 'REPROVADO') return 'Reprovado';
+  return requestStateLabel(stage.stage);
+}
+
+/** Cor da etapa na timeline alinhada a Aprovado/Reprovado. */
+function timelineStageColor(stage: RequestStage) {
+  if (isApprovalOutcome(stage.outcome)) return '#094111';
+  if (stage.outcome === 'CLOSED' || stage.stage === 'REPROVADO') return '#DC2626';
+  return requestStateColor(stage.stage);
+}
+
 function kindLabel(kind?: string) {
   if (kind === 'FIXED_ASSET') return 'Ativo fixo';
   if (kind === 'CONSUMPTION') return 'Uso e consumo';
@@ -90,7 +105,7 @@ export function RequestTimeline({ stages, onItemClick }: RequestTimelineProps) {
           const detail = s.outcomeDetail;
           const userMessage = sanitizeStageMessage(s);
           const when = formatRequestDate(eventAt(s));
-          const color = requestStateColor(s.stage);
+          const color = timelineStageColor(s);
           return (
             <li key={s.id} className="request-timeline-item">
               <div className="request-timeline-marker">
@@ -123,12 +138,17 @@ export function RequestTimeline({ stages, onItemClick }: RequestTimelineProps) {
                 }}
               >
                 <p className="request-timeline-stage" style={{ color }}>
-                  {requestStateLabel(s.stage)}
+                  {timelineStageLabel(s)}
                   {isReclassify ? (
                     <span className="request-timeline-badge">Reclassificação</span>
                   ) : null}
+                  {isApproval ? (
+                    <span className="request-timeline-badge">
+                      {s.outcome === 'APPROVAL_PARTIAL' ? 'Parcial' : 'Total'}
+                    </span>
+                  ) : null}
                   {isClosed ? (
-                    <span className="request-timeline-badge">Encerramento</span>
+                    <span className="request-timeline-badge">Reprovação</span>
                   ) : null}
                 </p>
                 {s.user?.name ? (
@@ -164,8 +184,8 @@ export function RequestTimeline({ stages, onItemClick }: RequestTimelineProps) {
                         <p>
                           <strong>Tipo:</strong>{' '}
                           {s.outcome === 'APPROVAL_PARTIAL'
-                            ? 'Aprovação parcial'
-                            : 'Aprovação total'}
+                            ? 'Aprovado parcial'
+                            : 'Aprovado total'}
                           {detail?.approvedCount != null
                             ? ` — ${detail.approvedCount} aprovado(s)`
                             : ''}
@@ -174,8 +194,18 @@ export function RequestTimeline({ stages, onItemClick }: RequestTimelineProps) {
                             : ''}
                         </p>
                         <p>
-                          <strong>Resultado:</strong> Solicitação encerrada nesta aprovação.
+                          <strong>Resultado:</strong> Solicitação finalizada nesta aprovação.
                         </p>
+                        {detail?.returnedDraftRequestCode ? (
+                          <p>
+                            <strong>Devolução ao solicitante:</strong> nova solicitação{' '}
+                            {detail.returnedDraftRequestCode}
+                            {detail.returnedItemIds?.length
+                              ? ` com ${detail.returnedItemIds.length} item(ns)`
+                              : ''}
+                            .
+                          </p>
+                        ) : null}
                         {detail?.itemsApproved?.length ? (
                           <>
                             <p>

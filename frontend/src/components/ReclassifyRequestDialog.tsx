@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal } from './Modal';
-import type { RequestItem } from '../lib/types';
+import { SearchableSelect } from './SearchableSelect';
+import type { Family, RequestItem } from '../lib/types';
 import './ReclassifyRequestDialog.css';
 
 export type ReclassifyDirection = 'fixed-asset' | 'consumption';
@@ -9,23 +10,27 @@ type Props = {
   open: boolean;
   direction: ReclassifyDirection;
   items: Pick<RequestItem, 'id' | 'descriptionShort'>[];
+  /** Famílias do kind de destino (AF ou UC). */
+  families: Family[];
   busy?: boolean;
   onClose: () => void;
   onConfirm: (payload: {
     justification: string;
     itemIds: string[];
+    targetFamilyId: string;
     returnToApprover?: boolean;
   }) => void;
 };
 
 /**
  * Modal de reclassificação Aprovador ↔ Imobilizado.
- * Seleção parcial divide o lote: itens marcados seguem o novo kind numa solicitação filha.
+ * Exige família do destino (ITM-11 / FLX-01). Sem família adequada a transferência não segue.
  */
 export function ReclassifyRequestDialog({
   open,
   direction,
   items,
+  families,
   busy = false,
   onClose,
   onConfirm,
@@ -34,12 +39,14 @@ export function ReclassifyRequestDialog({
   const [justification, setJustification] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [returnToApprover, setReturnToApprover] = useState(true);
+  const [targetFamilyId, setTargetFamilyId] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setJustification('');
     setSelectedIds(allIds);
     setReturnToApprover(true);
+    setTargetFamilyId('');
   }, [open, allIds]);
 
   const allSelected =
@@ -50,6 +57,26 @@ export function ReclassifyRequestDialog({
     direction === 'fixed-asset'
       ? 'Reclassificar como Ativo Fixo'
       : 'Reclassificar como Uso e Consumo';
+  const familyLabel =
+    direction === 'fixed-asset'
+      ? 'Família de ativo fixo (sugerida)'
+      : 'Família de uso e consumo (sugerida)';
+
+  const familyOptions = useMemo(
+    () =>
+      [...families]
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
+            a.code.localeCompare(b.code),
+        )
+        .map((f) => ({
+          id: f.id,
+          label: `${f.code} — ${f.name}`,
+          searchText: `${f.code} ${f.name}`,
+        })),
+    [families],
+  );
 
   function toggleItem(id: string) {
     setSelectedIds((prev) =>
@@ -71,9 +98,18 @@ export function ReclassifyRequestDialog({
       alert('Selecione ao menos um item.');
       return;
     }
+    if (!targetFamilyId) {
+      alert(
+        direction === 'fixed-asset'
+          ? 'Selecione a família de ativo fixo para encaminhar.'
+          : 'Selecione a família de uso e consumo para encaminhar.',
+      );
+      return;
+    }
     onConfirm({
       justification: trimmed,
       itemIds: selectedIds,
+      targetFamilyId,
       ...(direction === 'fixed-asset' ? { returnToApprover } : {}),
     });
   }
@@ -92,7 +128,9 @@ export function ReclassifyRequestDialog({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={busy || !selectedIds.length || !justification.trim()}
+            disabled={
+              busy || !selectedIds.length || !justification.trim() || !targetFamilyId
+            }
             onClick={handleConfirm}
           >
             {isPartial ? 'Dividir lote e reclassificar' : 'Confirmar reclassificação'}
@@ -111,6 +149,21 @@ export function ReclassifyRequestDialog({
             disabled={busy}
           />
         </label>
+
+        <div className="form-field">
+          <SearchableSelect
+            label={familyLabel}
+            options={familyOptions}
+            value={targetFamilyId}
+            onChange={setTargetFamilyId}
+            placeholder="Digite código ou nome da família…"
+            emptyLabel="Selecione a família de destino…"
+            disabled={busy}
+          />
+          <p className="reclassify-dialog__hint">
+            Sugestão para o setor destino — eles podem alterar a família depois.
+          </p>
+        </div>
 
         <fieldset className="reclassify-dialog__items" disabled={busy}>
           <legend>Quais itens serão reclassificados?</legend>

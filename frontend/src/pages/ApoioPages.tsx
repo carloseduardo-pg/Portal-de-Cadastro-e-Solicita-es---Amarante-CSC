@@ -57,7 +57,6 @@ export function SuportePage() {
     <section className="static-page">
       <h1 className="module-title">SUPORTE</h1>
       <p>Entre em contato com o CSC Amarante para dúvidas sobre o portal.</p>
-      <p><strong>E-mail:</strong> csc@amarante.com.br (placeholder)</p>
     </section>
   );
 }

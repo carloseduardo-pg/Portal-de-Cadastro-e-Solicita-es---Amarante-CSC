@@ -17,11 +17,7 @@ import '../../components/SimilarProductsPanel.css';
 import '../../components/FormField.css';
 import '../../components/SolicitacaoPreForm.css';
 
-type RequestTypeChoice =
-  | 'INCLUSAO'
-  | 'ALTERACAO'
-  | 'BLOQUEIO_PARCIAL'
-  | 'BLOQUEIO_TOTAL';
+type RequestTypeChoice = 'INCLUSAO' | 'ALTERACAO' | 'BLOQUEIO';
 
 type SearchFieldErrors = {
   type?: string;
@@ -45,12 +41,15 @@ export function NovaSolicitacaoPage() {
   const searchEnabled = Boolean(requestType);
   const needsExistingProduct = requestType ? isExistingProductRequestType(requestType) : false;
   const isInclusao = requestType === 'INCLUSAO';
+  const isBloqueio = requestType === 'BLOQUEIO';
   const itemKind = isInclusao ? ('CONSUMPTION' as const) : undefined;
 
   const { results, loading, searched, hasSimilar } = useSimilarProducts({
     query,
     enabled: searchEnabled,
     itemKind,
+    // Bloqueio inativa o item — só faz sentido sobre produto ativo.
+    activeOnly: isBloqueio,
   });
 
   const exactHit = isInclusao ? findExactProductMatch(results, query) : null;
@@ -76,9 +75,9 @@ export function NovaSolicitacaoPage() {
 
     const queryError = minLengthText(
       query,
-      3,
+      needsExistingProduct ? 2 : 3,
       needsExistingProduct
-        ? 'Busque o produto existente com ao menos 3 caracteres.'
+        ? 'Busque o produto existente pela descrição (3+ caracteres) ou por um código.'
         : 'Informe ao menos 3 caracteres para identificar o produto.',
     );
     if (queryError) errors.query = queryError;
@@ -87,20 +86,23 @@ export function NovaSolicitacaoPage() {
       errors.query = consumptionDupMessage;
     }
 
-    if (needsExistingProduct && !selectedProduct) {
-      errors.selectedProduct =
-        'Selecione na lista o produto da base vinculado a esta solicitação.';
+    if (needsExistingProduct) {
+      if (!selectedProduct) {
+        errors.selectedProduct =
+          'Selecione na lista o produto da base vinculado a esta solicitação.';
+      } else if (isBloqueio && selectedProduct.active === false) {
+        errors.selectedProduct =
+          'Este produto já está inativo na base — não há o que bloquear.';
+      }
+      // Justificativa (alteração) e motivo do bloqueio ficam no formulário do item.
+      return errors;
     }
 
     const observationError = requiredText(
       observation,
-      needsExistingProduct
-        ? requestType === 'ALTERACAO'
-          ? 'Descreva o que precisa ser atualizado neste produto.'
-          : 'Descreva o motivo do bloqueio solicitado.'
-        : hasSimilar && !exactMatch
-          ? 'Justifique na observação por que este produto precisa ser cadastrado mesmo com itens parecidos na base.'
-          : 'Descreva o motivo da inclusão deste produto.',
+      hasSimilar && !exactMatch
+        ? 'Justifique na observação por que este produto precisa ser cadastrado mesmo com itens parecidos na base.'
+        : 'Descreva o motivo da inclusão deste produto.',
     );
     if (observationError) errors.observation = observationError;
 
@@ -113,14 +115,10 @@ export function NovaSolicitacaoPage() {
     if (Object.keys(errors).length > 0) return;
 
     if (needsExistingProduct && selectedProduct) {
-      navigate('/produtos/dados-do-item', {
+      navigate('/produtos/produto-existente', {
         state: {
-          searchQuery: selectedProduct.descriptionShort,
-          observation: observation.trim(),
           existingProductId: selectedProduct.id,
-          hotelIds: [],
           type: requestType,
-          fixedAsset: false,
         },
       });
       return;
@@ -149,14 +147,9 @@ export function NovaSolicitacaoPage() {
       hint: 'Atualização de um produto já cadastrado (1 produto por solicitação).',
     },
     {
-      value: 'BLOQUEIO_PARCIAL',
-      title: 'Bloqueio parcial',
-      hint: 'Bloqueio parcial de um produto existente na base (1 produto por solicitação).',
-    },
-    {
-      value: 'BLOQUEIO_TOTAL',
-      title: 'Bloqueio total',
-      hint: 'Bloqueio total de um produto existente na base (1 produto por solicitação).',
+      value: 'BLOQUEIO',
+      title: 'Bloqueio',
+      hint: 'Bloqueia requisição e/ou compras de um item ativo. Parcial ou total depende das flags.',
     },
   ];
 
@@ -172,7 +165,11 @@ export function NovaSolicitacaoPage() {
         error={fieldErrors.type}
         hint="Defina o tipo antes da busca — isso muda o fluxo da solicitação."
       >
-        <div className="request-type-choice request-type-choice--grid" role="radiogroup" aria-label="Tipo da solicitação">
+        <div
+          className="request-type-choice"
+          role="radiogroup"
+          aria-label="Tipo da solicitação"
+        >
           {typeOptions.map((opt) => (
             <button
               key={opt.value}
@@ -205,8 +202,17 @@ export function NovaSolicitacaoPage() {
           <p className="info-banner">
             {needsExistingProduct ? (
               <>
-                Busque na <strong>base unificada</strong> e <strong>selecione o produto</strong>{' '}
-                vinculado. A solicitação ficará associada a esse item (um único item).
+                Busque na <strong>base unificada</strong> por descrição ou por{' '}
+                <strong>qualquer código</strong> (unificado, legado, SAP ou NCM) e{' '}
+                <strong>selecione o produto</strong>. O formulário abre com os dados já
+                cadastrados.
+                {isBloqueio ? (
+                  <>
+                    {' '}
+                    A lista traz <strong>somente itens ativos</strong> — o bloqueio existe para
+                    inativá-los.
+                  </>
+                ) : null}
               </>
             ) : (
               <>
@@ -224,7 +230,7 @@ export function NovaSolicitacaoPage() {
               error={fieldErrors.query}
               hint={
                 needsExistingProduct
-                  ? 'A partir de 3 caracteres, lista produtos da base. Clique em uma linha para selecionar.'
+                  ? 'Descrição (3+ caracteres) ou código (2+). Clique em uma linha para selecionar.'
                   : 'Texto em caixa alta. A partir de 3 caracteres, busca ao vivo na base unificada.'
               }
             >
@@ -245,7 +251,7 @@ export function NovaSolicitacaoPage() {
                 }}
                 placeholder={
                   needsExistingProduct
-                    ? 'EX.: AGUA MINERAL, CÓDIGO UNIFICADO...'
+                    ? 'EX.: AGUA MINERAL, 2010, UC000794...'
                     : 'EX.: AGUA MINERAL, CAMISA MASC ALMO...'
                 }
                 autoFocus
@@ -253,43 +259,45 @@ export function NovaSolicitacaoPage() {
             </FormField>
 
             <div className="nova-solicitacao-observation-col">
-              <FormField
-                label="Observação"
-                htmlFor="search-observation"
-                required
-                error={fieldErrors.observation}
-                hint={
-                  needsExistingProduct
-                    ? requestType === 'ALTERACAO'
-                      ? 'Explique o que deve ser alterado (descrição, NCM, unidades, etc.).'
-                      : 'Explique o motivo e o escopo do bloqueio solicitado.'
-                    : blocksOnExact
+              {needsExistingProduct ? (
+                <p className="info-banner">
+                  {requestType === 'ALTERACAO'
+                    ? 'A justificativa da alteração é pedida no fim do formulário, junto com o resumo dos campos alterados.'
+                    : 'O escopo (requisição/compras) e o motivo do bloqueio são definidos no formulário do item.'}
+                </p>
+              ) : (
+                <FormField
+                  label="Observação"
+                  htmlFor="search-observation"
+                  required
+                  error={fieldErrors.observation}
+                  hint={
+                    blocksOnExact
                       ? 'Não é possível continuar — produto idêntico já existe na base.'
                       : hasSimilar && !exactMatch
                         ? 'Obrigatório quando há itens parecidos: explique por que este produto é diferente.'
                         : 'Descreva o motivo da inclusão deste produto.'
-                }
-              >
-                <textarea
-                  id="search-observation"
-                  rows={3}
-                  value={observation}
-                  disabled={blocksOnExact}
-                  onChange={(e) => {
-                    setObservation(e.target.value);
-                    if (fieldErrors.observation) {
-                      setFieldErrors((prev) => ({ ...prev, observation: undefined }));
-                    }
-                  }}
-                  placeholder={
-                    needsExistingProduct
-                      ? 'Ex.: corrigir descrição; bloquear compras na unidade MCZ...'
-                      : hasSimilar
+                  }
+                >
+                  <textarea
+                    id="search-observation"
+                    rows={3}
+                    value={observation}
+                    disabled={blocksOnExact}
+                    onChange={(e) => {
+                      setObservation(e.target.value);
+                      if (fieldErrors.observation) {
+                        setFieldErrors((prev) => ({ ...prev, observation: undefined }));
+                      }
+                    }}
+                    placeholder={
+                      hasSimilar
                         ? 'Ex.: embalagem/volume diferente do que consta na base...'
                         : 'Ex.: novo fornecedor para unidade MCZ...'
-                  }
-                />
-              </FormField>
+                    }
+                  />
+                </FormField>
+              )}
 
               <div className="search-actions nova-solicitacao-continue">
                 <button
@@ -306,8 +314,7 @@ export function NovaSolicitacaoPage() {
 
           {blocksOnExact ? (
             <p className="form-field-error" role="alert">
-              {consumptionDupMessage} Não é possível incluir — selecione Alteração ou Bloqueio
-              parcial/total.
+              {consumptionDupMessage} Não é possível incluir — selecione Alteração ou Bloqueio.
             </p>
           ) : null}
 

@@ -16,12 +16,16 @@ export type CloseReasonCode = (typeof CLOSE_REASON_OPTIONS)[number]['code'];
 const CODE_SET = new Set<string>(CLOSE_REASON_OPTIONS.map((o) => o.code));
 
 /** Valida código de motivo conhecido. */
-export function isCloseReasonCode(value: string | undefined | null): value is CloseReasonCode {
+export function isCloseReasonCode(
+  value: string | undefined | null,
+): value is CloseReasonCode {
   return Boolean(value && CODE_SET.has(value));
 }
 
 /** Rótulo do motivo ou o próprio código. */
-export function closeReasonLabel(code: string | undefined | null): string | null {
+export function closeReasonLabel(
+  code: string | undefined | null,
+): string | null {
   if (!code) return null;
   return CLOSE_REASON_OPTIONS.find((o) => o.code === code)?.label ?? code;
 }
