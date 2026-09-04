@@ -33,6 +33,14 @@ function familyLabel(f: Family) {
   return `${f.code} — ${f.name}`;
 }
 
+/** Flag de tipo da família — amarelo UC, azul imobilizado. */
+function familyKindBadge(f: Family): { label: string; tone: 'yellow' | 'blue' } {
+  if (f.itemKind === 'FIXED_ASSET') {
+    return { label: 'Imobilizado', tone: 'blue' };
+  }
+  return { label: 'Uso e consumo', tone: 'yellow' };
+}
+
 /**
  * Pré-formulário da solicitação — unidades + família do lote (ITM-11).
  */
@@ -73,7 +81,8 @@ export function SolicitacaoPreForm({
       sortedFamilies.map((f) => ({
         id: f.id,
         label: familyLabel(f),
-        searchText: `${f.code} ${f.name}`,
+        searchText: `${f.code} ${f.name} ${f.itemKind === 'FIXED_ASSET' ? 'imobilizado ativo fixo' : 'uso consumo'}`,
+        badge: familyKindBadge(f),
       })),
     [sortedFamilies],
   );
@@ -206,7 +215,12 @@ export function SolicitacaoPreForm({
 
         {selectedFamily ? (
           <p className="pre-form-family-selected">
-            Família selecionada: <strong>{familyLabel(selectedFamily)}</strong>
+            Família selecionada: <strong>{familyLabel(selectedFamily)}</strong>{' '}
+            <span
+              className={`searchable-select-badge searchable-select-badge--${familyKindBadge(selectedFamily).tone}`}
+            >
+              {familyKindBadge(selectedFamily).label}
+            </span>
           </p>
         ) : null}
 

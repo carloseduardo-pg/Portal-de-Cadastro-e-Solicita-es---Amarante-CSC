@@ -65,10 +65,18 @@
   background: var(--sidebar-active-bg);
   border-radius: var(--radius-xs);
   line-height: 1.45;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .pre-form-family-selected strong {
   color: var(--brand-primary);
+}
+
+.pre-form-family-select .searchable-select-list {
+  max-height: 18rem;
 }
 
 .item-kind-segment {

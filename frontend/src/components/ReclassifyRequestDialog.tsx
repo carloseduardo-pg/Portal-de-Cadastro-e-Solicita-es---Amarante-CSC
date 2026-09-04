@@ -74,8 +74,12 @@ export function ReclassifyRequestDialog({
           id: f.id,
           label: `${f.code} — ${f.name}`,
           searchText: `${f.code} ${f.name}`,
+          badge:
+            f.itemKind === 'FIXED_ASSET' || direction === 'fixed-asset'
+              ? ({ label: 'Imobilizado', tone: 'blue' } as const)
+              : ({ label: 'Uso e consumo', tone: 'yellow' } as const),
         })),
-    [families],
+    [families, direction],
   );
 
   function toggleItem(id: string) {
