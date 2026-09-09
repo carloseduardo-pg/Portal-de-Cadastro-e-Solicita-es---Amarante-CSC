@@ -1,7 +1,5 @@
-/** Em dev usa proxy Vite (`/api`); em prod ou override via VITE_API_URL. */
-const API_BASE =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? '/api' : 'http://localhost:3000/api');
+/** Em dev e em build de produção atrás de proxy: `/api`. Override com VITE_API_URL se a API for outro host. */
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 async function fetchApi(path: string, options: RequestInit = {}): Promise<Response> {
   try {

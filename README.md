@@ -10,7 +10,8 @@ Protótipo web do **Portal de Cadastro & Solicitação** da Amarante (Centro de 
 
 Cadastro de itens (PDM), solicitações, fornecedores, parametrizações e módulo fiscal (fora do protótipo de telas internas). Substitui o Semplice no cadastro de itens; o V360 permanece no fluxo fiscal.
 
-Documentação: [`docs/projeto/README.md`](docs/projeto/README.md).
+Documentação: [`docs/projeto/README.md`](docs/projeto/README.md).  
+**VPS:** [`docs/projeto/deploy-vps.md`](docs/projeto/deploy-vps.md).
 
 ---
 
@@ -19,15 +20,17 @@ Documentação: [`docs/projeto/README.md`](docs/projeto/README.md).
 ### Pré-requisitos
 
 - Node.js 20+
-- PostgreSQL 15+ em `127.0.0.1:5432`
-- Role `postgree` / senha `postgree` (ou ajuste em `.env`)
+- PostgreSQL 15+
+- Credenciais em `.env` (`DATABASE_URL` = usuário da **aplicação**, não o superuser `postgres`)
 
 ### Setup
 
 ```bash
 cp .env.example .env
-cp .env.example backend/.env
+# edite DATABASE_URL / JWT / CORS
+cp .env backend/.env
 npm run install:all
+npm run verify:env    # valida usuário/senha antes de migrar
 npm run setup
 ```
 
@@ -51,7 +54,7 @@ npm run dev:web   # http://localhost:5180
 | E-mail | `admin@amarante.local` |
 | Senha | `amarante123` |
 
-Requer `SEED_DEMO_USER_ON_BOOT=true` em `backend/.env`.
+Requer seed (`npm run setup` ou `SEED_DEMO_USER_ON_BOOT=true`).
 
 ---
 
@@ -88,9 +91,12 @@ Detalhe: [`docs/projeto/modulos/STATUS_PROTOTIPO.md`](docs/projeto/modulos/STATU
 
 | Comando | Descrição |
 |---------|-----------|
+| `npm run verify:env` | Valida `.env` + autenticação PostgreSQL |
 | `npm run dev` | API + frontend em paralelo |
 | `npm run setup` | Cria DB, migrate, seed local, check |
 | `npm run migrate` | Aplica migrations Prisma (sem seed) |
+| `npm run build` | Build backend + frontend |
+| `npm run start:api` | API em modo produção |
 | `npm run seed` | Seed local explícito |
 | `npm run check:db` | Valida tabelas |
 | `npm run lint` | Lint backend + frontend |

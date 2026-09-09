@@ -20,7 +20,8 @@ import { HealthController } from './health.controller';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '../.env'],
+      // Raiz primeiro: na VPS o time edita `.env` na raiz; backend/.env é espelho (sync nos scripts).
+      envFilePath: ['../.env', '.env'],
       validate: validateEnv,
     }),
     ThrottlerModule.forRoot([

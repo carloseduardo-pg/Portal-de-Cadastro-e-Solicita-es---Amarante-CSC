@@ -28,6 +28,7 @@
 | [`passo-a-passo-browser.md`](passo-a-passo-browser.md) | Checklist manual |
 | [`seguranca.md`](seguranca.md) | JWT, cookies, Helmet, audit |
 | [`escalabilidade.md`](escalabilidade.md) | Paginação, índices, carga |
+| [`deploy-vps.md`](deploy-vps.md) | Checklist VPS / nginx / DATABASE_URL |
 | [`analise-tecnica.md`](analise-tecnica.md) | Decisões do protótipo |
 | [`database/README.md`](database/README.md) | Ponte para `database/` na raiz |
 

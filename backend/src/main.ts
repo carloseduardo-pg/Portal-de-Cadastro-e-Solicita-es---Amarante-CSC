@@ -33,6 +33,8 @@ function resolveCorsOrigins(
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // HTTPS termina no nginx/proxy — necessário para cookies secure em production.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   const config = app.get(ConfigService);
   const nodeEnv = config.get<string>('NODE_ENV') || 'development';
   const corsOrigins = resolveCorsOrigins(

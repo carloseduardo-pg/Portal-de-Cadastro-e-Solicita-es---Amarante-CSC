@@ -107,5 +107,21 @@ export function validateEnv(config: Record<string, unknown>) {
     );
   }
 
+  const dbUrl = validated.DATABASE_URL;
+  try {
+    const u = new URL(dbUrl);
+    if (u.username === 'postgres') {
+      const msg =
+        'DATABASE_URL usa o usuário "postgres" (superuser). Em VPS use o usuário da aplicação.';
+      if (validated.NODE_ENV === 'production') {
+        throw new Error(msg);
+      }
+      console.warn(`[config] ${msg}`);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('postgres')) throw e;
+    /* URL inválida — Prisma falhará depois com mensagem própria */
+  }
+
   return validated;
 }
