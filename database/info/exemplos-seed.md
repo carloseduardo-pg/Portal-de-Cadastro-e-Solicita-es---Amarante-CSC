@@ -32,11 +32,7 @@ Senha seed (protótipo): `amarante123`.
 | `beatriz.barros@amarantehoteis.com.br` | SOLICITANTE |
 | `andresa.ferreira@amarantehoteis.com.br` | APROVADOR (Administrativo) |
 | `erika.fouchard@amarantehoteis.com.br` | APROVADOR_IMOBILIZADO |
-| `admin@amarante.local` | ADMIN (dev) |
-| `solicitante@amarante.local` | SOLICITANTE (dev) |
-| `erika@amarante.local` | APROVADOR (dev) |
-| `imobilizado@amarante.local` | APROVADOR_IMOBILIZADO (dev) |
-| `compliance@amarante.local` | COMPLIANCE (dev) |
+| `admin@amarante.local` | ADMIN (lab — único `*.local`) |
 
 Usuários demo **não** são criados quando `NODE_ENV=production`. `npm run migrate` não semeia sozinho — use `npm run setup` ou `npm run seed` no ambiente local.
 

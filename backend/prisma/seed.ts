@@ -56,15 +56,8 @@ async function main() {
         | 'APROVADOR_IMOBILIZADO'
         | 'COMPLIANCE';
     }[] = [
+      /** Único login de lab — restante são contas CSC reais (senha seed amarante123). */
       { email: 'admin@amarante.local', name: 'Administrador CSC', role: 'ADMIN' },
-      { email: 'solicitante@amarante.local', name: 'Marcos Vieira', role: 'SOLICITANTE' },
-      { email: 'erika@amarante.local', name: 'Erika Fouchard', role: 'APROVADOR' },
-      {
-        email: 'imobilizado@amarante.local',
-        name: 'Aprovador Imobilizado',
-        role: 'APROVADOR_IMOBILIZADO',
-      },
-      { email: 'compliance@amarante.local', name: 'Compliance CSC', role: 'COMPLIANCE' },
       {
         email: 'amanda.cavalcante@amarantehoteis.com.br',
         name: 'Amanda Cavalcante',
@@ -106,6 +99,25 @@ async function main() {
           role: u.role,
         },
       });
+    }
+
+    // Desativa logins *.local de lab antigos (exceto admin@amarante.local).
+    const deactivated = await prisma.user.updateMany({
+      where: {
+        email: {
+          in: [
+            'solicitante@amarante.local',
+            'erika@amarante.local',
+            'imobilizado@amarante.local',
+            'compliance@amarante.local',
+          ],
+        },
+        active: true,
+      },
+      data: { active: false },
+    });
+    if (deactivated.count > 0) {
+      console.log(`    Desativados ${deactivated.count} usuários *.local de lab antigos`);
     }
   }
 
@@ -238,7 +250,7 @@ async function main() {
   console.log('      beatriz.barros@amarantehoteis.com.br — SOLICITANTE');
   console.log('      andresa.ferreira@amarantehoteis.com.br — APROVADOR');
   console.log('      erika.fouchard@amarantehoteis.com.br — APROVADOR_IMOBILIZADO');
-  console.log('      admin@amarante.local — ADMIN (dev)');
+  console.log('      admin@amarante.local — ADMIN (lab)');
 }
 
 main()

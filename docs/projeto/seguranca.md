@@ -46,6 +46,7 @@ Usuários CSC (senha seed `amarante123` — trocar fora do protótipo):
 | `beatriz.barros@amarantehoteis.com.br` | SOLICITANTE |
 | `andresa.ferreira@amarantehoteis.com.br` | APROVADOR |
 | `erika.fouchard@amarantehoteis.com.br` | APROVADOR_IMOBILIZADO |
+| `admin@amarante.local` | ADMIN (lab) |
 
 ---
 
