@@ -1,4 +1,6 @@
--- Portal Amarante — role de desenvolvimento
+-- Portal Amarante — role de desenvolvimento (legado / referência).
+-- Em runtime, `database/scripts/setup.sh` cria a role a partir do DATABASE_URL do .env.
+-- Este arquivo permanece para bootstrap manual local (usuário default postgree).
 DO
 $$
 BEGIN
@@ -10,4 +12,4 @@ BEGIN
 END
 $$;
 
-SELECT 'OK role postgree' AS status;
+SELECT 'OK role postgree (arquivo legado — preferir setup.sh + DATABASE_URL)' AS status;

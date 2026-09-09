@@ -17,15 +17,19 @@ Migrations: [`../backend/prisma/`](../backend/prisma/)
 
 ## Conexão (desenvolvimento)
 
-| Item | Valor |
-|------|-------|
+| Item | Valor default local |
+|------|---------------------|
 | Host | `127.0.0.1` |
 | Porta | `5432` |
 | Database | **`amarante`** |
 | Usuário / senha | `postgree` / `postgree` |
 | URL | `postgresql://postgree:postgree@127.0.0.1:5432/amarante?schema=public` |
 
-Env: [`.env`](../.env) e [`backend/.env`](../backend/.env) (gitignored).
+**Fonte da verdade:** `DATABASE_URL` em [`.env`](../.env) e [`backend/.env`](../backend/.env) (gitignored).  
+Os scripts `setup.sh` / `migrate.sh` / `check.sh` / `apply-triggers.sh` **leem essa URL** — não usam mais usuário hardcoded.
+
+Na VPS: coloque a URL real nos **dois** arquivos (ou só na raiz e deixe o setup copiar para `backend/.env`).  
+Admin opcional para criar role/DB: `POSTGRES_ADMIN_URL` (ver `.env.example`).
 
 ---
 
@@ -46,8 +50,9 @@ Seed e triggers: [`info/exemplos-seed.md`](info/exemplos-seed.md) · [`info/trig
 
 | Script | Função |
 |--------|--------|
+| `scripts/_db_env.sh` | Carrega/parseia `DATABASE_URL` (interno) |
 | `scripts/check.sh` | Valida tabelas Amarante + contagens |
-| `scripts/setup.sh` | Role + database `amarante` |
+| `scripts/setup.sh` | Role + database conforme `.env` |
 | `scripts/migrate.sh` | Migrations Prisma + seed |
 | `scripts/apply-triggers.sh` | Reaplica triggers / `audit_log` |
 | `scripts/seed.sh` | Só seed |
@@ -55,8 +60,9 @@ Seed e triggers: [`info/exemplos-seed.md`](info/exemplos-seed.md) · [`info/trig
 
 ---
 
-## Produção
+## Produção / VPS
 
 - Trocar `DATABASE_URL` e secrets JWT — não versionar credenciais reais.
 - Manter omissão de campos sensíveis na auditoria.
 - Índices e retenção: [`../docs/projeto/escalabilidade.md`](../docs/projeto/escalabilidade.md).
+- Se `npm run setup` criar role/DB errado, confira se `backend/.env` não ficou com o default `postgree` antigo.

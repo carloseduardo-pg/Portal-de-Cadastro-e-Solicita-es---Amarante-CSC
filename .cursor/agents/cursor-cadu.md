@@ -19,6 +19,7 @@
 ## Entregas recentes
 
 - **Central de notificações:** modal grande — abas Não lidas / Lidas / Lixeira; **recuperar** (uma/todas); excluir uma ou esvaziar (aviso permanente); confirmação em todas as ações; fix z-index do ConfirmDialog acima do modal.
+- **Setup DB respeita `.env`:** `setup.sh` / `check.sh` / `apply-triggers.sh` / `migrate.sh` leem `DATABASE_URL` (antes hardcoded `postgree`). Helper `_db_env.sh`.
 - **Painel de notificações (UX):** título centralizado; abas **Não lidas** / **Lidas**; “Marcar todas” no rodapé; ícone do olho por item; **flags coloridas de etapa/tipo** (`notificationLabels` + mesma paleta da caixa).
 - **Troca de família atualiza o formulário (UC ↔ AF):** em retorno/aprovador, `editFixedAsset` segue o `itemKind` da família escolhida; `hideMeasureUnit` não usa mais `request.fixedAsset` antigo — campos UM vs patrimoniais aparecem na hora.
 - **Notificações no sininho:** painel expansível (não é tela `/notificacoes`). Criadas quando a solicitação entra na caixa do papel; `request_id` + dedupe; badge de não lidas.

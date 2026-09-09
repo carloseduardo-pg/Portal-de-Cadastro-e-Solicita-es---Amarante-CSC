@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Reaplica triggers Amarante (idempotente)
+# Reaplica triggers Amarante (idempotente) — usa DATABASE_URL do .env.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT/database/scripts/_db_env.sh"
+
 SQL="$ROOT/database/sql/03-triggers.sql"
-URL="${DATABASE_URL:-postgresql://postgree:postgree@127.0.0.1:5432/amarante}"
 
 if [ ! -f "$SQL" ]; then
   echo "ERRO: não encontrado $SQL"
@@ -13,10 +15,11 @@ fi
 
 echo "==> Amarante apply-triggers"
 echo "    $SQL"
-psql "$URL" -v ON_ERROR_STOP=1 -f "$SQL"
+echo "    ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+psql "$APP_URL" -v ON_ERROR_STOP=1 -f "$SQL"
 
 echo "==> Triggers ativos"
-psql "$URL" -c "
+psql "$APP_URL" -c "
 SELECT c.relname AS tabela, t.tgname AS trigger
 FROM pg_trigger t
 JOIN pg_class c ON c.oid = t.tgrelid
