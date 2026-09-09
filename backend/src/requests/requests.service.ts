@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -31,7 +32,12 @@ import {
   isBlockRequestType,
   isExistingProductRequestType,
 } from './request-type.helpers';
-import { mapActiveViewers, presenceCutoff } from './request-presence';
+import {
+  mapActiveViewers,
+  presenceCutoff,
+  resolvePresenceEditor,
+} from './request-presence';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const ACTIONABLE_STATES: RequestState[] = [
   RequestState.SOLICITANTE,
@@ -256,7 +262,63 @@ export type RegistryFilterParams = {
 
 @Injectable()
 export class RequestsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
+
+  /** Dispara notificação de caixa sem interromper o fluxo principal. */
+  private async emitInboxNotification(input: {
+    requestId: string;
+    code: string;
+    state: RequestState;
+    requesterId?: string | null;
+    summary?: string;
+  }) {
+    try {
+      await this.notifications.notifyInboxArrival(input);
+    } catch (err) {
+      console.error('Falha ao criar notificação de caixa', err);
+    }
+  }
+
+  /** Após mudança de etapa: notifica quem passa a ter a solicitação na caixa. */
+  private async afterStageChange(
+    requestId: string,
+    opts?: { approved?: boolean; summary?: string },
+  ) {
+    const row = await this.prisma.request.findUnique({
+      where: { id: requestId },
+      select: {
+        id: true,
+        code: true,
+        state: true,
+        requesterId: true,
+        requestDescription: true,
+      },
+    });
+    if (!row) return;
+    if (opts?.approved) {
+      try {
+        await this.notifications.notifyRequesterApproved({
+          requestId: row.id,
+          code: row.code,
+          requesterId: row.requesterId,
+          summary: opts.summary ?? row.requestDescription ?? undefined,
+        });
+      } catch (err) {
+        console.error('Falha ao notificar aprovação', err);
+      }
+      return;
+    }
+    await this.emitInboxNotification({
+      requestId: row.id,
+      code: row.code,
+      state: row.state,
+      requesterId: row.requesterId,
+      summary: opts?.summary ?? row.requestDescription ?? undefined,
+    });
+  }
 
   async summary(userId?: string) {
     const role = userId ? await this.resolveUserRole(userId) : UserRole.ADMIN;
@@ -1521,10 +1583,18 @@ export class RequestsService {
     if (target === 'APROVADOR') {
       await this.seedNcmSuggestions(request.id);
     }
+    await this.emitInboxNotification({
+      requestId: request.id,
+      code: request.code,
+      state: request.state,
+      requesterId: request.requesterId,
+      summary: request.requestDescription ?? undefined,
+    });
     return this.findOne(request.id);
   }
 
   async update(id: string, dto: UpdateRequestDto, userId: string) {
+    await this.assertPresenceAllowsEdit(id, userId);
     const existing = await this.prisma.request.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Solicitação não encontrada');
     const role = await this.resolveUserRole(userId);
@@ -1863,6 +1933,7 @@ export class RequestsService {
   }
 
   async submit(id: string, userId: string) {
+    await this.assertPresenceAllowsEdit(id, userId);
     const existing = await this.prisma.request.findUnique({
       where: { id },
       include: { items: true },
@@ -1936,6 +2007,26 @@ export class RequestsService {
       });
     });
 
+    await this.clearRequestPresence(id);
+    const afterSubmit = await this.prisma.request.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        code: true,
+        state: true,
+        requesterId: true,
+        requestDescription: true,
+      },
+    });
+    if (afterSubmit) {
+      await this.emitInboxNotification({
+        requestId: afterSubmit.id,
+        code: afterSubmit.code,
+        state: afterSubmit.state,
+        requesterId: afterSubmit.requesterId,
+        summary: afterSubmit.requestDescription ?? undefined,
+      });
+    }
     return this.findOne(id);
   }
 
@@ -1943,6 +2034,7 @@ export class RequestsService {
    * Aprovador (cadastro ou imobilizado) devolve ao solicitante — reinicia timer SLA.
    */
   async returnToRequester(requestId: string, userId: string, message: string) {
+    await this.assertPresenceAllowsEdit(requestId, userId);
     const trimmed = message?.trim();
     if (!trimmed) {
       throw new BadRequestException(
@@ -1996,6 +2088,14 @@ export class RequestsService {
       });
     });
 
+    await this.clearRequestPresence(requestId);
+    await this.emitInboxNotification({
+      requestId,
+      code: request.code,
+      state: RequestState.RETORNO_SOLICITANTE,
+      requesterId: request.requesterId,
+      summary: trimmed,
+    });
     return this.findOne(requestId);
   }
 
@@ -2009,6 +2109,7 @@ export class RequestsService {
     userId: string,
     body: { reasonCode?: string; observation?: string },
   ) {
+    await this.assertPresenceAllowsEdit(requestId, userId);
     const request = await this.prisma.request.findUnique({
       where: { id: requestId },
     });
@@ -2122,6 +2223,7 @@ export class RequestsService {
       });
     });
 
+    await this.clearRequestPresence(requestId);
     return this.findOne(requestId);
   }
 
@@ -2130,6 +2232,7 @@ export class RequestsService {
    * Família UC → Administrativo; família AF → Imobilizado.
    */
   async sendToApprover(requestId: string, userId: string, message: string) {
+    await this.assertPresenceAllowsEdit(requestId, userId);
     const trimmed = message?.trim();
     if (!trimmed) {
       throw new BadRequestException(
@@ -2195,6 +2298,14 @@ export class RequestsService {
     });
     await this.seedNcmSuggestions(requestId);
 
+    await this.clearRequestPresence(requestId);
+    await this.emitInboxNotification({
+      requestId,
+      code: request.code,
+      state: nextState,
+      requesterId: request.requesterId,
+      summary: trimmed,
+    });
     return this.findOne(requestId);
   }
 
@@ -2208,6 +2319,7 @@ export class RequestsService {
     userId: string,
     dto: ReclassifyRequestDto,
   ) {
+    await this.assertPresenceAllowsEdit(requestId, userId);
     const justification = dto.justification?.trim();
     if (!justification) {
       throw new BadRequestException(
@@ -2338,6 +2450,8 @@ export class RequestsService {
         await this.seedNcmSuggestions(requestId);
       }
 
+      await this.clearRequestPresence(requestId);
+      await this.afterStageChange(requestId);
       return this.findOne(requestId);
     }
 
@@ -2508,6 +2622,8 @@ export class RequestsService {
     }
 
     // Retorna a mãe (consumo); filha acessível via childRequests
+    await this.clearRequestPresence(requestId);
+    await this.afterStageChange(requestId);
     return this.findOne(requestId);
   }
 
@@ -2521,6 +2637,7 @@ export class RequestsService {
     userId: string,
     dto: ReclassifyRequestDto,
   ) {
+    await this.assertPresenceAllowsEdit(requestId, userId);
     const justification = dto.justification?.trim();
     if (!justification) {
       throw new BadRequestException(
@@ -2656,6 +2773,8 @@ export class RequestsService {
         where: { requestItem: { requestId } },
       });
       await this.seedNcmSuggestions(requestId);
+      await this.clearRequestPresence(requestId);
+      await this.afterStageChange(requestId);
       return this.findOne(requestId);
     }
 
@@ -2809,6 +2928,8 @@ export class RequestsService {
       });
     });
 
+    await this.clearRequestPresence(requestId);
+    await this.afterStageChange(requestId);
     return this.findOne(requestId);
   }
 
@@ -2824,6 +2945,7 @@ export class RequestsService {
     itemNcms: { itemId: string; ncm: string }[] = [],
     targetFamilyId?: string,
   ) {
+    await this.assertPresenceAllowsEdit(requestId, userId);
     const trimmed = message?.trim();
     if (!trimmed) {
       throw new BadRequestException(
@@ -2925,6 +3047,8 @@ export class RequestsService {
           },
         });
       });
+      await this.clearRequestPresence(requestId);
+      await this.afterStageChange(requestId, { approved: true, summary: trimmed });
       return this.findOne(requestId);
     }
 
@@ -2973,6 +3097,8 @@ export class RequestsService {
       where: { requestItem: { requestId } },
     });
     await this.seedNcmSuggestions(requestId);
+    await this.clearRequestPresence(requestId);
+    await this.afterStageChange(requestId, { summary: trimmed });
     return this.findOne(requestId);
   }
 
@@ -2981,6 +3107,7 @@ export class RequestsService {
    * Não encaminha ao Administrativo.
    */
   async markAsFixedAsset(requestId: string, userId: string, message: string) {
+    await this.assertPresenceAllowsEdit(requestId, userId);
     const trimmed = message?.trim();
     if (!trimmed) {
       throw new BadRequestException(
@@ -3095,13 +3222,36 @@ export class RequestsService {
     };
   }
 
-  /** Viewers com heartbeat dentro do TTL. */
+  /** Viewers com heartbeat dentro do TTL (ordem de chegada). */
   private activeViewerInclude() {
     return {
       where: { lastSeenAt: { gte: presenceCutoff() } },
       include: { user: { select: { id: true, name: true } } },
-      orderBy: { lastSeenAt: 'asc' as const },
+      orderBy: [{ joinedAt: 'asc' as const }, { userId: 'asc' as const }],
     };
+  }
+
+  /**
+   * Bloqueia mutação se outro usuário chegou antes e ainda está na solicitação.
+   * Sem viewers ativos → livre. Editor = menor joinedAt.
+   */
+  private async assertPresenceAllowsEdit(requestId: string, userId: string) {
+    const rows = await this.prisma.requestViewer.findMany({
+      where: { requestId, lastSeenAt: { gte: presenceCutoff() } },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: [{ joinedAt: 'asc' }, { userId: 'asc' }],
+    });
+    if (!rows.length) return;
+    const editor = resolvePresenceEditor(rows);
+    if (!editor || editor.id === userId) return;
+    throw new ConflictException(
+      `${editor.name} está analisando esta solicitação. Aguarde a liberação para editar ou dar andamento.`,
+    );
+  }
+
+  /** Limpa presença após mudança de etapa (libera a fila). */
+  private async clearRequestPresence(requestId: string) {
+    await this.prisma.requestViewer.deleteMany({ where: { requestId } });
   }
 
   async findOne(id: string) {
@@ -3159,6 +3309,13 @@ export class RequestsService {
     return {
       ...request,
       viewers: mapActiveViewers(request.viewers),
+      editor: resolvePresenceEditor(
+        request.viewers.map((v) => ({
+          user: v.user,
+          lastSeenAt: v.lastSeenAt,
+          joinedAt: v.joinedAt,
+        })),
+      ),
       items: request.items.map((it) => ({
         ...it,
         ncmSuggestions: (it.ncmSuggestions ?? []).map((s) => ({
@@ -3173,7 +3330,7 @@ export class RequestsService {
 
   /**
    * Heartbeat de presença: o usuário está com a solicitação aberta.
-   * Remove linhas expiradas e devolve a lista ativa.
+   * Remove linhas expiradas e devolve a lista ativa + editor (primeiro a chegar).
    */
   async heartbeatPresence(requestId: string, userId: string) {
     const exists = await this.prisma.request.findUnique({
@@ -3201,7 +3358,7 @@ export class RequestsService {
     return { ok: true as const };
   }
 
-  /** Lista viewers ativos da solicitação. */
+  /** Lista viewers ativos da solicitação e quem detém a edição. */
   async listPresence(requestId: string) {
     const exists = await this.prisma.request.findUnique({
       where: { id: requestId },
@@ -3212,9 +3369,12 @@ export class RequestsService {
     const rows = await this.prisma.requestViewer.findMany({
       where: { requestId, lastSeenAt: { gte: presenceCutoff() } },
       include: { user: { select: { id: true, name: true } } },
-      orderBy: { lastSeenAt: 'asc' },
+      orderBy: [{ joinedAt: 'asc' }, { userId: 'asc' }],
     });
-    return { viewers: mapActiveViewers(rows) };
+    return {
+      viewers: mapActiveViewers(rows),
+      editor: resolvePresenceEditor(rows),
+    };
   }
 
   /**
@@ -3250,6 +3410,7 @@ export class RequestsService {
       where: { id: itemId },
     });
     if (!item) throw new NotFoundException('Item não encontrado');
+    await this.assertPresenceAllowsEdit(item.requestId, userId);
 
     const code = await this.ensureNcmCode(this.prisma, ncm, 'MANUAL');
     return this.prisma.requestItem.update({
@@ -3273,6 +3434,7 @@ export class RequestsService {
     approvedItemIds?: string[],
     returnRejectedItemIds?: string[],
   ) {
+    await this.assertPresenceAllowsEdit(requestId, userId);
     const trimmed = message?.trim();
     if (!trimmed) {
       throw new BadRequestException(
@@ -3562,6 +3724,8 @@ export class RequestsService {
       });
     });
 
+    await this.clearRequestPresence(requestId);
+    await this.afterStageChange(requestId, { approved: true, summary: trimmed });
     return this.findOne(requestId);
   }
 

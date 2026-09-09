@@ -455,6 +455,7 @@ model Request {
   stages    RequestStage[]
   hotels    RequestHotel[]
   viewers   RequestViewer[]
+  notifications Notification[]
 
   @@index([state])
   @@index([hotelId])
@@ -574,6 +575,8 @@ model RequestStage {
 model RequestViewer {
   requestId  String   @map("request_id") @db.Uuid
   userId     String   @map("user_id") @db.Uuid
+  /** Quem chegou primeiro detém a edição (não muda no heartbeat). */
+  joinedAt   DateTime @default(now()) @map("joined_at") @db.Timestamptz
   lastSeenAt DateTime @default(now()) @updatedAt @map("last_seen_at") @db.Timestamptz
 
   request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
@@ -581,6 +584,7 @@ model RequestViewer {
 
   @@id([requestId, userId])
   @@index([lastSeenAt])
+  @@index([joinedAt])
   @@map("request_viewers")
 }
 
@@ -652,16 +656,23 @@ model BusinessCalendar {
 model Notification {
   id        String           @id @default(uuid()) @db.Uuid
   userId    String           @map("user_id") @db.Uuid
+  /** Solicitação da caixa que gerou o aviso (opcional). */
+  requestId String?          @map("request_id") @db.Uuid
   type      NotificationType @default(GERAL)
   title     String
   body      String
   linkUrl   String?          @map("link_url")
   readAt    DateTime?        @map("read_at") @db.Timestamptz
+  /** Lixeira — só notificações lidas arquivadas pelo usuário. */
+  trashedAt DateTime?        @map("trashed_at") @db.Timestamptz
   createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz
 
-  user User @relation(fields: [userId], references: [id])
+  user    User     @relation(fields: [userId], references: [id])
+  request Request? @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt])
+  @@index([userId, trashedAt])
+  @@index([requestId, userId])
   @@map("notifications")
 }
 

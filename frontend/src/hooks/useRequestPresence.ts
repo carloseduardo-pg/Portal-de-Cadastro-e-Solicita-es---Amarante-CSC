@@ -5,12 +5,19 @@ import type { RequestViewer } from '../lib/types';
 
 const HEARTBEAT_MS = 15_000;
 
+export type RequestPresenceState = {
+  viewers: RequestViewer[];
+  /** Quem chegou primeiro e pode editar. */
+  editor: RequestViewer | null;
+};
+
 /**
  * Marca o usuário como visualizando a solicitação (heartbeat) e
- * devolve a lista atualizada de viewers para os outros usuários.
+ * devolve viewers + editor (primeiro a chegar detém a análise).
  */
-export function useRequestPresence(requestId: string | undefined) {
+export function useRequestPresence(requestId: string | undefined): RequestPresenceState {
   const [viewers, setViewers] = useState<RequestViewer[]>([]);
+  const [editor, setEditor] = useState<RequestViewer | null>(null);
 
   useEffect(() => {
     if (!requestId) return;
@@ -21,7 +28,9 @@ export function useRequestPresence(requestId: string | undefined) {
       void requestsApi
         .heartbeatPresence(requestId!)
         .then((res) => {
-          if (!cancelled) setViewers(res.viewers);
+          if (cancelled) return;
+          setViewers(res.viewers);
+          setEditor(res.editor ?? null);
         })
         .catch(() => undefined);
     }
@@ -45,5 +54,5 @@ export function useRequestPresence(requestId: string | undefined) {
     };
   }, [requestId]);
 
-  return viewers;
+  return { viewers, editor };
 }

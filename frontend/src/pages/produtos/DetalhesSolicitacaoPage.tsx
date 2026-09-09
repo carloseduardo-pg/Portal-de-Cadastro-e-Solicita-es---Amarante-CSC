@@ -30,7 +30,7 @@ import {
 } from '../../lib/requestLabels';
 import { toFormUppercase } from '../../lib/formText';
 import { formatNcmDisplay } from '../../lib/ncm';
-import { catalogApi, productsApi, requestsApi } from '../../lib/resources';
+import { catalogApi, notificationsApi, productsApi, requestsApi } from '../../lib/resources';
 import { useRequestPresence } from '../../hooks/useRequestPresence';
 import { RequestViewersFlag } from '../../components/requests/RequestViewersFlag';
 import type {
@@ -106,7 +106,7 @@ export function DetalhesSolicitacaoPage() {
   const canApproveImob = hasCap(user, 'products.request.approve.imobilizado');
   const [request, setRequest] = useState<Request | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const liveViewers = useRequestPresence(id);
+  const { viewers: liveViewers, editor: liveEditor } = useRequestPresence(id);
 
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [groups, setGroups] = useState<CatalogGroup[]>([]);
@@ -160,6 +160,7 @@ export function DetalhesSolicitacaoPage() {
       .catch((e) => {
         setLoadError(e instanceof Error ? e.message : 'Falha ao carregar solicitação.');
       });
+    void notificationsApi.markRequestRead(id).catch(() => undefined);
   }, [id]);
 
   useEffect(() => {
@@ -252,21 +253,34 @@ export function DetalhesSolicitacaoPage() {
     canActSolicitante && request?.state === 'RETORNO_SOLICITANTE';
   const isApprover = canApproveAdmin && request?.state === 'APROVADOR';
   const isImobilizado = canApproveImob && request?.state === 'IMOBILIZADO';
-  const canSendToApprover = isSolicitante || isReturnToRequester;
-  const canConcludeStage = canSendToApprover || isApprover || isImobilizado;
+  const presenceEditor = liveEditor ?? request?.editor ?? null;
+  const presenceViewers = liveViewers.length
+    ? liveViewers
+    : (request?.viewers ?? []);
+  /** Outro usuário chegou antes e ainda analisa — formulário somente leitura. */
+  const presenceLocked = Boolean(
+    presenceEditor && user?.id && presenceEditor.id !== user.id,
+  );
+  const canSendToApprover = !presenceLocked && (isSolicitante || isReturnToRequester);
+  const canConcludeStage =
+    !presenceLocked && (canSendToApprover || isApprover || isImobilizado);
   /** Rascunho direto, solicitante ou retorno — pode encerrar. */
-  const canCloseAsSolicitante = Boolean(isDraft);
-  const canCloseAsAprovador = isApprover || isImobilizado;
+  const canCloseAsSolicitante = !presenceLocked && Boolean(isDraft);
+  const canCloseAsAprovador = !presenceLocked && (isApprover || isImobilizado);
   const closeActor: CloseRequestActor = canCloseAsAprovador ? 'aprovador' : 'solicitante';
-  const draftEditable = Boolean(isDraft);
-  const fieldsEditable = draftEditable || isApprover || isImobilizado;
-  const approverEditable = isApprover;
-  const imobilizadoEditable = isImobilizado;
+  const draftEditable = !presenceLocked && Boolean(isDraft);
+  const fieldsEditable =
+    !presenceLocked && (draftEditable || isApprover || isImobilizado);
+  const approverEditable = !presenceLocked && isApprover;
+  const imobilizadoEditable = !presenceLocked && isImobilizado;
   const classificationEditable =
-    imobilizadoEditable || (isApprover && Boolean(request?.classificationInvalidated));
+    imobilizadoEditable ||
+    (!presenceLocked && isApprover && Boolean(request?.classificationInvalidated));
 
   useEffect(() => {
-    if (isDraft) {
+    // Em edição (rascunho/retorno ou reclassificação), lista todas as famílias —
+    // a troca UC ↔ AF deve atualizar o formulário. Em só leitura, filtra pelo kind atual.
+    if (isDraft || classificationEditable) {
       void catalogApi
         .families({ pageSize: 500 })
         .then((r) => setFamilies(r.data))
@@ -281,15 +295,47 @@ export function DetalhesSolicitacaoPage() {
         setEditFamilyId((prev) => (prev && r.data.some((f) => f.id === prev) ? prev : ''));
       })
       .catch(console.error);
-  }, [editFixedAsset, isDraft]);
+  }, [editFixedAsset, isDraft, classificationEditable]);
 
+  /**
+   * Troca de família atualiza o modo UC/AF do formulário (campos UM × patrimoniais).
+   * Antes só rodava em rascunho — no retorno/aprovador o form ficava “preso” no kind antigo.
+   */
   useEffect(() => {
-    if (!isDraft || !editFamilyId) return;
+    if (!editFamilyId || families.length === 0) return;
+    if (!isDraft && !classificationEditable && !fieldsEditable) return;
     const selected = families.find((f) => f.id === editFamilyId);
-    if (!selected) return;
+    if (!selected?.itemKind) return;
     const nextAf = selected.itemKind === 'FIXED_ASSET';
-    setEditFixedAsset((prev) => (prev === nextAf ? prev : nextAf));
-  }, [editFamilyId, families, isDraft]);
+    setEditFixedAsset((prev) => {
+      if (prev === nextAf) return prev;
+      setItems((itemsPrev) =>
+        itemsPrev.map((it) =>
+          nextAf
+            ? {
+                ...it,
+                measureUnitId: '',
+                purchaseQtyTotal: '',
+                law116: '',
+                unitQuantity: it.unitQuantity?.trim() ? it.unitQuantity : '1',
+              }
+            : {
+                ...it,
+                physicalLocation: '',
+                assetTag: '',
+                acquisitionValue: '',
+                acquisitionDate: '',
+                usefulLifeMonths: '',
+                depreciationRate: '',
+                supplierDocument: '',
+                invoiceNumber: '',
+                unitQuantity: '1',
+              },
+        ),
+      );
+      return nextAf;
+    });
+  }, [editFamilyId, families, isDraft, classificationEditable, fieldsEditable]);
 
   useEffect(() => {
     const productId = requestItem?.productId;
@@ -407,11 +453,21 @@ export function DetalhesSolicitacaoPage() {
 
   async function saveApproverChanges() {
     if (!request) return;
+    for (const it of items) {
+      if ((!editFixedAsset && !it.measureUnitId) || !it.costCenterId) {
+        alert(
+          editFixedAsset
+            ? 'Informe o centro de custo de todos os itens.'
+            : 'Informe unidade de medida e centro de custo de todos os itens.',
+        );
+        return;
+      }
+    }
     setBusy(true);
     try {
       await requestsApi.update(request.id, {
         ...(request.classificationInvalidated && editFamilyId
-          ? { familyId: editFamilyId }
+          ? { familyId: editFamilyId, fixedAsset: editFixedAsset }
           : {}),
         editNote: editNote.trim() || 'Aprovador - Administrativo alterou campos da solicitação.',
         items: buildItemsPayload(),
@@ -533,7 +589,7 @@ export function DetalhesSolicitacaoPage() {
       alert('Escreva um comentário sobre a conclusão desta etapa antes de prosseguir.');
       return;
     }
-    const toAf = request.family?.itemKind === 'FIXED_ASSET' || request.fixedAsset;
+    const toAf = editFixedAsset;
     setBusy(true);
     try {
       await requestsApi.sendToApprover(request.id, stageComment.trim());
@@ -837,15 +893,19 @@ export function DetalhesSolicitacaoPage() {
   }
 
   return (
-    <section className="dados-item-page detalhes-solicitacao-page">
+    <section
+      className={`dados-item-page detalhes-solicitacao-page${presenceLocked ? ' detalhes-solicitacao-page--presence-locked' : ''}`}
+    >
       <PageStageHeader
         title={request.code ? `Solicitação ${request.code}` : 'Detalhes da Solicitação'}
         stage={stageLabel(request)}
       />
 
       <RequestViewersFlag
-        viewers={liveViewers.length ? liveViewers : request.viewers}
+        viewers={presenceViewers}
         currentUserId={user?.id}
+        editor={presenceEditor}
+        locked={presenceLocked}
       />
 
       <p className="derived-field detalhes-meta">
@@ -911,14 +971,14 @@ export function DetalhesSolicitacaoPage() {
             <p className="solicitacao-resumo-label">Descrição da solicitação</p>
             <RequestDescriptionBlock
               value={request.requestDescription ?? ''}
-              readOnly={!isDraft}
+              readOnly={!draftEditable}
               confirmTitle="Alterar descrição da solicitação"
               confirmMessage="Deseja alterar a descrição? Em rascunho, a mudança será registrada na timeline ao salvar."
               saveConfirmTitle="Salvar descrição"
               saveConfirmMessage="Salvar a nova descrição? A alteração será registrada na timeline deste rascunho."
               onChange={() => undefined}
               onPersist={
-                isDraft
+                draftEditable
                   ? (next) => persistHeaderField('requestDescription', next)
                   : undefined
               }
@@ -928,7 +988,7 @@ export function DetalhesSolicitacaoPage() {
             <p className="solicitacao-resumo-label">Observação da solicitação</p>
             <RequestDescriptionBlock
               value={request.observation ?? ''}
-              readOnly={!isDraft}
+              readOnly={!draftEditable}
               uppercase={false}
               multiline
               emptyPlaceholder="Motivo da inclusão ou atualização deste produto"
@@ -939,7 +999,7 @@ export function DetalhesSolicitacaoPage() {
               saveConfirmMessage="Salvar a nova observação? A alteração será registrada na timeline deste rascunho."
               onChange={() => undefined}
               onPersist={
-                isDraft
+                draftEditable
                   ? (next) => persistHeaderField('observation', next)
                   : undefined
               }
@@ -965,12 +1025,39 @@ export function DetalhesSolicitacaoPage() {
         }}
         onFamilyChange={(nextId) => {
           markDirty();
+          const selected = families.find((f) => f.id === nextId);
+          const nextAf = selected?.itemKind === 'FIXED_ASSET';
+          const kindChanged =
+            selected?.itemKind != null && nextAf !== editFixedAsset;
+          if (kindChanged) {
+            setEditFixedAsset(nextAf);
+          }
           setEditFamilyId(nextId);
           setItems((prev) =>
             prev.map((it) => ({
               ...it,
               groupId: '',
               subgroupId: '',
+              ...(kindChanged
+                ? nextAf
+                  ? {
+                      measureUnitId: '',
+                      purchaseQtyTotal: '',
+                      law116: '',
+                      unitQuantity: it.unitQuantity?.trim() ? it.unitQuantity : '1',
+                    }
+                  : {
+                      physicalLocation: '',
+                      assetTag: '',
+                      acquisitionValue: '',
+                      acquisitionDate: '',
+                      usefulLifeMonths: '',
+                      depreciationRate: '',
+                      supplierDocument: '',
+                      invoiceNumber: '',
+                      unitQuantity: '1',
+                    }
+                : {}),
             })),
           );
         }}
@@ -1028,7 +1115,7 @@ export function DetalhesSolicitacaoPage() {
             <p className="form-section-title">Classificação do item</p>
             <ItemPrimaryFields
               readOnly={!fieldsEditable}
-              hideMeasureUnit={editFixedAsset || Boolean(request.fixedAsset)}
+              hideMeasureUnit={editFixedAsset}
               value={{
                 descriptionShort: item.descriptionShort,
                 costCenterId: item.costCenterId,
@@ -1138,12 +1225,13 @@ export function DetalhesSolicitacaoPage() {
                     return (
                       <label
                         key={s.id}
-                        className={`ncm-option ${selectedNcm[item.id] === s.ncm ? 'selected' : ''}`}
+                        className={`ncm-option ${selectedNcm[item.id] === s.ncm ? 'selected' : ''}${presenceLocked ? ' ncm-option--readonly' : ''}`}
                       >
                         <input
                           type="radio"
                           name={`ncm-${item.id}`}
                           checked={selectedNcm[item.id] === s.ncm}
+                          disabled={presenceLocked}
                           onChange={() =>
                             setSelectedNcm((prev) => ({ ...prev, [item.id]: s.ncm }))
                           }
@@ -1162,10 +1250,11 @@ export function DetalhesSolicitacaoPage() {
                       </label>
                     );
                   })}
-                  <label className="ncm-option">
+                  <label className={`ncm-option${presenceLocked ? ' ncm-option--readonly' : ''}`}>
                     <input
                       type="radio"
                       name={`ncm-${item.id}`}
+                      disabled={presenceLocked}
                       onChange={() =>
                         setSelectedNcm((prev) => ({
                           ...prev,
@@ -1179,6 +1268,7 @@ export function DetalhesSolicitacaoPage() {
                       inputMode="numeric"
                       autoComplete="off"
                       maxLength={10}
+                      disabled={presenceLocked}
                       onChange={(e) => {
                         const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
                         const display =
@@ -1356,7 +1446,7 @@ export function DetalhesSolicitacaoPage() {
             Encerrar solicitação
           </button>
         ) : null}
-        {isImobilizado ? (
+        {imobilizadoEditable ? (
           <>
             <button
               type="button"
@@ -1395,7 +1485,7 @@ export function DetalhesSolicitacaoPage() {
             </button>
           </>
         ) : null}
-        {isApprover ? (
+        {approverEditable ? (
           <>
             <button
               type="button"

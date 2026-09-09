@@ -141,8 +141,8 @@ Se o produto já tiver unidades vinculadas, elas são exibidas e preservadas.
 | `GET /api/requests/inbox` | Caixa de entrada (prioridade Novas / Do dia / Atrasadas; `viewers`) |
 | `GET /api/requests/queue` | Registro de solicitações (lista paginada) |
 | `GET /api/requests/kanban` | Endpoint legado — só testes de carga |
-| `GET /api/requests/:id` | Detalhe (inclui `viewers` ativos) |
-| `PUT /api/requests/:id/presence` | Heartbeat de presença |
+| `GET /api/requests/:id` | Detalhe (inclui `viewers` + `editor` — 1º a chegar edita) |
+| `PUT /api/requests/:id/presence` | Heartbeat de presença; mutações de outro usuário → `409` enquanto o editor estiver ativo |
 | `DELETE /api/requests/:id/presence` | Sai da tela da solicitação |
 | `POST /api/requests` | Criar rascunho ou enviar solicitação |
 | `PATCH /api/requests/:id` | Atualizar rascunho |

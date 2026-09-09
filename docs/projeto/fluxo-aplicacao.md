@@ -75,7 +75,7 @@ Refresh automático via interceptor em `api.ts` quando access expira.
 | Fiscal | Menu desabilitado; rotas stub |
 | FAQ | Conteúdo operacional |
 | Suporte | Página de contato (canal oficial ainda não definido) |
-| Notificações | `/notificacoes` — lista API |
+| Notificações | Sininho na topbar (painel) — avisos da caixa de entrada |
 
 ---
 

@@ -6,6 +6,10 @@ type Props = {
   viewers?: RequestViewer[];
   /** Omite o usuário atual na tela de detalhe (ele já sabe que está lá). */
   currentUserId?: string;
+  /** Quem detém a edição; se outro usuário, mensagem de bloqueio. */
+  editor?: RequestViewer | null;
+  /** Destaque de bloqueio (somente leitura). */
+  locked?: boolean;
   compact?: boolean;
 };
 
@@ -30,14 +34,26 @@ export function viewersFlagLabel(
 
 /**
  * Flag visual: outro usuário está com esta solicitação aberta.
+ * Em modo `locked`, deixa claro que a análise está bloqueada para edição.
  */
-export function RequestViewersFlag({ viewers, currentUserId, compact }: Props) {
-  const label = viewersFlagLabel(viewers ?? [], currentUserId);
+export function RequestViewersFlag({
+  viewers,
+  currentUserId,
+  editor,
+  locked,
+  compact,
+}: Props) {
+  const presenceLabel = viewersFlagLabel(viewers ?? [], currentUserId);
+  const lockLabel =
+    locked && editor
+      ? `${editor.name} está analisando — formulário somente leitura até a liberação`
+      : null;
+  const label = lockLabel ?? presenceLabel;
   if (!label) return null;
 
   return (
     <span
-      className={`request-viewers-flag${compact ? ' request-viewers-flag--compact' : ''}`}
+      className={`request-viewers-flag${compact ? ' request-viewers-flag--compact' : ''}${locked ? ' request-viewers-flag--locked' : ''}`}
       role="status"
       title={label}
     >

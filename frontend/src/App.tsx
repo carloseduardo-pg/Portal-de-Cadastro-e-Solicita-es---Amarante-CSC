@@ -25,7 +25,7 @@ import {
   ParametrizacoesAdminPage,
   ParametrizacoesProdutosPage,
 } from './pages/parametrizacoes/ParametrizacoesPages';
-import { FaqPage, NotificacoesPage, SuportePage } from './pages/ApoioPages';
+import { FaqPage, SuportePage } from './pages/ApoioPages';
 import { HomePage } from './pages/HomePage';
 
 function Placeholder({ title }: { title: string }) {
@@ -50,7 +50,7 @@ export default function App() {
 
               <Route path="faq" element={<FaqPage />} />
               <Route path="suporte" element={<SuportePage />} />
-              <Route path="notificacoes" element={<NotificacoesPage />} />
+              <Route path="notificacoes" element={<Navigate to="/home" replace />} />
 
               <Route element={<RequireCapRoute cap="products.module" />}>
                 <Route path="produtos" element={<ProdutosDashboardPage />} />

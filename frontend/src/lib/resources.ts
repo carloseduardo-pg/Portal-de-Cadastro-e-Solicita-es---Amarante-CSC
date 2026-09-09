@@ -383,9 +383,10 @@ export const requestsApi = {
     }),
   /** Heartbeat de presença na tela da solicitação. */
   heartbeatPresence: (id: string) =>
-    apiFetch<{ viewers: RequestViewer[] }>(`/requests/${id}/presence`, {
-      method: 'PUT',
-    }),
+    apiFetch<{ viewers: RequestViewer[]; editor: RequestViewer | null }>(
+      `/requests/${id}/presence`,
+      { method: 'PUT' },
+    ),
   /** Sai da tela da solicitação. */
   leavePresence: (id: string) =>
     apiFetch<{ ok: boolean }>(`/requests/${id}/presence`, {
@@ -598,11 +599,37 @@ export const suppliersApi = {
   get: (id: string) => apiFetch<Supplier>(`/suppliers/${id}`),
 };
 
+export type NotificationListStatus = 'unread' | 'read' | 'trash';
+
 export const notificationsApi = {
-  list: () => apiFetch<Notification[]>('/notifications'),
+  list: (status: NotificationListStatus = 'unread') =>
+    apiFetch<Notification[]>(`/notifications?status=${status}`),
   count: () => apiFetch<number>('/notifications/count'),
-  markAllRead: () => apiFetch<{ ok: boolean }>('/notifications/read-all', { method: 'PATCH' }),
-  markRead: (id: string) => apiFetch<unknown>(`/notifications/${id}/read`, { method: 'PATCH' }),
+  markAllRead: () =>
+    apiFetch<{ ok: boolean }>('/notifications/read-all', { method: 'PATCH' }),
+  markRead: (id: string) =>
+    apiFetch<unknown>(`/notifications/${id}/read`, { method: 'PATCH' }),
+  markUnread: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/notifications/${id}/unread`, { method: 'PATCH' }),
+  trashOne: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/notifications/${id}/trash`, { method: 'PATCH' }),
+  trashAllRead: () =>
+    apiFetch<{ ok: boolean }>('/notifications/trash-all-read', { method: 'PATCH' }),
+  emptyTrash: () =>
+    apiFetch<{ ok: boolean }>('/notifications/trash', { method: 'DELETE' }),
+  /** Exclusão permanente — só item já na lixeira. */
+  deleteTrashedOne: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/notifications/${id}`, { method: 'DELETE' }),
+  restoreOne: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/notifications/${id}/restore`, { method: 'PATCH' }),
+  restoreAll: () =>
+    apiFetch<{ ok: boolean }>('/notifications/trash/restore-all', {
+      method: 'PATCH',
+    }),
+  markRequestRead: (requestId: string) =>
+    apiFetch<{ ok: boolean }>(`/notifications/request/${requestId}/read`, {
+      method: 'PATCH',
+    }),
 };
 
 export { usersApi } from './resources-users';

@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon, type IconName } from '../components/Icon';
 import { BrandLogo } from '../components/BrandLogo';
+import { NotificationsBell } from '../components/NotificationsBell';
 import type { AuthUser } from '../lib/api';
 import { hasCap } from '../lib/capabilities';
 import { findActiveNavChild, isNavChildActive, isNavGroupChildActive } from '../lib/navActive';
@@ -370,9 +371,7 @@ export function AppShell() {
             </div>
           </div>
           <div className="topbar-user">
-            <NavLink to="/notificacoes" className="topbar-notifications" title="Notificações">
-              <Icon name="bell" size={20} />
-            </NavLink>
+            <NotificationsBell />
             <span className="topbar-user-name">{user?.name}</span>
             <button type="button" className="btn-ghost topbar-logout" onClick={() => logout()}>
               <Icon name="logout" size={18} />

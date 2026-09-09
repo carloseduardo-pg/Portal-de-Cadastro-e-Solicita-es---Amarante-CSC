@@ -1112,6 +1112,31 @@
   margin: 0 0 12px;
 }
 
+.detalhes-solicitacao-page .request-viewers-flag--locked {
+  width: 100%;
+}
+
+.detalhes-solicitacao-page--presence-locked .solicitacao-pre-form,
+.detalhes-solicitacao-page--presence-locked .solicitacao-resumo,
+.detalhes-solicitacao-page--presence-locked .solicitacao-form-section,
+.detalhes-solicitacao-page--presence-locked .item-primary-fields,
+.detalhes-solicitacao-page--presence-locked .item-classification-fields,
+.detalhes-solicitacao-page--presence-locked .stage-conclude-block {
+  opacity: 0.72;
+  filter: grayscale(0.35);
+  pointer-events: none;
+  user-select: none;
+}
+
+.detalhes-solicitacao-page--presence-locked .item-folder-strip,
+.detalhes-solicitacao-page--presence-locked .detalhes-timeline,
+.detalhes-solicitacao-page--presence-locked .request-viewers-flag--locked {
+  pointer-events: auto;
+  filter: none;
+  opacity: 1;
+  user-select: auto;
+}
+
 .kanban-card .request-viewers-flag {
   display: flex;
   width: fit-content;

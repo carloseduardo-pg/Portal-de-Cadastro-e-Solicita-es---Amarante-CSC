@@ -1,43 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { notificationsApi } from '../lib/resources';
-import type { Notification } from '../lib/types';
 import './produtos/produtos.css';
 
-export function NotificacoesPage() {
-  const [items, setItems] = useState<Notification[]>([]);
-
-  async function load() {
-    setItems(await notificationsApi.list());
-  }
-
-  useEffect(() => { void load(); }, []);
-
-  return (
-    <section>
-      <h1 className="module-title">NOTIFICAÇÕES</h1>
-      <p className="info-banner">Cada notificação leva à solicitação correspondente. Resolvida, sai da lista.</p>
-      <button type="button" className="btn btn-outline" onClick={() => void notificationsApi.markAllRead().then(load)}>
-        Marcar todas como lidas
-      </button>
-      <div style={{ marginTop: 16 }}>
-        {items.map((n) => (
-          <Link
-            key={n.id}
-            to={n.linkUrl ?? '#'}
-            className={`notification-item ${n.readAt ? '' : 'unread'}`}
-            onClick={() => void notificationsApi.markRead(n.id)}
-          >
-            <strong>{n.title}</strong>
-            <p>{n.body}</p>
-            <span className="derived-field">{new Date(n.createdAt).toLocaleString('pt-BR')}</span>
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
+/** FAQ e suporte — páginas estáticas de apoio. */
 export function FaqPage() {
   return (
     <section className="static-page">

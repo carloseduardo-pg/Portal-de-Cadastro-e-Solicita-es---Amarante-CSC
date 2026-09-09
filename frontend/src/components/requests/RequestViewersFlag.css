@@ -18,6 +18,17 @@
   margin-top: 8px;
 }
 
+.request-viewers-flag--locked {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  background: #e8eaed;
+  border: 1px solid #9aa0a6;
+  color: #3c4043;
+}
+
 .request-viewers-flag svg {
   flex-shrink: 0;
 }

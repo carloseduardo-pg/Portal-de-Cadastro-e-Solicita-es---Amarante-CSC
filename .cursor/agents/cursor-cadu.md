@@ -1,7 +1,7 @@
 # Sessões — Cadu (Portal Amarante CSC)
 
 **Repositório:** Portal Amarante CSC — Cadastro & Solicitação  
-**Atualizado:** 2026-09-04
+**Atualizado:** 2026-09-09
 
 ---
 
@@ -18,6 +18,11 @@
 
 ## Entregas recentes
 
+- **Central de notificações:** modal grande — abas Não lidas / Lidas / Lixeira; **recuperar** (uma/todas); excluir uma ou esvaziar (aviso permanente); confirmação em todas as ações; fix z-index do ConfirmDialog acima do modal.
+- **Painel de notificações (UX):** título centralizado; abas **Não lidas** / **Lidas**; “Marcar todas” no rodapé; ícone do olho por item; **flags coloridas de etapa/tipo** (`notificationLabels` + mesma paleta da caixa).
+- **Troca de família atualiza o formulário (UC ↔ AF):** em retorno/aprovador, `editFixedAsset` segue o `itemKind` da família escolhida; `hideMeasureUnit` não usa mais `request.fixedAsset` antigo — campos UM vs patrimoniais aparecem na hora.
+- **Notificações no sininho:** painel expansível (não é tela `/notificacoes`). Criadas quando a solicitação entra na caixa do papel; `request_id` + dedupe; badge de não lidas.
+- **Bloqueio de edição por presença:** quem abre a solicitação primeiro (`joined_at`) analisa/edita; outros veem formulário cinza só leitura (UI + API `409`). Libera ao sair da tela ou ao concluir etapa.
 - **Merge `origin/dev` (Charlys) em `main`:** RBAC por capacidades (`capabilities.ts`, `CapabilitiesGuard`, menu/rotas). Mantido `.env.example`, produto-existente, seed sem demo em produção, mutações de catálogo só com `catalog.params`.
 - **Higienização Distac + oficialização Amarante:** comentários Distac/`vendedor@` nos `.env` locais; banner de carga; porta UI **5180** em todos os guias; status/fluxos/rotas alinhados (inbox/queue, produto-existente, Parametrizações CRUD). Flag **É ativo fixo?** removida — destino e transferência só pela família. Seed demo não roda em `migrate` nem em produção; Swagger sem senha real.
 - **Caixa de entrada — modo Lista em faixa:** pedido dos operadores (volume alto de solicitações). No modo **Lista** cada solicitação vira uma faixa de largura total, uma embaixo da outra, ordenada da **mais recente para a mais antiga**; blocos Novas / Do dia / Atrasadas mantidos. O modo **Quadro** segue igual (cards e FIFO por tempo na etapa).

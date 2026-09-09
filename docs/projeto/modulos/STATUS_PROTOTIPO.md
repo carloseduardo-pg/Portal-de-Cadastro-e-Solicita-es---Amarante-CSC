@@ -60,7 +60,7 @@
 | `/produtos/produto-existente` | `GET /api/products/:id` + `POST/PATCH /api/requests` |
 | `/produtos/caixa-de-entrada` | `GET /api/requests/inbox` (poll 12s; `viewers` nos cards) |
 | `/produtos/solicitacoes` | `GET /api/requests/queue` |
-| `/produtos/solicitacao/:id` | `GET /api/requests/:id` + `PUT/DELETE /api/requests/:id/presence` |
+| `/produtos/solicitacao/:id` | `GET /api/requests/:id` + `PUT/DELETE /api/requests/:id/presence` (editor = 1º `joined_at`; demais só leitura) |
 | `/produtos/base` | `GET /api/products/base` · `DELETE /api/products/:id` (admin, sem sap_code) |
 
 `GET /api/requests/kanban` existe só para testes de carga — a UI não usa.
@@ -77,7 +77,7 @@ Redirects legados: `/produtos/todas-solicitacoes`, `/minhas-solicitacoes` → `/
 
 | UI | API |
 |----|-----|
-| `/notificacoes` | `GET /api/notifications` |
+| Sininho + central | `GET/PATCH/DELETE /api/notifications` — abas Não lidas/Lidas/Lixeira; arquivar lidas; esvaziar lixeira na central |
 | `/parametrizacoes/produtos` | Famílias / Subgrupos / Grupos + hotéis / centros de custo / UM |
 | `/parametrizacoes/administrativo` | Stub (CRUD de usuários ainda não na UI) |
 | `/fiscal/*` | Placeholder (menu desabilitado) |

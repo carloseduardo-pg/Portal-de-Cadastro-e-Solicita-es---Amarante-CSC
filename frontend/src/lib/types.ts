@@ -236,12 +236,15 @@ export type Request = {
   stages?: RequestStage[];
   /** Quem está com a solicitação aberta agora (TTL no backend). */
   viewers?: RequestViewer[];
+  /** Quem chegou primeiro e detém a edição. */
+  editor?: RequestViewer | null;
 };
 
 export type RequestViewer = {
   id: string;
   name: string;
   lastSeenAt?: string;
+  joinedAt?: string;
 };
 
 export type RequestStageOutcomeDetail = {
@@ -322,8 +325,16 @@ export type Notification = {
   title: string;
   body: string;
   linkUrl: string | null;
+  requestId?: string | null;
   readAt: string | null;
+  trashedAt?: string | null;
   createdAt: string;
+  request?: {
+    id: string;
+    code: string | null;
+    state: string;
+    requester?: { id: string; name: string; email: string } | null;
+  } | null;
 };
 
 export type DashboardProductsSummary = {

@@ -12,11 +12,11 @@ Domínio em **inglês**. Campos: [`docs/projeto/mapa-entidades.md`](../../docs/p
 | `product_attributes`, `product_attribute_values` | Atributos PDM |
 | `requests`, `request_items` | Solicitações de cadastro |
 | `request_stages` | Timeline / SLA |
-| `request_viewers` | Presença (usuário com a solicitação aberta; sem audit — efêmero) |
+| `request_viewers` | Presença (usuário com a solicitação aberta; `joined_at` define quem edita; sem audit — efêmero) |
 | `ncm_codes` | TIPI/NCM (8 dígitos); FK de products/request_items |
 | `ncm_suggestions` | Candidatos NCM |
 | `suppliers` | Fornecedores |
-| `notifications` | Notificações usuário |
+| `notifications` | Avisos da caixa (sininho + central); `read_at`, `trashed_at` (lixeira) |
 | `measure_units`, `warehouses`, `cost_centers` | Parametrização |
 | `business_calendar` | Dias úteis SLA |
 | `audit_log` | Auditoria DML (triggers) |

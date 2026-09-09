@@ -1,7 +1,8 @@
 .confirm-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  /* Acima de Modal (1000) e Central de notificações (1100). */
+  z-index: 1200;
   display: flex;
   align-items: center;
   justify-content: center;

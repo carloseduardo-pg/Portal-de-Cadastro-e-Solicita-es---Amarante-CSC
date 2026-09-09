@@ -365,23 +365,7 @@
 
 .topbar-user-name {
   font-weight: 600;
-}
-
-.topbar-notifications {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-sm);
-  color: var(--header-text);
-  opacity: 0.92;
-  transition: background 0.15s;
-}
-
-.topbar-notifications:hover {
-  opacity: 1;
-  background: color-mix(in srgb, white 12%, transparent);
+  color: color-mix(in srgb, white 92%, transparent);
 }
 
 .topbar-logout {
