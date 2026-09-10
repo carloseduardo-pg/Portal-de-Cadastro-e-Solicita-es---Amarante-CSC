@@ -1146,6 +1146,27 @@
   margin-top: 24px;
 }
 
+.detalhes-solicitacao-page .detalhes-ncm-block--error {
+  border: 1px solid #f04438;
+  background: #fffaf9;
+  padding: 12px 14px;
+}
+
+.detalhes-solicitacao-page .ncm-warning--error {
+  background: #fef3f2;
+  border-left: 3px solid #f04438;
+  color: #7a271a;
+}
+
+.detalhes-solicitacao-page .ncm-not-found-banner {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  color: #7a271a;
+  font-size: 0.95rem;
+}
+
 .detalhes-solicitacao-page .detalhes-timeline {
   margin-top: 28px;
 }

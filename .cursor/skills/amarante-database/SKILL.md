@@ -29,7 +29,7 @@ Na raiz: `npm run setup` · `npm run migrate` · `npm run check:db`
 3. `audit_log` omite `password_hash`.
 4. ITM-01: descrições de item em CAIXA ALTA no banco (trigger).
 5. ITM-09: NCM confirmado exige `ncm_confirmed_by`.
-6. ITM-11: `requests.family_id` NOT NULL.
+6. ITM-11: `requests.subgroup_id` NOT NULL (eixo do lote); `family_id` derivado.
 
 ## Ao mudar schema
 

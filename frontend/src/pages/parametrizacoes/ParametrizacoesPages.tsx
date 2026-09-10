@@ -732,11 +732,6 @@ export function ParametrizacoesProdutosPage() {
               render: (r) => r.productsCount ?? 0,
             },
             {
-              key: 'attr',
-              header: 'Atributos',
-              render: (r) => r.attributesCount ?? 0,
-            },
-            {
               key: 'status',
               header: 'Status',
               render: (r) => statusBadge(r.active),
@@ -800,6 +795,11 @@ export function ParametrizacoesProdutosPage() {
               key: 'groups',
               header: 'Grupos',
               render: (r) => r.groupsCount ?? 0,
+            },
+            {
+              key: 'attr',
+              header: 'Atributos',
+              render: (r) => r.attributesCount ?? 0,
             },
             {
               key: 'items',

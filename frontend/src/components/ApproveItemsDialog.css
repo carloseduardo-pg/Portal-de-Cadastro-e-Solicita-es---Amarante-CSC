@@ -75,6 +75,27 @@
   font-weight: 600;
 }
 
+.approve-items-dialog__ncm-error {
+  margin: 0;
+  padding: 10px 12px;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  color: #7a271a;
+  font-size: 0.95rem;
+}
+
+.approve-items-dialog__item--error {
+  padding: 8px;
+  border: 1px solid #f04438;
+  background: #fffaf9;
+}
+
+.approve-items-dialog__ncm-error-detail {
+  font-size: 0.85rem;
+  color: #b42318;
+  font-weight: 600;
+}
+
 .approve-items-dialog__warn {
   margin: 10px 0 0;
   padding: 8px 10px;

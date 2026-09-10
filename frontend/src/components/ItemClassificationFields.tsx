@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { FormField } from './FormField';
 import { SearchableSelect } from './SearchableSelect';
-import { filterGroupsForSubgroup, filterSubgroupsForFamily } from '../lib/pdmCascade';
-import type { CatalogGroup, CatalogSubgroup, Family } from '../lib/types';
+import { filterGroupsForSubgroup } from '../lib/pdmCascade';
+import type { CatalogGroup } from '../lib/types';
 import './PdmClassificationFields.css';
 
 export type ItemClassificationValue = {
@@ -19,9 +19,8 @@ export type ItemClassificationErrors = {
 type Props = {
   value: ItemClassificationValue;
   groups: CatalogGroup[];
-  subgroups: CatalogSubgroup[];
-  /** Família do lote (ITM-11) — restringe subgrupos. */
-  familyContext?: Family | null;
+  /** Subgrupo do lote (ITM-11) — o item só escolhe o grupo dentro deste subgrupo. */
+  lotSubgroupId: string;
   errors?: ItemClassificationErrors;
   hideTitle?: boolean;
   readOnly?: boolean;
@@ -35,48 +34,38 @@ const SOURCE_OPTIONS: { value: ItemClassificationValue['source']; label: string 
 ];
 
 /**
- * Classificação SAP por item — cascata Subgrupo → Grupo (folha), com família do lote fixa.
+ * Classificação SAP por item — só Grupo (folha), com subgrupo do lote fixo no cabeçalho.
  */
 export function ItemClassificationFields({
   value,
   groups,
-  subgroups,
-  familyContext,
+  lotSubgroupId,
   errors,
   hideTitle,
   readOnly = false,
   onChange,
   onClearError,
 }: Props) {
-  const visibleSubgroups = useMemo(() => {
-    const list = familyContext?.id
-      ? filterSubgroupsForFamily(subgroups, familyContext.id)
-      : subgroups;
-    return [...list].sort(
-      (a, b) =>
-        a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
-        a.code.localeCompare(b.code),
-    );
-  }, [subgroups, familyContext]);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const visibleGroups = useMemo(() => {
-    if (!value.subgroupId) return [];
-    return [...filterGroupsForSubgroup(groups, value.subgroupId)].sort(
+    if (!lotSubgroupId) return [];
+    return [...filterGroupsForSubgroup(groups, lotSubgroupId)].sort(
       (a, b) =>
         a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
         a.code.localeCompare(b.code),
     );
-  }, [groups, value.subgroupId]);
+  }, [groups, lotSubgroupId]);
 
-  const subgroupOptions = useMemo(
-    () =>
-      visibleSubgroups.map((sg) => ({
-        id: sg.id,
-        label: `${sg.code} — ${sg.name}`,
-        searchText: `${sg.code} ${sg.name}`,
-      })),
-    [visibleSubgroups],
-  );
+  /** Se o subgrupo do lote tiver um único grupo, pré-seleciona. */
+  useEffect(() => {
+    if (readOnly || !lotSubgroupId || !onChangeRef.current) return;
+    if (visibleGroups.length !== 1) return;
+    const only = visibleGroups[0];
+    if (value.groupId === only.id && value.subgroupId === lotSubgroupId) return;
+    onChangeRef.current({ groupId: only.id, subgroupId: lotSubgroupId });
+  }, [lotSubgroupId, visibleGroups, value.groupId, value.subgroupId, readOnly]);
 
   const groupOptions = useMemo(
     () =>
@@ -88,22 +77,11 @@ export function ItemClassificationFields({
     [visibleGroups],
   );
 
-  function handleSubgroupChange(subgroupId: string) {
-    if (readOnly) return;
-    const patch: Partial<ItemClassificationValue> = { subgroupId, groupId: '' };
-    if (subgroupId) {
-      const under = filterGroupsForSubgroup(groups, subgroupId);
-      if (under.length === 1) patch.groupId = under[0].id;
-    }
-    onChange?.(patch);
-    onClearError?.('subgroupId');
-    onClearError?.('groupId');
-  }
-
   function handleGroupChange(groupId: string) {
     if (readOnly) return;
-    onChange?.({ groupId });
+    onChange?.({ groupId, subgroupId: lotSubgroupId });
     onClearError?.('groupId');
+    onClearError?.('subgroupId');
   }
 
   const gridContent = (
@@ -125,39 +103,17 @@ export function ItemClassificationFields({
       </FormField>
 
       <FormField
-        label="Subgrupo"
-        required
-        error={errors?.subgroupId}
-        errorPosition="below"
-        variant="semplice"
-        className="pdm-span-4"
-      >
-        {readOnly ? (
-          <select value={value.subgroupId} disabled>
-            <option value={value.subgroupId}>
-              {subgroupOptions.find((o) => o.id === value.subgroupId)?.label ?? '—'}
-            </option>
-          </select>
-        ) : (
-          <SearchableSelect
-            key={`subgroup-${familyContext?.id ?? 'all'}`}
-            label=""
-            options={subgroupOptions}
-            value={value.subgroupId}
-            onChange={handleSubgroupChange}
-            placeholder="Digite código ou nome do subgrupo…"
-            emptyLabel="Selecione o subgrupo…"
-          />
-        )}
-      </FormField>
-
-      <FormField
         label="Grupo de itens"
         required
         error={errors?.groupId}
         errorPosition="below"
         variant="semplice"
-        className="pdm-span-4"
+        className="pdm-span-8"
+        hint={
+          lotSubgroupId
+            ? undefined
+            : 'Selecione o subgrupo da solicitação no pré-formulário.'
+        }
       >
         {readOnly ? (
           <select value={value.groupId} disabled>
@@ -167,19 +123,21 @@ export function ItemClassificationFields({
           </select>
         ) : (
           <SearchableSelect
-            key={`group-${value.subgroupId || 'none'}`}
+            key={`group-${lotSubgroupId || 'none'}`}
             label=""
             options={groupOptions}
             value={value.groupId}
             onChange={handleGroupChange}
-            disabled={!value.subgroupId}
+            disabled={!lotSubgroupId}
             placeholder={
-              value.subgroupId
+              lotSubgroupId
                 ? 'Digite código ou nome do grupo…'
-                : 'Selecione o subgrupo primeiro'
+                : 'Selecione o subgrupo da solicitação primeiro'
             }
             emptyLabel={
-              value.subgroupId ? 'Selecione o grupo…' : 'Selecione o subgrupo primeiro'
+              lotSubgroupId
+                ? 'Selecione o grupo…'
+                : 'Selecione o subgrupo da solicitação primeiro'
             }
           />
         )}

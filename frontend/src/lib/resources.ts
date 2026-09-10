@@ -212,7 +212,8 @@ export const requestsApi = {
   get: (id: string) => apiFetch<Request>(`/requests/${id}`),
   create: (body: {
     hotelIds: string[];
-    familyId: string;
+    /** Eixo do lote (ITM-11); família é derivada no backend. */
+    subgroupId: string;
     type?: RequestTypeInput;
     fixedAsset?: boolean;
     /** Bloqueio: ao menos uma flag; ambas = bloqueio total. */
@@ -259,7 +260,7 @@ export const requestsApi = {
     id: string,
     body: {
       hotelIds?: string[];
-      familyId?: string;
+      subgroupId?: string;
       type?: RequestTypeInput;
       fixedAsset?: boolean;
       blockRequisition?: boolean;
@@ -316,11 +317,11 @@ export const requestsApi = {
     id: string,
     message: string,
     items?: { itemId: string; ncm: string }[],
-    targetFamilyId?: string,
+    targetSubgroupId?: string,
   ) =>
     apiFetch<Request>(`/requests/${id}/send-from-imobilizado`, {
       method: 'POST',
-      body: JSON.stringify({ message, items, targetFamilyId }),
+      body: JSON.stringify({ message, items, targetSubgroupId }),
     }),
   /** Imobilizado marca como AF e permanece na etapa. */
   markFixedAsset: (id: string, message: string) =>
@@ -334,7 +335,7 @@ export const requestsApi = {
       justification: string;
       itemIds: string[];
       returnToApprover?: boolean;
-      targetFamilyId: string;
+      targetSubgroupId: string;
     },
   ) =>
     apiFetch<Request>(`/requests/${id}/reclassify-fixed-asset`, {
@@ -343,7 +344,7 @@ export const requestsApi = {
     }),
   reclassifyConsumption: (
     id: string,
-    body: { justification: string; itemIds: string[]; targetFamilyId: string },
+    body: { justification: string; itemIds: string[]; targetSubgroupId: string },
   ) =>
     apiFetch<Request>(`/requests/${id}/reclassify-consumption`, {
       method: 'POST',
@@ -413,8 +414,8 @@ export const catalogApi = {
         pageSize: opts?.pageSize ?? 50,
       })}`,
     ),
-  familyAttributes: (familyId: string) =>
-    apiFetch<ProductAttribute[]>(`/catalog/families/${familyId}/attributes`),
+  subgroupAttributes: (subgroupId: string) =>
+    apiFetch<ProductAttribute[]>(`/catalog/subgroups/${subgroupId}/attributes`),
   groups: (
     opts?:
       | {

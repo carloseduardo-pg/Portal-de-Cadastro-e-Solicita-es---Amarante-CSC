@@ -16,7 +16,7 @@ hotels ──┐
          │                         └── ncm_suggestions
          │
 requests ── request_items ── (products em rascunho)
-    │
+    │         (subgroup_id = eixo do lote; family_id derivado)
     ├── request_stages (timeline / SLA)
     └── request_viewers (presença na tela)
 ```
@@ -27,8 +27,8 @@ requests ── request_items ── (products em rascunho)
 | Grupo / Subgrupo / Família | `groups`, `subgroups`, `families` | Hierarquia PDM |
 | Produto | `products` | Item único; descrição curta CAIXA ALTA |
 | Produto × Hotel | `product_hotels` | N:N — um produto em vários hotéis |
-| Atributos PDM | `product_attributes`, `product_attribute_values` | Por família |
-| Solicitação | `requests` | Fluxo aprovação cadastro; `code` numérico crescente (máx. 10 dígitos) |
+| Atributos PDM | `product_attributes`, `product_attribute_values` | Por subgrupo |
+| Solicitação | `requests` | Fluxo aprovação; ITM-11 = `subgroup_id` NOT NULL; `family_id` derivado |
 | Item da solicitação | `request_items` | Linhas / lote |
 | Estágios | `request_stages` | Histórico status + SLA |
 | Presença | `request_viewers` | Quem está com a solicitação aberta (TTL) |

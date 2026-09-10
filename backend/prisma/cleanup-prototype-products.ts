@@ -143,14 +143,16 @@ async function main() {
         where: { familyId: f.id },
         select: { id: true },
       });
+      const aDel = await tx.productAttribute.deleteMany({
+        where: { subgroupId: { in: sgs.map((s) => s.id) } },
+      });
+      attrs += aDel.count;
       for (const sg of sgs) {
         const gDel = await tx.group.deleteMany({ where: { subgroupId: sg.id } });
         groups += gDel.count;
       }
       const sgDel = await tx.subgroup.deleteMany({ where: { familyId: f.id } });
       subgroups += sgDel.count;
-      const aDel = await tx.productAttribute.deleteMany({ where: { familyId: f.id } });
-      attrs += aDel.count;
       const still = await tx.request.count({ where: { familyId: f.id } });
       if (still === 0) {
         await tx.family.delete({ where: { id: f.id } });

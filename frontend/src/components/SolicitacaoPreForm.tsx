@@ -3,18 +3,20 @@ import { SearchableSelect } from './SearchableSelect';
 import { ConfirmDialog } from './ConfirmDialog';
 import { FormField } from './FormField';
 import { HotelMultiSelect } from './HotelMultiSelect';
-import type { Family, Hotel } from '../lib/types';
+import type { CatalogSubgroup, Family, Hotel } from '../lib/types';
 import './SolicitacaoPreForm.css';
 
 type Props = {
   hotels: Hotel[];
-  families: Family[];
+  /** Catálogo de subgrupos (já traz `family` embutido). */
+  subgroups: CatalogSubgroup[];
   hotelIds: string[];
-  familyId: string;
+  subgroupId: string;
   fixedAsset?: boolean;
-  familyLocked?: boolean;
+  /** Trocar o subgrupo com itens preenchidos exige confirmação. */
+  subgroupLocked?: boolean;
   hotelError?: string;
-  familyError?: string;
+  subgroupError?: string;
   readOnly?: boolean;
   /** Quando true, oculta o seletor de tipo (solicitante não decide AF/UC). */
   hideKind?: boolean;
@@ -23,91 +25,103 @@ type Props = {
   /** Quando true, bloqueia só as unidades. */
   hotelsReadOnly?: boolean;
   onHotelChange: (ids: string[]) => void;
-  onFamilyChange: (familyId: string) => void;
+  onSubgroupChange: (subgroupId: string) => void;
   onFixedAssetChange?: (fixedAsset: boolean) => void;
   onClearHotelError?: () => void;
-  onClearFamilyError?: () => void;
+  onClearSubgroupError?: () => void;
 };
 
-function familyLabel(f: Family) {
+function subgroupLabel(sg: CatalogSubgroup) {
+  return `${sg.code} — ${sg.name}`;
+}
+
+function familyLabel(f: Pick<Family, 'code' | 'name'>) {
   return `${f.code} — ${f.name}`;
 }
 
-/** Flag de tipo da família — amarelo UC, azul imobilizado. */
-function familyKindBadge(f: Family): { label: string; tone: 'yellow' | 'blue' } {
-  if (f.itemKind === 'FIXED_ASSET') {
+/** Flag de tipo — amarelo UC, azul imobilizado. */
+function kindBadge(
+  itemKind?: 'CONSUMPTION' | 'FIXED_ASSET',
+): { label: string; tone: 'yellow' | 'blue' } {
+  if (itemKind === 'FIXED_ASSET') {
     return { label: 'Imobilizado', tone: 'blue' };
   }
   return { label: 'Uso e consumo', tone: 'yellow' };
 }
 
 /**
- * Pré-formulário da solicitação — unidades + família do lote (ITM-11).
+ * Pré-formulário da solicitação — unidades + subgrupo do lote (ITM-11).
+ * Família é exibida como informação derivada (somente leitura).
  */
 export function SolicitacaoPreForm({
   hotels,
-  families,
+  subgroups,
   hotelIds,
-  familyId,
+  subgroupId,
   fixedAsset = false,
-  familyLocked = false,
+  subgroupLocked = false,
   hotelError,
-  familyError,
+  subgroupError,
   readOnly = false,
   hideKind = false,
   kindReadOnly,
   hotelsReadOnly,
   onHotelChange,
-  onFamilyChange,
+  onSubgroupChange,
   onFixedAssetChange,
   onClearHotelError,
-  onClearFamilyError,
+  onClearSubgroupError,
 }: Props) {
-  const [pendingFamilyId, setPendingFamilyId] = useState<string | null>(null);
+  const [pendingSubgroupId, setPendingSubgroupId] = useState<string | null>(null);
   const kindDisabled = kindReadOnly ?? readOnly;
   const hotelsDisabled = hotelsReadOnly ?? readOnly;
 
-  const sortedFamilies = useMemo(
+  const sortedSubgroups = useMemo(
     () =>
-      [...families].sort((a, b) =>
-        a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
-        a.code.localeCompare(b.code),
+      [...subgroups].sort(
+        (a, b) =>
+          a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }) ||
+          a.code.localeCompare(b.code),
       ),
-    [families],
+    [subgroups],
   );
 
-  const familyOptions = useMemo(
+  const subgroupOptions = useMemo(
     () =>
-      sortedFamilies.map((f) => ({
-        id: f.id,
-        label: familyLabel(f),
-        searchText: `${f.code} ${f.name} ${f.itemKind === 'FIXED_ASSET' ? 'imobilizado ativo fixo' : 'uso consumo'}`,
-        badge: familyKindBadge(f),
-      })),
-    [sortedFamilies],
+      sortedSubgroups.map((sg) => {
+        const kind = sg.itemKind ?? sg.family?.itemKind;
+        return {
+          id: sg.id,
+          label: subgroupLabel(sg),
+          searchText: `${sg.code} ${sg.name} ${sg.family?.code ?? ''} ${sg.family?.name ?? ''} ${kind === 'FIXED_ASSET' ? 'imobilizado ativo fixo' : 'uso consumo'}`,
+          badge: kindBadge(kind),
+        };
+      }),
+    [sortedSubgroups],
   );
 
-  const selectedFamily = families.find((f) => f.id === familyId);
+  const selectedSubgroup = subgroups.find((sg) => sg.id === subgroupId);
+  const derivedFamily = selectedSubgroup?.family;
 
-  function applyFamily(nextId: string) {
+  function applySubgroup(nextId: string) {
     if (!nextId) return;
-    onFamilyChange(nextId);
-    onClearFamilyError?.();
+    onSubgroupChange(nextId);
+    onClearSubgroupError?.();
   }
 
-  function requestFamilyChange(nextId: string) {
-    if (readOnly || !nextId || nextId === familyId) return;
-    if (familyLocked && familyId) {
-      setPendingFamilyId(nextId);
+  function requestSubgroupChange(nextId: string) {
+    if (readOnly || !nextId || nextId === subgroupId) return;
+    if (subgroupLocked && subgroupId) {
+      setPendingSubgroupId(nextId);
       return;
     }
-    applyFamily(nextId);
+    applySubgroup(nextId);
   }
 
-  function confirmFamilyChange() {
-    if (!pendingFamilyId) return;
-    applyFamily(pendingFamilyId);
-    setPendingFamilyId(null);
+  function confirmSubgroupChange() {
+    if (!pendingSubgroupId) return;
+    applySubgroup(pendingSubgroupId);
+    setPendingSubgroupId(null);
   }
 
   function setKind(nextFixed: boolean) {
@@ -122,17 +136,19 @@ export function SolicitacaoPreForm({
         <p>
           {readOnly ? (
             <>
-              <strong>ITM-11:</strong> unidades e família desta solicitação (somente visualização).
+              <strong>ITM-11:</strong> unidades e subgrupo desta solicitação (somente visualização).
             </>
           ) : hideKind ? (
             <>
-              <strong>ITM-11:</strong> selecione as unidades e a família. O destino do fluxo
-              (Administrativo ou Imobilizado) segue o tipo da família escolhida.
+              <strong>ITM-11:</strong> selecione as unidades e o subgrupo. Só será possível pedir
+              itens deste subgrupo nesta solicitação. O destino do fluxo (Administrativo ou
+              Imobilizado) segue o tipo da família do subgrupo.
             </>
           ) : (
             <>
-              <strong>ITM-11:</strong> selecione as unidades e a família desta solicitação. Depois adicione
-              quantos itens precisar. Cada item terá seu próprio grupo e subgrupo na etapa seguinte.
+              <strong>ITM-11:</strong> selecione as unidades e o subgrupo desta solicitação. Só será
+              possível pedir itens deste subgrupo nesta solicitação. Cada item terá seu próprio
+              grupo na etapa seguinte.
             </>
           )}
         </p>
@@ -140,43 +156,43 @@ export function SolicitacaoPreForm({
 
       <div className="solicitacao-pre-form-body">
         {hideKind ? null : (
-        <FormField
-          label="Tipo de item"
-          required
-          hint={
-            fixedAsset
-              ? 'Ativo fixo: famílias patrimoniais — tratativa exclusiva do aprovador - imobilizado.'
-              : 'Uso e consumo: famílias de estoque/consumo — após o imobilizado, segue ao administrativo.'
-          }
-        >
-          <div
-            className="item-kind-segment"
-            role="radiogroup"
-            aria-label="Tipo de item"
-            aria-disabled={kindDisabled}
+          <FormField
+            label="Tipo de item"
+            required
+            hint={
+              fixedAsset
+                ? 'Ativo fixo: famílias patrimoniais — tratativa exclusiva do aprovador - imobilizado.'
+                : 'Uso e consumo: famílias de estoque/consumo — após o imobilizado, segue ao administrativo.'
+            }
           >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!fixedAsset}
-              disabled={kindDisabled}
-              className={`item-kind-segment__btn${!fixedAsset ? ' item-kind-segment__btn--active' : ''}`}
-              onClick={() => setKind(false)}
+            <div
+              className="item-kind-segment"
+              role="radiogroup"
+              aria-label="Tipo de item"
+              aria-disabled={kindDisabled}
             >
-              Uso e consumo
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={fixedAsset}
-              disabled={kindDisabled}
-              className={`item-kind-segment__btn${fixedAsset ? ' item-kind-segment__btn--active' : ''}`}
-              onClick={() => setKind(true)}
-            >
-              Ativo fixo
-            </button>
-          </div>
-        </FormField>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!fixedAsset}
+                disabled={kindDisabled}
+                className={`item-kind-segment__btn${!fixedAsset ? ' item-kind-segment__btn--active' : ''}`}
+                onClick={() => setKind(false)}
+              >
+                Uso e consumo
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={fixedAsset}
+                disabled={kindDisabled}
+                className={`item-kind-segment__btn${fixedAsset ? ' item-kind-segment__btn--active' : ''}`}
+                onClick={() => setKind(true)}
+              >
+                Ativo fixo
+              </button>
+            </div>
+          </FormField>
         )}
 
         <HotelMultiSelect
@@ -191,54 +207,63 @@ export function SolicitacaoPreForm({
         />
 
         <FormField
-          label="Código / Nome da família"
+          label="Código / Nome do subgrupo"
           required
-          error={familyError}
-          hint={readOnly ? undefined : `${sortedFamilies.length} família(s) no catálogo.`}
+          error={subgroupError}
+          hint={readOnly ? undefined : `${sortedSubgroups.length} subgrupo(s) no catálogo.`}
           className="pre-form-family-select"
         >
           {readOnly ? (
-            <select value={familyId} disabled>
-              <option value={familyId}>{selectedFamily ? familyLabel(selectedFamily) : '—'}</option>
+            <select value={subgroupId} disabled>
+              <option value={subgroupId}>
+                {selectedSubgroup ? subgroupLabel(selectedSubgroup) : '—'}
+              </option>
             </select>
           ) : (
             <SearchableSelect
               label=""
-              options={familyOptions}
-              value={familyId}
-              onChange={requestFamilyChange}
-              placeholder="Digite código ou nome da família…"
-              emptyLabel="Selecione a família…"
+              options={subgroupOptions}
+              value={subgroupId}
+              onChange={requestSubgroupChange}
+              placeholder="Digite código ou nome do subgrupo…"
+              emptyLabel="Selecione o subgrupo…"
             />
           )}
         </FormField>
 
-        {selectedFamily ? (
+        {selectedSubgroup && derivedFamily ? (
           <p className="pre-form-family-selected">
-            Família selecionada: <strong>{familyLabel(selectedFamily)}</strong>{' '}
+            Família (derivada): <strong>{familyLabel(derivedFamily)}</strong>{' '}
             <span
-              className={`searchable-select-badge searchable-select-badge--${familyKindBadge(selectedFamily).tone}`}
+              className={`searchable-select-badge searchable-select-badge--${kindBadge(derivedFamily.itemKind ?? selectedSubgroup.itemKind).tone}`}
             >
-              {familyKindBadge(selectedFamily).label}
+              {kindBadge(derivedFamily.itemKind ?? selectedSubgroup.itemKind).label}
             </span>
+            <br />
+            Subgrupo: <strong>{subgroupLabel(selectedSubgroup)}</strong>
+          </p>
+        ) : selectedSubgroup ? (
+          <p className="pre-form-family-selected">
+            Subgrupo: <strong>{subgroupLabel(selectedSubgroup)}</strong>
           </p>
         ) : null}
 
-        {!readOnly && familyLocked && familyId ? (
+        {!readOnly && subgroupLocked && subgroupId ? (
           <p className="family-lock-note">
-            Família definida para esta solicitação. Para trocar, confirme — os itens atuais serão descartados.
+            Subgrupo definido para esta solicitação. Para trocar, confirme — os itens atuais serão
+            descartados.
           </p>
         ) : null}
       </div>
 
       {!readOnly ? (
         <ConfirmDialog
-          open={pendingFamilyId !== null}
-          title="Trocar família da solicitação"
-          message="Alterar a família descarta todos os itens já preenchidos nesta solicitação. Deseja continuar?"
-          confirmLabel="Trocar família"
-          onConfirm={confirmFamilyChange}
-          onCancel={() => setPendingFamilyId(null)}
+          open={pendingSubgroupId !== null}
+          title="Trocar subgrupo da solicitação"
+          message="Alterar o subgrupo descarta todos os itens já preenchidos nesta solicitação. Deseja continuar?"
+          confirmLabel="Trocar subgrupo"
+          onConfirm={confirmSubgroupChange}
+          onCancel={() => setPendingSubgroupId(null)}
         />
       ) : null}
     </article>

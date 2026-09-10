@@ -664,6 +664,8 @@ export function ProdutoExistentePage() {
             rows={4}
             value={observation}
             onChange={(e) => setObservation(e.target.value)}
+            required={isBloqueio}
+            aria-required={isBloqueio}
             placeholder={
               isBloqueio
                 ? 'Ex.: item descontinuado pelo fornecedor; substituído pelo código 2015.'
@@ -686,7 +688,14 @@ export function ProdutoExistentePage() {
           type="button"
           className="btn btn-primary"
           disabled={saving}
-          onClick={() => setSendDialogOpen(true)}
+          onClick={() => {
+            const problem = validate();
+            if (problem) {
+              setAlert(problem);
+              return;
+            }
+            setSendDialogOpen(true);
+          }}
         >
           {saving ? 'Salvando…' : 'Enviar'}
         </button>

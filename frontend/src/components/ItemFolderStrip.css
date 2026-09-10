@@ -111,6 +111,16 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 12%, transparent);
 }
 
+.item-folder-tile--error .item-folder-body {
+  border-color: #b42318;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #b42318 18%, transparent);
+}
+
+.item-folder-tile--error .item-folder-meta {
+  color: #b42318;
+  font-weight: 700;
+}
+
 .item-folder-remove {
   position: absolute;
   top: -8px;

@@ -53,9 +53,9 @@ export class CatalogController {
     });
   }
 
-  @Get('families/:id/attributes')
-  familyAttributes(@Param('id', ParseUUIDPipe) id: string) {
-    return this.catalog.familyAttributes(id);
+  @Get('subgroups/:id/attributes')
+  subgroupAttributes(@Param('id', ParseUUIDPipe) id: string) {
+    return this.catalog.subgroupAttributes(id);
   }
 
   @Get('groups')

@@ -167,8 +167,11 @@ export class CreateRequestDto {
   @IsUUID('4', { each: true })
   hotelIds?: string[];
 
+  /**
+   * Eixo do lote (ITM-11). Família é derivada de `subgroups.family_id` e gravada no banco.
+   */
   @IsUUID()
-  familyId!: string;
+  subgroupId!: string;
 
   @IsOptional()
   @IsEnum(RequestType)
@@ -233,9 +236,10 @@ export class UpdateRequestDto {
   @IsUUID('4', { each: true })
   hotelIds?: string[];
 
+  /** Eixo do lote — família é derivada e gravada no banco. */
   @IsOptional()
   @IsUUID()
-  familyId?: string;
+  subgroupId?: string;
 
   @IsOptional()
   @IsEnum(RequestType)

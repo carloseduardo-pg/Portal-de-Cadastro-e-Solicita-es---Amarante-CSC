@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { formatNcmDisplay } from '../lib/ncm';
 import type { RequestItem } from '../lib/types';
@@ -23,6 +23,10 @@ type Props = {
   items: ApproveDialogItem[];
   stageComment: string;
   busy?: boolean;
+  /** Bloqueio não exige confirmação de NCM (ITM-09 não se aplica). */
+  skipNcmConfirmation?: boolean;
+  /** Itens com NCM ausente em `ncm_codes` após tentativa de aprovação. */
+  ncmErrorItems?: { id: string; description: string; ncm: string }[];
   onClose: () => void;
   onConfirm: (payload: ApproveItemsConfirmPayload) => void;
 };
@@ -37,20 +41,31 @@ export function ApproveItemsDialog({
   items,
   stageComment,
   busy = false,
+  skipNcmConfirmation = false,
+  ncmErrorItems = [],
   onClose,
   onConfirm,
 }: Props) {
   const allIds = useMemo(() => items.map((i) => i.id), [items]);
+  const allIdsRef = useRef(allIds);
+  allIdsRef.current = allIds;
+
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [returnAsDraft, setReturnAsDraft] = useState(false);
   const [returnIds, setReturnIds] = useState<string[]>([]);
 
+  /** Só reinicia seleção na abertura do modal (false → true), não quando `items` muda por re-render do pai. */
   useEffect(() => {
     if (!open) return;
-    setSelectedIds(allIds);
+    setSelectedIds(allIdsRef.current);
     setReturnAsDraft(false);
     setReturnIds([]);
-  }, [open, allIds]);
+  }, [open]);
+
+  const ncmErrorIdSet = useMemo(
+    () => new Set(ncmErrorItems.map((x) => x.id)),
+    [ncmErrorItems],
+  );
 
   const allSelected =
     selectedIds.length === allIds.length &&
@@ -62,6 +77,7 @@ export function ApproveItemsDialog({
   );
   const rejectedCount = rejectedItems.length;
 
+  /** Mantém returnIds alinhados à seleção: limpa se não há parcial; remove ids que voltaram a ser aprovados. */
   useEffect(() => {
     if (!isPartial) {
       setReturnAsDraft(false);
@@ -92,14 +108,16 @@ export function ApproveItemsDialog({
       alert('Selecione ao menos um item para aprovar.');
       return;
     }
-    for (const id of selectedIds) {
-      const it = items.find((x) => x.id === id);
-      const ncm = it?.resolvedNcm?.trim() || it?.ncmCode?.trim();
-      if (!ncm) {
-        alert(
-          `ITM-09: confirme o NCM do item aprovado "${it?.descriptionShort ?? id}" antes de finalizar.`,
-        );
-        return;
+    if (!skipNcmConfirmation) {
+      for (const id of selectedIds) {
+        const it = items.find((x) => x.id === id);
+        const ncm = it?.resolvedNcm?.trim() || it?.ncmCode?.trim();
+        if (!ncm) {
+          alert(
+            `ITM-09: confirme o NCM do item aprovado "${it?.descriptionShort ?? id}" antes de finalizar.`,
+          );
+          return;
+        }
       }
     }
     if (isPartial && returnAsDraft) {
@@ -148,6 +166,15 @@ export function ApproveItemsDialog({
       }
     >
       <div className="approve-items-dialog">
+        {ncmErrorItems.length ? (
+          <p className="approve-items-dialog__ncm-error" role="alert">
+            NCM não localizado na base de NCMs do portal em{' '}
+            <strong>
+              {ncmErrorItems.length} item{ncmErrorItems.length === 1 ? '' : 's'}
+            </strong>
+            . Feche o diálogo, corrija o NCM destacado e tente novamente.
+          </p>
+        ) : null}
         <p className="approve-items-dialog__mode" role="status">
           {isPartial ? (
             <>
@@ -183,8 +210,13 @@ export function ApproveItemsDialog({
             {items.map((it) => {
               const ncm = it.resolvedNcm?.trim() || it.ncmCode?.trim();
               const checked = selectedIds.includes(it.id);
+              const hasNcmError = ncmErrorIdSet.has(it.id);
+              const errorNcm = ncmErrorItems.find((x) => x.id === it.id)?.ncm;
               return (
-                <li key={it.id}>
+                <li
+                  key={it.id}
+                  className={hasNcmError ? 'approve-items-dialog__item--error' : undefined}
+                >
                   <label>
                     <input
                       type="checkbox"
@@ -202,6 +234,12 @@ export function ApproveItemsDialog({
                         )}
                         {checked && !ncm ? ' (obrigatório para aprovar)' : null}
                       </span>
+                      {hasNcmError ? (
+                        <span className="approve-items-dialog__ncm-error-detail">
+                          NCM não localizado na base de NCMs do portal
+                          {errorNcm ? ` (${errorNcm})` : ''}
+                        </span>
+                      ) : null}
                     </span>
                   </label>
                 </li>

@@ -165,7 +165,6 @@ model Family {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   subgroups         Subgroup[]
-  productAttributes ProductAttribute[]
   requests          Request[]
 
   @@unique([name, itemKind])
@@ -181,8 +180,10 @@ model Subgroup {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  family Family  @relation(fields: [familyId], references: [id])
-  groups Group[]
+  family            Family             @relation(fields: [familyId], references: [id])
+  groups            Group[]
+  productAttributes ProductAttribute[]
+  requests          Request[]
 
   @@unique([familyId, name])
   @@map("subgroups")
@@ -379,18 +380,19 @@ model ProductHotel {
 }
 
 model ProductAttribute {
-  id        String   @id @default(uuid()) @db.Uuid
-  familyId  String   @map("family_id") @db.Uuid
-  name      String
-  required  Boolean  @default(false)
-  examples  String[] @default([])
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id         String   @id @default(uuid()) @db.Uuid
+  subgroupId String   @map("subgroup_id") @db.Uuid
+  name       String
+  required   Boolean  @default(false)
+  examples   String[] @default([])
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  family Family                  @relation(fields: [familyId], references: [id])
-  values ProductAttributeValue[]
+  subgroup Subgroup                @relation(fields: [subgroupId], references: [id])
+  values   ProductAttributeValue[]
 
+  @@index([subgroupId])
   @@map("product_attributes")
 }
 
@@ -412,6 +414,11 @@ model Request {
   requesterId  String       @map("requester_id") @db.Uuid
   hotelId      String       @map("hotel_id") @db.Uuid
   familyId     String       @map("family_id") @db.Uuid
+  /**
+   * Eixo do lote (ITM-11). Família gravada em `familyId` é sempre a de
+   * `subgroups.family_id` deste subgrupo.
+   */
+  subgroupId   String       @map("subgroup_id") @db.Uuid
   type         RequestType  @default(INCLUSAO)
   state        RequestState @default(RASCUNHO)
   /** Flag de ativo fixo — inclui etapa IMOBILIZADO antes do Aprovador de cadastro. */
@@ -449,6 +456,7 @@ model Request {
   requester User           @relation("RequestRequester", fields: [requesterId], references: [id])
   hotel     Hotel          @relation(fields: [hotelId], references: [id])
   family    Family         @relation(fields: [familyId], references: [id])
+  subgroup  Subgroup       @relation(fields: [subgroupId], references: [id])
   parentRequest Request?   @relation("RequestSplit", fields: [parentRequestId], references: [id])
   childRequests Request[]  @relation("RequestSplit")
   items     RequestItem[]
@@ -461,6 +469,7 @@ model Request {
   @@index([hotelId])
   @@index([fixedAsset])
   @@index([parentRequestId])
+  @@index([subgroupId])
   @@map("requests")
 }
 

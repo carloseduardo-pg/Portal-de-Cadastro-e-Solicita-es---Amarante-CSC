@@ -102,7 +102,6 @@ export type Family = {
   name: string;
   active?: boolean;
   itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
-  attributesCount?: number;
   subgroupsCount?: number;
   productsCount?: number;
   anomalies?: HierarchyAnomaly[];
@@ -131,9 +130,15 @@ export type CatalogSubgroup = {
   familyId?: string;
   itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
   groupsCount?: number;
+  attributesCount?: number;
   productsCount?: number;
   anomalies?: HierarchyAnomaly[];
-  family?: { id: string; code: string; name: string };
+  family?: {
+    id: string;
+    code: string;
+    name: string;
+    itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+  };
 };
 
 export type ProductAttribute = {
@@ -141,6 +146,7 @@ export type ProductAttribute = {
   name: string;
   required: boolean;
   examples: string[];
+  subgroupId?: string;
 };
 
 export type RequestItem = {
@@ -225,6 +231,20 @@ export type Request = {
   approvedBy?: { id: string; name: string } | null;
   hotel?: { id: string; code: string; name: string };
   hotels?: { hotel: Hotel }[];
+  /** Subgrupo do lote (ITM-11); família é derivada. */
+  subgroupId: string;
+  subgroup?: {
+    id: string;
+    code: string;
+    name: string;
+    familyId?: string;
+    family?: {
+      id: string;
+      code: string;
+      name: string;
+      itemKind?: 'CONSUMPTION' | 'FIXED_ASSET';
+    };
+  } | null;
   family?: {
     id: string;
     code: string;

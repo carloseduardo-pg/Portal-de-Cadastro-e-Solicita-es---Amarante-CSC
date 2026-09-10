@@ -27,6 +27,57 @@ export type AuthUser = {
   capabilities?: string[];
 };
 
+/** Item com NCM ausente em `ncm_codes` (resposta `NCM_NOT_FOUND`). */
+export type NcmNotFoundItem = {
+  id: string;
+  description: string;
+  ncm: string;
+};
+
+export type ApiErrorBody = {
+  statusCode?: number;
+  message?: string | string[];
+  code?: string;
+  items?: NcmNotFoundItem[];
+  error?: string;
+};
+
+/** Erro HTTP da API com corpo preservado (ex.: `NCM_NOT_FOUND`). */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: ApiErrorBody;
+  readonly code?: string;
+
+  constructor(status: number, body: ApiErrorBody) {
+    const raw = body.message;
+    const msg = Array.isArray(raw)
+      ? raw.join(', ')
+      : typeof raw === 'string'
+        ? raw
+        : 'Falha na requisição';
+    super(msg);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+    this.code = typeof body.code === 'string' ? body.code : undefined;
+  }
+}
+
+/** Type guard para erro estruturado de NCM não encontrado na base do portal. */
+export function isNcmNotFoundError(
+  err: unknown,
+): err is ApiError & { body: { items: NcmNotFoundItem[] } } {
+  return (
+    err instanceof ApiError &&
+    err.code === 'NCM_NOT_FOUND' &&
+    Array.isArray(err.body.items)
+  );
+}
+
+function throwApiError(res: Response, err: ApiErrorBody): never {
+  throw new ApiError(res.status, err);
+}
+
 /**
  * Cliente HTTP Portal Amarante: sempre `credentials: 'include'` (cookies JWT).
  * Em 401 (exceto login/refresh), tenta refresh e repete a chamada uma vez.
@@ -42,19 +93,16 @@ export async function apiFetch<T>(
     if (refreshed.ok) {
       const retry = await fetchApi(path, options);
       if (!retry.ok) {
-        const err = await retry.json().catch(() => ({}));
-        throw new Error(err.message || 'Falha na requisição');
+        const err = (await retry.json().catch(() => ({}))) as ApiErrorBody;
+        throwApiError(retry, err);
       }
       return retry.json() as Promise<T>;
     }
   }
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    const msg = Array.isArray(err.message)
-      ? err.message.join(', ')
-      : err.message || 'Falha na requisição';
-    throw new Error(msg);
+    const err = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throwApiError(res, err);
   }
 
   if (res.status === 204) {

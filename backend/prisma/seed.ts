@@ -5,7 +5,7 @@
  */
 import { PrismaClient, SupplierOriginBase } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { pdmAttributesForFamily } from './pdm-catalog';
+import { pdmAttributesForSubgroup } from './pdm-catalog';
 
 const prisma = new PrismaClient();
 
@@ -139,37 +139,33 @@ async function main() {
    */
 
   /**
-   * DEMO P3 — atributos por família já importada do SAP.
-   * Sem famílias (antes do import:sap): nada a fazer.
+   * DEMO P3 — atributos por subgrupo já importado do SAP.
+   * Apaga e recria (não duplica família → todos os filhos). Sem subgrupos: nada a fazer.
    */
-  const families = await prisma.family.findMany({ where: { active: true } });
+  await prisma.productAttributeValue.deleteMany({});
+  await prisma.productAttribute.deleteMany({});
+  const subgroups = await prisma.subgroup.findMany({
+    where: { active: true },
+    include: { family: { select: { id: true, name: true } } },
+    orderBy: [{ familyId: 'asc' }, { name: 'asc' }],
+  });
+  /** Índice por família — subgrupos irmãos recebem templates distintos (demo P3). */
+  const siblingIndex = new Map<string, number>();
   let attributeCount = 0;
-  for (const family of families) {
-    const defs = pdmAttributesForFamily(family.name);
+  for (const subgroup of subgroups) {
+    const idx = siblingIndex.get(subgroup.familyId) ?? 0;
+    siblingIndex.set(subgroup.familyId, idx + 1);
+    const defs = pdmAttributesForSubgroup(subgroup.name, subgroup.family.name, idx);
     for (const def of defs) {
-      const existing = await prisma.productAttribute.findFirst({
-        where: { familyId: family.id, name: def.name },
+      await prisma.productAttribute.create({
+        data: {
+          subgroupId: subgroup.id,
+          name: def.name,
+          required: def.required,
+          examples: [...def.examples],
+          active: true,
+        },
       });
-      if (existing) {
-        await prisma.productAttribute.update({
-          where: { id: existing.id },
-          data: {
-            required: def.required,
-            examples: [...def.examples],
-            active: true,
-          },
-        });
-      } else {
-        await prisma.productAttribute.create({
-          data: {
-            familyId: family.id,
-            name: def.name,
-            required: def.required,
-            examples: [...def.examples],
-            active: true,
-          },
-        });
-      }
       attributeCount += 1;
     }
   }
@@ -187,12 +183,12 @@ async function main() {
       where: { group: { subgroup: { familyId: f.id } } },
     });
     if (productCount > 0) continue;
-    await prisma.productAttribute.deleteMany({ where: { familyId: f.id } });
     const sgs = await prisma.subgroup.findMany({
       where: { familyId: f.id },
       select: { id: true },
     });
     for (const sg of sgs) {
+      await prisma.productAttribute.deleteMany({ where: { subgroupId: sg.id } });
       await prisma.group.deleteMany({ where: { subgroupId: sg.id } });
     }
     await prisma.subgroup.deleteMany({ where: { familyId: f.id } });
@@ -237,8 +233,8 @@ async function main() {
   console.log(`    Hotéis: ${counts.hotels} · UM ativas: ${counts.measureUnits}`);
   console.log(
     `    Famílias no banco: ${counts.families} · produtos SAP: ${counts.products}` +
-      (families.length
-        ? ` · attrs demo P3: ${attributeCount}`
+      (subgroups.length
+        ? ` · attrs demo P3: ${attributeCount} (por subgrupo)`
         : ' · attrs demo: (rode import:sap e re-seed)'),
   );
   if (removedFamilies) {

@@ -273,7 +273,7 @@ export class RequestsController {
     body: {
       message?: string;
       items?: { itemId: string; ncm: string }[];
-      targetFamilyId?: string;
+      targetSubgroupId?: string;
     },
     @Req() req: Request & { user?: { id: string } },
   ) {
@@ -282,7 +282,7 @@ export class RequestsController {
       req.user?.id ?? '',
       body.message ?? '',
       body.items ?? [],
-      body.targetFamilyId,
+      body.targetSubgroupId,
     );
   }
 

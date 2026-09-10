@@ -18,6 +18,11 @@
 
 ## Entregas recentes
 
+- **Backfill + API subgroup obrigatório:** script `prisma/backfill-request-subgroup-id.ts`; legados de teste apagados; migration `20260910200000_request_subgroup_id_not_null`. Create/update/reclassify sem `familyId` no payload — família só derivada. E2E criar→devolver→reclassificar AF→encerrar OK.
+- **ITM-11 por subgrupo (UI):** pré-formulário pede **subgrupo** (`/catalog/subgroups`); família fica só leitura/derivada. `DadosDoItemPage` / `DetalhesSolicitacaoPage` gravam `subgroupId`; classificação do item lista só **grupos** do lote; auto-select se houver grupo único. Payload create/update aceita `subgroupId`.
+- **Atributos PDM por subgrupo:** `product_attributes.subgroup_id` (migration apaga/recarrega); API `GET /catalog/subgroups/:id/attributes`; formulário e Parametrizações por subgrupo. Persistência dos valores preenchidos continua fora de escopo.
+- **NCM na aprovação:** `ensureNcmCode` só consulta `ncm_codes` (sem upsert); `approve`/`sendFromImobilizado` acumulam `NCM_NOT_FOUND` com lista de itens; UI destaca pastas/linhas e banner “NCM não localizado na base de NCMs do portal”.
+- **Reclassificar AF — sem pergunta de retorno:** removidos radios “volta ao Administrativo / Imobilizado conclui sozinho” do diálogo; payload omite `returnToApprover` (backend `?? true`). Timeline não exibe mais a linha de “escolha” de retorno.
 - **Central de notificações:** modal grande — abas Não lidas / Lidas / Lixeira; **recuperar** (uma/todas); excluir uma ou esvaziar (aviso permanente); confirmação em todas as ações; fix z-index do ConfirmDialog acima do modal.
 - **Setup DB respeita `.env`:** `setup.sh` / `check.sh` / `apply-triggers.sh` / `migrate.sh` leem `DATABASE_URL` (antes hardcoded `postgree`). Helper `_db_env.sh`.
 - **Seed de usuários:** só contas CSC reais + `admin@amarante.local` (lab); demais `*.local` removidos do seed e desativados no re-seed.

@@ -367,8 +367,8 @@ export class RequestsService {
   }
 
   /**
-   * Primeira etapa de aprovação após o solicitante — definida pela família do lote.
-   * CONSUMPTION → Aprovador - Administrativo; FIXED_ASSET → Aprovador - Imobilizado.
+   * Primeira etapa de aprovação após o solicitante — definida pelo kind do lote
+   * (família/subgrupo). CONSUMPTION → Administrativo; FIXED_ASSET → Imobilizado.
    */
   private firstApprovalState(
     familyKind?: 'CONSUMPTION' | 'FIXED_ASSET' | boolean | null,
@@ -379,7 +379,7 @@ export class RequestsService {
     return RequestState.APROVADOR;
   }
 
-  /** Resolve itemKind / fixedAsset / destino a partir da família do lote. */
+  /** Resolve itemKind / fixedAsset / destino a partir da família do lote (legado: subgroup_id NULL). */
   private async resolveRoutingFromFamily(familyId: string) {
     const family = await this.prisma.family.findFirst({
       where: { id: familyId, active: true },
@@ -391,6 +391,8 @@ export class RequestsService {
     const fixedAsset = family.itemKind === 'FIXED_ASSET';
     return {
       family,
+      subgroup: null as null,
+      subgroupId: null as string | null,
       fixedAsset,
       itemKind: fixedAsset
         ? ('FIXED_ASSET' as const)
@@ -399,19 +401,71 @@ export class RequestsService {
     };
   }
 
-  /** Exige família ativa do kind informado (transferência entre setores). */
-  private async assertTargetFamily(
-    familyId: string | undefined,
-    kind: 'CONSUMPTION' | 'FIXED_ASSET',
-  ) {
-    if (!familyId?.trim()) {
+  /** Resolve roteamento a partir do subgrupo (eixo do lote); família vem embutida. */
+  private async resolveRoutingFromSubgroup(subgroupId: string) {
+    const subgroup = await this.prisma.subgroup.findFirst({
+      where: { id: subgroupId, active: true },
+      include: {
+        family: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            itemKind: true,
+            active: true,
+          },
+        },
+      },
+    });
+    if (!subgroup?.family?.active) {
       throw new BadRequestException(
-        kind === 'FIXED_ASSET'
-          ? 'Selecione a família de ativo fixo para encaminhar.'
-          : 'Selecione a família de uso e consumo para encaminhar.',
+        'Subgrupo inválido ou inativo (ou família associada inativa).',
       );
     }
-    return this.assertFamilyExists(familyId, kind);
+    const family = subgroup.family;
+    const fixedAsset = family.itemKind === 'FIXED_ASSET';
+    return {
+      family,
+      subgroup,
+      subgroupId: subgroup.id,
+      fixedAsset,
+      itemKind: fixedAsset
+        ? ('FIXED_ASSET' as const)
+        : ('CONSUMPTION' as const),
+      approvalState: this.firstApprovalState(family.itemKind),
+    };
+  }
+
+  /** Exige subgrupo ativo do kind (via família do subgrupo). */
+  private async assertTargetSubgroup(
+    subgroupId: string | undefined,
+    kind: 'CONSUMPTION' | 'FIXED_ASSET',
+  ) {
+    if (!subgroupId?.trim()) {
+      throw new BadRequestException(
+        kind === 'FIXED_ASSET'
+          ? 'Selecione o subgrupo de ativo fixo para encaminhar.'
+          : 'Selecione o subgrupo de uso e consumo para encaminhar.',
+      );
+    }
+    return this.assertSubgroupExists(subgroupId, kind);
+  }
+
+  /**
+   * Destino de reclassificação: subgrupo obrigatório; família derivada.
+   */
+  private async resolveReclassifyTarget(
+    dto: { targetSubgroupId: string },
+    kind: 'CONSUMPTION' | 'FIXED_ASSET',
+  ) {
+    const subgroup = await this.assertTargetSubgroup(
+      dto.targetSubgroupId,
+      kind,
+    );
+    return {
+      familyId: subgroup.familyId,
+      subgroupId: subgroup.id,
+    };
   }
 
   /**
@@ -997,7 +1051,7 @@ export class RequestsService {
     }
   }
 
-  /** ITM-11 — uma família por solicitação (lote). */
+  /** ITM-11 — uma família por solicitação (lote). Mantido para o front antigo. */
   private async assertFamilyExists(
     familyId: string,
     expectedKind?: 'CONSUMPTION' | 'FIXED_ASSET',
@@ -1017,6 +1071,42 @@ export class RequestsService {
       );
     }
     return family;
+  }
+
+  /** ITM-11 — subgrupo do lote; valida kind via `subgroup.family.itemKind`. */
+  private async assertSubgroupExists(
+    subgroupId: string,
+    expectedKind?: 'CONSUMPTION' | 'FIXED_ASSET',
+  ) {
+    const subgroup = await this.prisma.subgroup.findFirst({
+      where: {
+        id: subgroupId,
+        active: true,
+        family: {
+          active: true,
+          ...(expectedKind ? { itemKind: expectedKind } : {}),
+        },
+      },
+      include: {
+        family: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            itemKind: true,
+            active: true,
+          },
+        },
+      },
+    });
+    if (!subgroup?.family) {
+      throw new BadRequestException(
+        expectedKind
+          ? `Subgrupo inválido/inativo ou incompatível com o tipo ${expectedKind}.`
+          : 'Subgrupo inválido ou inativo.',
+      );
+    }
+    return subgroup;
   }
 
   private async syncRequestHotels(requestId: string, hotelIds: string[]) {
@@ -1111,10 +1201,14 @@ export class RequestsService {
     });
   }
 
-  /** ITM-11 — grupo do item deve pertencer à família do lote. */
+  /**
+   * ITM-11 — grupo do item deve pertencer ao subgrupo do lote.
+   * Sem `subgroupId` (legado): compara pela família do lote.
+   */
   private async assertItemsBelongToFamily(
     familyId: string,
     items: { groupId: string | null; descriptionShort: string }[],
+    subgroupId?: string | null,
   ) {
     const groupIds = [
       ...new Set(items.map((i) => i.groupId).filter(Boolean)),
@@ -1122,13 +1216,19 @@ export class RequestsService {
     if (!groupIds.length) return;
     const groups = await this.prisma.group.findMany({
       where: { id: { in: groupIds } },
-      include: { subgroup: { select: { familyId: true } } },
+      include: { subgroup: { select: { id: true, familyId: true } } },
     });
     const byId = new Map(groups.map((g) => [g.id, g]));
     for (const item of items) {
       if (!item.groupId) continue;
       const g = byId.get(item.groupId);
-      if (!g || g.subgroup.familyId !== familyId) {
+      if (subgroupId) {
+        if (!g || g.subgroupId !== subgroupId) {
+          throw new BadRequestException(
+            `Item "${item.descriptionShort}": grupo não pertence ao subgrupo do lote (ITM-11).`,
+          );
+        }
+      } else if (!g || g.subgroup.familyId !== familyId) {
         throw new BadRequestException(
           `Item "${item.descriptionShort}": grupo não pertence à família do lote (ITM-11).`,
         );
@@ -1473,9 +1573,11 @@ export class RequestsService {
   async create(dto: CreateRequestDto, userId: string) {
     const hotelIds = this.resolveHotelIds(dto);
     await this.validateHotels(hotelIds);
-    /** Roteamento pela família: UC → Administrativo; AF → Imobilizado. */
-    const routing = await this.resolveRoutingFromFamily(dto.familyId);
+    /** Roteamento pelo subgrupo; família gravada como coluna derivada. */
+    const routing = await this.resolveRoutingFromSubgroup(dto.subgroupId);
     const { fixedAsset, itemKind, approvalState } = routing;
+    const familyId = routing.family.id;
+    const subgroupId = routing.subgroupId;
     const requestType = dto.type ?? RequestType.INCLUSAO;
     this.assertObservation(dto.observation, requestType);
     const blockScope = {
@@ -1486,7 +1588,7 @@ export class RequestsService {
     const items = this.normalizeItemInput(dto.items, itemKind);
     const target = this.resolveTargetStage(dto);
     const strict = target === 'APROVADOR';
-    await this.assertItemsBelongToFamily(dto.familyId, items);
+    await this.assertItemsBelongToFamily(familyId, items, subgroupId);
     await this.validateItems(
       items,
       hotelIds,
@@ -1509,14 +1611,15 @@ export class RequestsService {
     const stageMessage =
       dto.observation?.trim() ||
       (target === 'APROVADOR'
-        ? `Rascunho enviado ao ${destLabel} (roteamento pela família)`
+        ? `Rascunho enviado ao ${destLabel} (roteamento pelo subgrupo)`
         : 'Rascunho salvo na caixa do solicitante');
 
     const request = await this.prisma.request.create({
       data: {
         requesterId: userId,
         hotelId: hotelIds[0],
-        familyId: dto.familyId,
+        familyId,
+        subgroupId,
         type: requestType,
         fixedAsset,
         blockRequisition: blockScope.blockRequisition,
@@ -1632,19 +1735,20 @@ export class RequestsService {
         ? 'APROVADOR'
         : this.resolveTargetStage(dto);
     const canChangeFixedAsset = isImobilizadoEdit || role === UserRole.ADMIN;
-    const nextFamilyId = dto.familyId ?? existing.familyId;
+    let nextFamilyId = existing.familyId;
+    let nextSubgroupId = existing.subgroupId;
     let fixedAsset =
       dto.fixedAsset !== undefined && canChangeFixedAsset
         ? Boolean(dto.fixedAsset)
         : existing.fixedAsset;
-    /** Solicitante/rascunho: kind segue a família escolhida. */
-    if (
-      !isImobilizadoEdit &&
-      !isApproverEdit &&
-      (dto.familyId || !canChangeFixedAsset)
-    ) {
-      const routing = await this.resolveRoutingFromFamily(nextFamilyId);
-      fixedAsset = routing.fixedAsset;
+    /** Solicitante/rascunho: kind segue o subgrupo do lote. */
+    if (dto.subgroupId?.trim()) {
+      const routing = await this.resolveRoutingFromSubgroup(dto.subgroupId.trim());
+      nextFamilyId = routing.family.id;
+      nextSubgroupId = routing.subgroupId;
+      if (!isImobilizadoEdit && !isApproverEdit) {
+        fixedAsset = routing.fixedAsset;
+      }
     }
     const itemKind = fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
     const strict = target === 'APROVADOR' && !isImobilizadoEdit;
@@ -1665,10 +1769,15 @@ export class RequestsService {
     if (dto.hotelIds?.length || dto.hotelId) {
       await this.validateHotels(hotelIds);
     }
-    if (dto.familyId) await this.assertFamilyExists(dto.familyId, itemKind);
+    if (dto.subgroupId?.trim()) {
+      await this.assertSubgroupExists(dto.subgroupId.trim(), itemKind);
+    }
     if (items) {
-      const familyId = dto.familyId ?? existing.familyId;
-      await this.assertItemsBelongToFamily(familyId, items);
+      await this.assertItemsBelongToFamily(
+        nextFamilyId,
+        items,
+        nextSubgroupId,
+      );
       const nextObservation =
         dto.observation !== undefined ? dto.observation : existing.observation;
       await this.validateItems(
@@ -1739,7 +1848,6 @@ export class RequestsService {
 
     let clearClassificationInvalidated = false;
     if (isImobilizadoEdit) {
-      const nextFamilyId = dto.familyId ?? existing.familyId;
       const nextItems = items
         ? items.map((i) => ({
             id: '',
@@ -1757,7 +1865,6 @@ export class RequestsService {
         clearClassificationInvalidated = false;
       }
     } else if (isApproverEdit && existing.classificationInvalidated) {
-      const nextFamilyId = dto.familyId ?? existing.familyId;
       const nextItems = items
         ? items.map((i) => ({
             descriptionShort: i.descriptionShort,
@@ -1774,7 +1881,11 @@ export class RequestsService {
         );
         void family;
         if (nextItems.every((i) => i.groupId)) {
-          await this.assertItemsBelongToFamily(nextFamilyId, nextItems);
+          await this.assertItemsBelongToFamily(
+            nextFamilyId,
+            nextItems,
+            nextSubgroupId,
+          );
           clearClassificationInvalidated = true;
         }
       } catch {
@@ -1817,7 +1928,8 @@ export class RequestsService {
         where: { id },
         data: {
           hotelId: hotelIds[0] ?? existing.hotelId,
-          familyId: dto.familyId,
+          familyId: nextFamilyId,
+          subgroupId: nextSubgroupId,
           type: dto.type,
           ...(dto.blockRequisition !== undefined ||
           dto.blockPurchase !== undefined
@@ -1872,7 +1984,7 @@ export class RequestsService {
         dto.observation !== undefined ||
         dto.requestDescription !== undefined ||
         (canChangeFixedAsset && dto.fixedAsset !== undefined) ||
-        dto.familyId ||
+        dto.subgroupId ||
         editNote
       ) {
         await tx.requestStage.updateMany({
@@ -2263,7 +2375,9 @@ export class RequestsService {
       );
     }
 
-    const routing = await this.resolveRoutingFromFamily(request.familyId);
+    const routing = request.subgroupId
+      ? await this.resolveRoutingFromSubgroup(request.subgroupId)
+      : await this.resolveRoutingFromFamily(request.familyId);
     const nextState = routing.approvalState;
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
@@ -2363,8 +2477,9 @@ export class RequestsService {
         request.items.map((i) => i.id),
         dto.itemIds,
       );
-    await this.assertTargetFamily(dto.targetFamilyId, 'FIXED_ASSET');
-    const targetFamilyId = dto.targetFamilyId;
+    const target = await this.resolveReclassifyTarget(dto, 'FIXED_ASSET');
+    const targetFamilyId = target.familyId;
+    const targetSubgroupId = target.subgroupId;
     const returnToApprover = dto.returnToApprover ?? true;
     const selectedItems = request.items.filter((i) =>
       selectedIds.includes(i.id),
@@ -2426,6 +2541,7 @@ export class RequestsService {
           where: { id: requestId },
           data: {
             familyId: targetFamilyId,
+            subgroupId: targetSubgroupId,
             fixedAsset: true,
             returnToApprover,
             classificationInvalidated: true,
@@ -2475,6 +2591,7 @@ export class RequestsService {
           requesterId: request.requesterId,
           hotelId: request.hotelId,
           familyId: targetFamilyId,
+          subgroupId: targetSubgroupId,
           type: request.type,
           state: RequestState.IMOBILIZADO,
           fixedAsset: true,
@@ -2681,8 +2798,9 @@ export class RequestsService {
         request.items.map((i) => i.id),
         dto.itemIds,
       );
-    await this.assertTargetFamily(dto.targetFamilyId, 'CONSUMPTION');
-    const targetFamilyId = dto.targetFamilyId;
+    const target = await this.resolveReclassifyTarget(dto, 'CONSUMPTION');
+    const targetFamilyId = target.familyId;
+    const targetSubgroupId = target.subgroupId;
     const selectedItems = request.items.filter((i) =>
       selectedIds.includes(i.id),
     );
@@ -2752,6 +2870,7 @@ export class RequestsService {
           where: { id: requestId },
           data: {
             familyId: targetFamilyId,
+            subgroupId: targetSubgroupId,
             fixedAsset: false,
             returnToApprover: true,
             classificationInvalidated: true,
@@ -2798,6 +2917,7 @@ export class RequestsService {
           requesterId: request.requesterId,
           hotelId: request.hotelId,
           familyId: targetFamilyId,
+          subgroupId: targetSubgroupId,
           type: request.type,
           state: RequestState.APROVADOR,
           fixedAsset: false,
@@ -2936,14 +3056,14 @@ export class RequestsService {
   /**
    * Conclusão da etapa Imobilizado:
    * - família AF (fixedAsset) → registra na base AF e encerra
-   * - família UC → encaminha ao Administrativo (exige targetFamilyId)
+   * - família UC → encaminha ao Administrativo (exige targetSubgroupId)
    */
   async sendFromImobilizadoToApprover(
     requestId: string,
     userId: string,
     message: string,
     itemNcms: { itemId: string; ncm: string }[] = [],
-    targetFamilyId?: string,
+    targetSubgroupId?: string,
   ) {
     await this.assertPresenceAllowsEdit(requestId, userId);
     const trimmed = message?.trim();
@@ -2991,6 +3111,7 @@ export class RequestsService {
       }
 
       const ncmByItem = new Map<string, string>();
+      const unknownNcms: { id: string; description: string; ncm: string }[] = [];
       for (const item of request.items) {
         const pair = itemNcms.find((x) => x.itemId === item.id);
         let ncm = pair?.ncm?.trim() || item.ncmCode?.trim();
@@ -3007,11 +3128,29 @@ export class RequestsService {
           );
         }
         if (ncm) {
-          ncmByItem.set(
-            item.id,
-            await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'),
-          );
+          const looked = await this.lookupNcmCode(this.prisma, ncm);
+          if ('invalid' in looked) {
+            throw new BadRequestException(
+              `NCM inválido no item "${item.descriptionShort}". Informe 8 dígitos (ex.: 2202.10.00 ou 22021000).`,
+            );
+          }
+          if ('notFound' in looked) {
+            unknownNcms.push({
+              id: item.id,
+              description: item.descriptionShort,
+              ncm: formatNcmDisplay(looked.notFound) || looked.notFound,
+            });
+            continue;
+          }
+          ncmByItem.set(item.id, looked.code);
         }
+      }
+      if (unknownNcms.length) {
+        throw new BadRequestException({
+          message: 'NCM não localizado na base de NCMs do portal',
+          code: 'NCM_NOT_FOUND',
+          items: unknownNcms,
+        });
       }
 
       const stageMessage = `${trimmed} — Aprovador - Imobilizado registrou na base de ativos fixos`;
@@ -3052,23 +3191,26 @@ export class RequestsService {
       return this.findOne(requestId);
     }
 
-    // Uso e consumo → Administrativo (família UC sugerida pelo Imobilizado)
-    await this.assertTargetFamily(targetFamilyId, 'CONSUMPTION');
-    const ucFamilyId = targetFamilyId!;
+    // Uso e consumo → Administrativo (subgrupo UC; família derivada)
+    const ucSubgroup = await this.assertTargetSubgroup(
+      targetSubgroupId,
+      'CONSUMPTION',
+    );
     await this.prisma.$transaction(async (tx) => {
       await tx.requestStage.updateMany({
         where: { requestId, finishedAt: null },
         data: {
           finishedAt: now,
           userId,
-          message: `${trimmed} — Encaminhado ao aprovador - administrativo (família de uso e consumo)`,
+          message: `${trimmed} — Encaminhado ao aprovador - administrativo (subgrupo de uso e consumo)`,
         },
       });
       await tx.request.update({
         where: { id: requestId },
         data: {
           state: RequestState.APROVADOR,
-          familyId: ucFamilyId,
+          familyId: ucSubgroup.familyId,
+          subgroupId: ucSubgroup.id,
           fixedAsset: false,
           classificationInvalidated: true,
         },
@@ -3378,13 +3520,18 @@ export class RequestsService {
   }
 
   /**
-   * Garante linha em ncm_codes (bootstrap/manual) antes da FK.
-   * Retorna código canônico de 8 dígitos.
+   * Valida NCM contra `ncm_codes` (consulta; não auto-cadastra).
+   * Retorna código canônico de 8 dígitos se existir na tabela.
+   *
+   * Validação contra o SAP real é dependência da atividade de integração e ainda não existe.
+   * Cadastro deliberado de NCM novo (import Receita/SAP ou tela de parametrizações) permanece
+   * fora deste método — a aprovação só recusa códigos ausentes na base do portal.
    */
   private async ensureNcmCode(
     tx: Prisma.TransactionClient | PrismaService,
     raw: string,
-    source: 'MANUAL' | 'SAP_USAGE' | 'RECEITA' = 'MANUAL',
+    _source: 'MANUAL' | 'SAP_USAGE' | 'RECEITA' = 'MANUAL',
+    context?: { id: string; description: string },
   ): Promise<string> {
     const code = normalizeNcmCode(raw);
     if (!code) {
@@ -3392,17 +3539,38 @@ export class RequestsService {
         'NCM inválido. Informe 8 dígitos (ex.: 2202.10.00 ou 22021000).',
       );
     }
-    await tx.ncmCode.upsert({
-      where: { code },
-      create: {
-        code,
-        description: formatNcmDisplay(code),
-        active: true,
-        source,
-      },
-      update: { active: true },
-    });
+    const row = await tx.ncmCode.findUnique({ where: { code } });
+    if (!row) {
+      throw new BadRequestException({
+        message: 'NCM não localizado na base de NCMs do portal',
+        code: 'NCM_NOT_FOUND',
+        items: context
+          ? [
+              {
+                id: context.id,
+                description: context.description,
+                ncm: formatNcmDisplay(code) || code,
+              },
+            ]
+          : [],
+      });
+    }
     return code;
+  }
+
+  /**
+   * Consulta `ncm_codes` sem lançar. `null` = formato inválido ou código ausente.
+   * Usado no loop de aprovação para acumular falhas por item.
+   */
+  private async lookupNcmCode(
+    tx: Prisma.TransactionClient | PrismaService,
+    raw: string,
+  ): Promise<{ code: string } | { notFound: string } | { invalid: true }> {
+    const code = normalizeNcmCode(raw);
+    if (!code) return { invalid: true };
+    const row = await tx.ncmCode.findUnique({ where: { code } });
+    if (!row) return { notFound: code };
+    return { code };
   }
 
   async confirmNcm(itemId: string, ncm: string, userId: string) {
@@ -3412,7 +3580,10 @@ export class RequestsService {
     if (!item) throw new NotFoundException('Item não encontrado');
     await this.assertPresenceAllowsEdit(item.requestId, userId);
 
-    const code = await this.ensureNcmCode(this.prisma, ncm, 'MANUAL');
+    const code = await this.ensureNcmCode(this.prisma, ncm, 'MANUAL', {
+      id: item.id,
+      description: item.descriptionShort,
+    });
     return this.prisma.requestItem.update({
       where: { id: itemId },
       data: { ncmCode: code, ncmConfirmed: true },
@@ -3505,6 +3676,7 @@ export class RequestsService {
     const returnItems = request.items.filter((i) => returnSet.has(i.id));
 
     const ncmByItem = new Map<string, string>();
+    const unknownNcms: { id: string; description: string; ncm: string }[] = [];
     for (const item of approvedItems) {
       const pair = itemNcms.find((x) => x.itemId === item.id);
       let ncm = pair?.ncm?.trim() || item.ncmCode?.trim();
@@ -3521,11 +3693,29 @@ export class RequestsService {
         );
       }
       if (ncm) {
-        ncmByItem.set(
-          item.id,
-          await this.ensureNcmCode(this.prisma, ncm, 'MANUAL'),
-        );
+        const looked = await this.lookupNcmCode(this.prisma, ncm);
+        if ('invalid' in looked) {
+          throw new BadRequestException(
+            `NCM inválido no item "${item.descriptionShort}". Informe 8 dígitos (ex.: 2202.10.00 ou 22021000).`,
+          );
+        }
+        if ('notFound' in looked) {
+          unknownNcms.push({
+            id: item.id,
+            description: item.descriptionShort,
+            ncm: formatNcmDisplay(looked.notFound) || looked.notFound,
+          });
+          continue;
+        }
+        ncmByItem.set(item.id, looked.code);
       }
+    }
+    if (unknownNcms.length) {
+      throw new BadRequestException({
+        message: 'NCM não localizado na base de NCMs do portal',
+        code: 'NCM_NOT_FOUND',
+        items: unknownNcms,
+      });
     }
 
     const outcome = isPartial
@@ -3566,6 +3756,7 @@ export class RequestsService {
             requesterId: request.requesterId,
             hotelId: request.hotelId,
             familyId: request.familyId,
+            subgroupId: request.subgroupId,
             type: request.type,
             state: RequestState.SOLICITANTE,
             fixedAsset: request.fixedAsset,

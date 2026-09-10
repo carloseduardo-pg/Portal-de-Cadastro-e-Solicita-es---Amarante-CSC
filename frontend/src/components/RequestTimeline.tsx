@@ -270,15 +270,6 @@ export function RequestTimeline({ stages, onItemClick }: RequestTimelineProps) {
                             ))}
                           </ul>
                         ) : null}
-                        {s.outcome === 'RECLASSIFY_FIXED_ASSET' &&
-                        detail?.returnToApprover !== undefined ? (
-                          <p>
-                            <strong>Retorno ao aprovador - administrativo:</strong>{' '}
-                            {detail.returnToApprover
-                              ? 'Sim — volta ao Aprovador - Administrativo após o Aprovador - Imobilizado'
-                              : 'Não — Aprovador - Imobilizado conclui sozinho'}
-                          </p>
-                        ) : null}
                       </div>
                     ) : null}
                     {userMessage ? (

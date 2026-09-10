@@ -18,6 +18,8 @@ type Props = {
   addLockedLabel?: string;
   /** Em alteração, não permite remover o único item vinculado. */
   allowRemove?: boolean;
+  /** Índices com NCM inválido / não localizado (destaque visual). */
+  errorIndexes?: number[];
 };
 
 /**
@@ -34,8 +36,10 @@ export function ItemFolderStrip({
   allowAdd = true,
   addLockedLabel = 'Alteração — 1 item vinculado ao produto',
   allowRemove = true,
+  errorIndexes = [],
 }: Props) {
   const tree = buildPdmFolderTree(items, groups, subgroups);
+  const errorSet = new Set(errorIndexes);
 
   return (
     <div className="item-folder-strip">
@@ -78,8 +82,12 @@ export function ItemFolderStrip({
                     {gFolder.itemIndexes.map((index) => {
                       const item = items[index];
                       const active = index === currentIndex;
+                      const hasError = errorSet.has(index);
                       return (
-                        <div key={index} className={`item-folder-tile ${active ? 'active' : ''}`}>
+                        <div
+                          key={index}
+                          className={`item-folder-tile ${active ? 'active' : ''}${hasError ? ' item-folder-tile--error' : ''}`}
+                        >
                           {allowRemove ? (
                             <button
                               type="button"
@@ -95,6 +103,7 @@ export function ItemFolderStrip({
                             className="item-folder-body"
                             onClick={() => onSelect(index)}
                             aria-pressed={active}
+                            aria-invalid={hasError || undefined}
                           >
                             <span
                               className="item-folder-icon"
@@ -105,7 +114,9 @@ export function ItemFolderStrip({
                             <span className="item-folder-name">
                               {itemTileLabel(item.descriptionShort, index)}
                             </span>
-                            <span className="item-folder-meta">Item {index + 1}</span>
+                            <span className="item-folder-meta">
+                              {hasError ? 'NCM não localizado' : `Item ${index + 1}`}
+                            </span>
                           </button>
                         </div>
                       );

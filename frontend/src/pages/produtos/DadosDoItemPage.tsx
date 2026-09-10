@@ -24,13 +24,12 @@ import {
 } from '../../lib/productMatch';
 import { isExistingProductRequestType } from '../../lib/requestLabels';
 import { toFormUppercase } from '../../lib/formText';
-import { findFamilyById, classificationFromFamily } from '../../lib/pdmFolders';
+import { filterGroupsForSubgroup, findSubgroupById, classificationFromSubgroup } from '../../lib/pdmCascade';
 import { catalogApi, productsApi, requestsApi } from '../../lib/resources';
 import type {
   CatalogGroup,
   CatalogSubgroup,
   CostCenter,
-  Family,
   Hotel,
   MeasureUnit,
   ProductAttribute,
@@ -53,7 +52,7 @@ type RequestType =
   | 'BLOQUEIO_TOTAL';
 
 type DadosFieldErrors = ItemClassificationErrors & {
-  familyId?: string;
+  subgroupId?: string;
   hotelIds?: string;
   requestDescription?: string;
   descriptionShort?: string;
@@ -186,7 +185,7 @@ export function DadosDoItemPage() {
   const [hotelIds, setHotelIds] = useState<string[]>(
     nav.hotelIds?.length ? nav.hotelIds : nav.hotelId ? [nav.hotelId] : [],
   );
-  const [familyId, setFamilyId] = useState('');
+  const [subgroupId, setSubgroupId] = useState('');
   const [fixedAsset, setFixedAsset] = useState(Boolean(nav.fixedAsset));
   const [afExactChoice, setAfExactChoice] = useState<'more' | 'different' | null>(
     nav.afExactChoice ?? null,
@@ -207,7 +206,6 @@ export function DadosDoItemPage() {
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [groups, setGroups] = useState<CatalogGroup[]>([]);
   const [subgroups, setSubgroups] = useState<CatalogSubgroup[]>([]);
-  const [families, setFamilies] = useState<Family[]>([]);
   const [attributes, setAttributes] = useState<ProductAttribute[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [measureUnits, setMeasureUnits] = useState<MeasureUnit[]>([]);
@@ -220,17 +218,18 @@ export function DadosDoItemPage() {
   const [multiItemAlertOpen, setMultiItemAlertOpen] = useState(false);
 
   const item = items[currentItem] ?? items[0];
-  const selectedFamily = findFamilyById(families, familyId);
-  const preFormComplete = Boolean(familyId && hotelIds.length);
+  const selectedSubgroup = findSubgroupById(subgroups, subgroupId);
+  const familyId = selectedSubgroup?.familyId ?? selectedSubgroup?.family?.id ?? '';
+  const preFormComplete = Boolean(subgroupId && hotelIds.length);
 
-  const familyLocked =
+  const subgroupLocked =
     items.some(itemHasData) ||
     items.length > 1 ||
     isExistingProductRequestType(requestType);
 
   const isInclusionItem = requestType === 'INCLUSAO' && !item.productId;
   const similarCheckEnabled =
-    isInclusionItem && Boolean(familyId) && item.descriptionShort.trim().length >= 3;
+    isInclusionItem && Boolean(subgroupId) && item.descriptionShort.trim().length >= 3;
 
   const {
     results: similarResults,
@@ -252,10 +251,10 @@ export function DadosDoItemPage() {
       items.map((it) => ({
         descriptionShort: it.descriptionShort,
         groupId: it.groupId,
-        subgroupId: it.subgroupId,
+        subgroupId: it.subgroupId || subgroupId,
         familyId,
       })),
-    [items, familyId],
+    [items, familyId, subgroupId],
   );
 
   function clearFieldError(key: keyof DadosFieldErrors) {
@@ -277,18 +276,13 @@ export function DadosDoItemPage() {
   }, []);
 
   useEffect(() => {
-    void catalogApi
-      .families({ pageSize: 500 })
-      .then((r) => setFamilies(r.data))
-      .catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    const selected = families.find((f) => f.id === familyId);
+    const selected = findSubgroupById(subgroups, subgroupId);
     if (!selected) return;
-    const nextAf = selected.itemKind === 'FIXED_ASSET';
+    const kind = selected.itemKind ?? selected.family?.itemKind;
+    if (!kind) return;
+    const nextAf = kind === 'FIXED_ASSET';
     setFixedAsset((prev) => (prev === nextAf ? prev : nextAf));
-  }, [familyId, families]);
+  }, [subgroupId, subgroups]);
 
   useEffect(() => {
     if (!fixedAsset || !isInclusionItem || item.descriptionShort.trim().length < 3) {
@@ -324,12 +318,13 @@ export function DadosDoItemPage() {
   }, [hotelIds]);
 
   useEffect(() => {
-    if (!familyId) {
+    const sg = item.subgroupId || subgroupId;
+    if (!sg) {
       setAttributes([]);
       return;
     }
-    void catalogApi.familyAttributes(familyId).then(setAttributes).catch(console.error);
-  }, [familyId]);
+    void catalogApi.subgroupAttributes(sg).then(setAttributes).catch(console.error);
+  }, [item.subgroupId, subgroupId]);
 
   useEffect(() => {
     if (nav.requestId) {
@@ -339,7 +334,13 @@ export function DadosDoItemPage() {
         setRequestType(req.type as RequestType);
         const ids = req.hotels?.map((rh) => rh.hotel.id) ?? (req.hotel?.id ? [req.hotel.id] : []);
         setHotelIds(ids);
-        setFamilyId(req.family?.id ?? '');
+        setSubgroupId(
+          req.subgroupId ??
+            req.subgroup?.id ??
+            req.items[0]?.group?.subgroupId ??
+            req.items[0]?.group?.subgroup?.id ??
+            '',
+        );
         setFixedAsset(Boolean(req.fixedAsset));
         setObservation(req.observation ?? '');
         setRequestDescription(req.requestDescription ?? '');
@@ -387,22 +388,18 @@ export function DadosDoItemPage() {
       const navType = nav.type ?? 'ALTERACAO';
       setRequestType(navType);
       void productsApi.get(nav.existingProductId).then(async (p) => {
-        const kind = p.itemKind === 'FIXED_ASSET' || p.fixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
-        const famList = families.length
-          ? families
-          : (await catalogApi.families({ pageSize: 500, itemKind: kind })).data;
-        if (!families.length) setFamilies(famList);
-        const fam = famList.find((f) => f.code === p.family?.code);
-        if (fam) setFamilyId(fam.id);
+        const sgId = p.group?.subgroupId ?? p.group?.subgroup?.id ?? '';
+        if (sgId) setSubgroupId(sgId);
         const muList = measureUnits.length ? measureUnits : (await catalogApi.measureUnits()).data;
         if (!measureUnits.length) setMeasureUnits(muList);
         const mu = muList.find((m) => m.code === p.measureUnit?.code);
+        const defaults = classificationFromSubgroup(sgId, groups);
         setItems([
           {
             ...emptyItem(),
             productId: p.id,
-            groupId: '',
-            subgroupId: '',
+            groupId: p.group?.id ?? defaults.groupId,
+            subgroupId: sgId || defaults.subgroupId,
             descriptionShort: p.descriptionShort,
             descriptionLong: p.descriptionLong ?? '',
             measureUnitId: mu?.id ?? '',
@@ -436,15 +433,14 @@ export function DadosDoItemPage() {
       setFixedAsset(true);
       setAfExactChoice('more');
       void productsApi.get(nav.templateProductId).then(async (p) => {
-        const famList = families.length
-          ? families
-          : (await catalogApi.families({ pageSize: 500, itemKind: 'FIXED_ASSET' })).data;
-        if (!families.length) setFamilies(famList);
-        const fam = famList.find((f) => f.code === p.family?.code);
-        if (fam) setFamilyId(fam.id);
+        const sgId = p.group?.subgroupId ?? p.group?.subgroup?.id ?? '';
+        if (sgId) setSubgroupId(sgId);
+        const defaults = classificationFromSubgroup(sgId, groups);
         setItems([
           {
             ...emptyItem(nav.searchQuery?.toUpperCase() || p.descriptionShort),
+            groupId: p.group?.id ?? defaults.groupId,
+            subgroupId: sgId || defaults.subgroupId,
             // Sem productId: novas unidades (ainda INCLUSAO)
             descriptionShort: nav.searchQuery?.toUpperCase() || p.descriptionShort,
             descriptionLong: p.descriptionLong ?? '',
@@ -463,26 +459,40 @@ export function DadosDoItemPage() {
         ]);
       }).catch(console.error);
     }
-  }, [nav.requestId, nav.existingProductId, nav.templateProductId, nav.searchQuery, nav.type, families, measureUnits]);
+  }, [nav.requestId, nav.existingProductId, nav.templateProductId, nav.searchQuery, nav.type, groups, measureUnits]);
 
-  function handleFamilyChange(nextId: string) {
-    const prevId = familyId;
-    setFamilyId(nextId);
-    clearFieldError('familyId');
-    if (prevId && nextId !== prevId && familyLocked) {
-      setItems([emptyItem()]);
+  function handleSubgroupChange(nextId: string) {
+    const prevId = subgroupId;
+    setSubgroupId(nextId);
+    clearFieldError('subgroupId');
+    const defaults = classificationFromSubgroup(nextId, groups);
+    if (prevId && nextId !== prevId && subgroupLocked) {
+      setItems([{ ...emptyItem(), ...defaults }]);
       setCurrentItem(0);
       setError(null);
       setSuccess(null);
+      return;
     }
+    if (!nextId) return;
+    setItems((prev) =>
+      prev.map((it) => {
+        const under = filterGroupsForSubgroup(groups, nextId);
+        const keepGroup = under.some((g) => g.id === it.groupId);
+        return {
+          ...it,
+          subgroupId: nextId,
+          groupId: keepGroup ? it.groupId : defaults.groupId,
+        };
+      }),
+    );
   }
 
   function handleFixedAssetChange(next: boolean) {
     if (next === fixedAsset) return;
     setFixedAsset(next);
     setAfExactChoice(null);
-    setFamilyId('');
-    if (familyLocked) {
+    setSubgroupId('');
+    if (subgroupLocked) {
       setItems([emptyItem(requestDescription || nav.searchQuery?.toUpperCase() || '')]);
       setCurrentItem(0);
     }
@@ -493,6 +503,12 @@ export function DadosDoItemPage() {
   }
 
   function patchClassification(patch: Partial<ItemDraft>) {
+    if (
+      patch.subgroupId !== undefined &&
+      patch.subgroupId !== item.subgroupId
+    ) {
+      patch = { ...patch, attributeValues: {} };
+    }
     patchCurrent(patch);
     if (patch.groupId !== undefined) clearFieldError('groupId');
     if (patch.subgroupId !== undefined) clearFieldError('subgroupId');
@@ -566,24 +582,23 @@ export function DadosDoItemPage() {
       setError('Este tipo de solicitação admite apenas um item vinculado ao produto da base.');
       return;
     }
-    if (!familyId) {
+    if (!subgroupId) {
       setFieldErrors((prev) => ({
         ...prev,
-        familyId: 'Selecione a família do lote no pré-formulário antes de adicionar itens.',
+        subgroupId: 'Selecione o subgrupo do lote no pré-formulário antes de adicionar itens.',
       }));
       return;
     }
     const becomingMulti = items.length === 1;
     const cur = items[currentItem];
-    const fam = findFamilyById(families, familyId);
-    const defaults = classificationFromFamily(fam);
+    const defaults = classificationFromSubgroup(subgroupId, groups);
     const nextIndex = items.length;
     setItems((prev) => [
       ...prev,
       {
         ...emptyItem(),
         groupId: cur?.groupId || defaults.groupId,
-        subgroupId: cur?.subgroupId || defaults.subgroupId,
+        subgroupId: subgroupId || cur?.subgroupId || defaults.subgroupId,
         source: cur?.source ?? 'NATIONAL',
       },
     ]);
@@ -639,8 +654,9 @@ export function DadosDoItemPage() {
     if (!hotelIds.length) {
       errors.hotelIds = 'Selecione ao menos uma unidade (hotel).';
     }
-    if (!familyId) {
-      errors.familyId = 'Selecione a família desta solicitação (ITM-11: uma família por lote).';
+    if (!subgroupId) {
+      errors.subgroupId =
+        'Selecione o subgrupo desta solicitação (ITM-11: um subgrupo por lote).';
     }
     if (!items.length) {
       errors.descriptionShort = 'Adicione ao menos um item.';
@@ -652,7 +668,7 @@ export function DadosDoItemPage() {
       const itemErrors: DadosFieldErrors = {};
 
       if (!it.groupId) itemErrors.groupId = 'Campo é obrigatório';
-      if (!it.subgroupId) itemErrors.subgroupId = 'Campo é obrigatório';
+      if (!(it.subgroupId || subgroupId)) itemErrors.subgroupId = 'Campo é obrigatório';
 
       if (!it.descriptionShort.trim()) {
         itemErrors.descriptionShort = 'Campo é obrigatório';
@@ -691,7 +707,7 @@ export function DadosDoItemPage() {
     action: 'enviar' | 'salvar',
   ): string {
     const labels: Record<keyof DadosFieldErrors, string> = {
-      familyId: 'Família',
+      subgroupId: 'Subgrupo',
       hotelIds: 'Unidades (hotéis)',
       requestDescription: 'Descrição da solicitação',
       observation: 'Observação da solicitação',
@@ -702,7 +718,6 @@ export function DadosDoItemPage() {
       unitQuantity: 'Quantidade de unidades',
       physicalLocation: 'Localização física',
       groupId: 'Grupo de itens',
-      subgroupId: 'Subgrupo',
       duplicate: 'Duplicidade na base',
     };
 
@@ -721,7 +736,7 @@ export function DadosDoItemPage() {
   function buildPayload(targetStage: 'SOLICITANTE' | 'APROVADOR') {
     return {
       hotelIds,
-      familyId,
+      subgroupId,
       fixedAsset: false,
       type: requestType,
       observation: observation.trim() || undefined,
@@ -898,19 +913,19 @@ export function DadosDoItemPage() {
 
       <SolicitacaoPreForm
         hotels={hotels}
-        families={families}
+        subgroups={subgroups}
         hotelIds={hotelIds}
-        familyId={familyId}
+        subgroupId={subgroupId}
         fixedAsset={fixedAsset}
         hideKind
-        familyLocked={familyLocked}
+        subgroupLocked={subgroupLocked}
         hotelError={fieldErrors.hotelIds}
-        familyError={fieldErrors.familyId}
+        subgroupError={fieldErrors.subgroupId}
         onHotelChange={setHotelIds}
-        onFamilyChange={handleFamilyChange}
+        onSubgroupChange={handleSubgroupChange}
         onFixedAssetChange={handleFixedAssetChange}
         onClearHotelError={() => clearFieldError('hotelIds')}
-        onClearFamilyError={() => clearFieldError('familyId')}
+        onClearSubgroupError={() => clearFieldError('subgroupId')}
       />
 
       {preFormComplete ? (
@@ -1066,14 +1081,13 @@ export function DadosDoItemPage() {
 
                 <ItemClassificationFields
                   hideTitle
-                  familyContext={selectedFamily}
+                  lotSubgroupId={subgroupId}
                   value={{
                     groupId: item.groupId,
-                    subgroupId: item.subgroupId,
+                    subgroupId: item.subgroupId || subgroupId,
                     source: item.source,
                   }}
                   groups={groups}
-                  subgroups={subgroups}
                   errors={classificationErrors}
                   onChange={(patch) => {
                     patchClassification(patch);
@@ -1082,11 +1096,11 @@ export function DadosDoItemPage() {
                 />
       </div>
 
-              {item.groupId && item.subgroupId ? (
+              {item.groupId && (item.subgroupId || subgroupId) ? (
                 <>
                   {!fixedAsset && attributes.length > 0 ? (
                     <div className="solicitacao-form-section">
-                      <p className="form-section-title">Atributos desta família</p>
+                      <p className="form-section-title">Atributos deste subgrupo</p>
                       <div className="solicitacao-attributes-grid">
                         {attributes.map((attr) => (
                           <PdmAttributeField
@@ -1100,10 +1114,10 @@ export function DadosDoItemPage() {
                     </div>
                   ) : !fixedAsset ? (
                     <p className="info-banner" style={{ marginTop: 16 }}>
-                      Sem atributos para esta família no catálogo de teste. Rode o seed ou troque a
-                      família (base real Amarante substituirá depois).
-          </p>
-        ) : null}
+                      Sem atributos para este subgrupo no catálogo de teste. Rode o seed ou troque o
+                      subgrupo (base real Amarante substituirá depois).
+                    </p>
+                  ) : null}
 
                   <ItemCompletionSection
                     value={{

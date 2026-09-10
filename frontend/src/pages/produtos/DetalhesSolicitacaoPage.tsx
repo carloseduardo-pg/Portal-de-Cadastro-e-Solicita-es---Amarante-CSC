@@ -19,7 +19,11 @@ import { RequestDescriptionBlock } from '../../components/RequestDescriptionBloc
 import { RequestItemCompareTable } from '../../components/requests/RequestItemCompareTable';
 import { RequestTimeline } from '../../components/RequestTimeline';
 import { SolicitacaoPreForm } from '../../components/SolicitacaoPreForm';
-import { findFamilyById } from '../../lib/pdmFolders';
+import {
+  classificationFromSubgroup,
+  filterGroupsForSubgroup,
+  findSubgroupById,
+} from '../../lib/pdmCascade';
 import {
   blockScopeLabel,
   isBlockRequestType,
@@ -30,6 +34,7 @@ import {
 } from '../../lib/requestLabels';
 import { toFormUppercase } from '../../lib/formText';
 import { formatNcmDisplay } from '../../lib/ncm';
+import { isNcmNotFoundError, type NcmNotFoundItem } from '../../lib/api';
 import { catalogApi, notificationsApi, productsApi, requestsApi } from '../../lib/resources';
 import { useRequestPresence } from '../../hooks/useRequestPresence';
 import { RequestViewersFlag } from '../../components/requests/RequestViewersFlag';
@@ -37,7 +42,6 @@ import type {
   CatalogGroup,
   CatalogSubgroup,
   CostCenter,
-  Family,
   Hotel,
   MeasureUnit,
   ProductBase,
@@ -111,7 +115,6 @@ export function DetalhesSolicitacaoPage() {
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [groups, setGroups] = useState<CatalogGroup[]>([]);
   const [subgroups, setSubgroups] = useState<CatalogSubgroup[]>([]);
-  const [families, setFamilies] = useState<Family[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [measureUnits, setMeasureUnits] = useState<MeasureUnit[]>([]);
 
@@ -120,15 +123,15 @@ export function DetalhesSolicitacaoPage() {
   const [selectedNcm, setSelectedNcm] = useState<Record<string, string>>({});
   const [customNcm, setCustomNcm] = useState<Record<string, string>>({});
   const [stageComment, setStageComment] = useState('');
-  /** Famílias para transferência entre aprovadores (exige família do destino). */
-  const [afFamilies, setAfFamilies] = useState<Family[]>([]);
-  const [ucFamilies, setUcFamilies] = useState<Family[]>([]);
+  /** Subgrupos para transferência entre aprovadores (exige subgrupo do destino). */
+  const [afSubgroups, setAfSubgroups] = useState<CatalogSubgroup[]>([]);
+  const [ucSubgroups, setUcSubgroups] = useState<CatalogSubgroup[]>([]);
   const [editNote, setEditNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [baseProduct, setBaseProduct] = useState<ProductBase | null>(null);
   const [baseLoading, setBaseLoading] = useState(false);
   const [editHotelIds, setEditHotelIds] = useState<string[]>([]);
-  const [editFamilyId, setEditFamilyId] = useState('');
+  const [editSubgroupId, setEditSubgroupId] = useState('');
   const [editFixedAsset, setEditFixedAsset] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
@@ -137,6 +140,8 @@ export function DetalhesSolicitacaoPage() {
   const [reclassifyOpen, setReclassifyOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
+  /** Itens cujo NCM não existe em `ncm_codes` (erro `NCM_NOT_FOUND` na aprovação). */
+  const [ncmNotFoundItems, setNcmNotFoundItems] = useState<NcmNotFoundItem[]>([]);
   const [reclassifyDirection, setReclassifyDirection] =
     useState<ReclassifyDirection>('fixed-asset');
 
@@ -203,7 +208,13 @@ export function DetalhesSolicitacaoPage() {
       request.hotels?.map((rh) => rh.hotel.id) ??
       (request.hotel?.id ? [request.hotel.id] : []);
     setEditHotelIds(ids);
-    setEditFamilyId(request.family?.id ?? '');
+    setEditSubgroupId(
+      request.subgroupId ??
+        request.subgroup?.id ??
+        request.items[0]?.group?.subgroupId ??
+        request.items[0]?.group?.subgroup?.id ??
+        '',
+    );
     setEditFixedAsset(Boolean(request.fixedAsset));
     setDirty(false);
     setCurrentItem(0);
@@ -212,8 +223,8 @@ export function DetalhesSolicitacaoPage() {
   useEffect(() => {
     if (request?.state !== 'IMOBILIZADO' && request?.state !== 'APROVADOR') return;
     void Promise.all([
-      catalogApi.families({ pageSize: 500, itemKind: 'FIXED_ASSET' }).then((r) => setAfFamilies(r.data)),
-      catalogApi.families({ pageSize: 500, itemKind: 'CONSUMPTION' }).then((r) => setUcFamilies(r.data)),
+      catalogApi.subgroups({ pageSize: 500, itemKind: 'FIXED_ASSET' }).then((r) => setAfSubgroups(r.data)),
+      catalogApi.subgroups({ pageSize: 500, itemKind: 'CONSUMPTION' }).then((r) => setUcSubgroups(r.data)),
     ]).catch(console.error);
   }, [request?.state]);
 
@@ -229,8 +240,13 @@ export function DetalhesSolicitacaoPage() {
 
   const item = items[currentItem] ?? items[0];
   const requestItem = request?.items[currentItem] ?? request?.items[0];
-  const selectedFamily = findFamilyById(families, editFamilyId || request?.family?.id || '');
-  const familyId = editFamilyId || request?.family?.id || '';
+  const selectedSubgroup = findSubgroupById(subgroups, editSubgroupId);
+  const familyId =
+    selectedSubgroup?.familyId ??
+    selectedSubgroup?.family?.id ??
+    request?.family?.id ??
+    '';
+  const lotSubgroupId = editSubgroupId;
 
   const folderItems = useMemo(
     () =>
@@ -242,6 +258,31 @@ export function DetalhesSolicitacaoPage() {
       })),
     [items, familyId],
   );
+
+  const approveDialogItems = useMemo(() => {
+    if (!request?.items) return [];
+    return request.items.map((it) => ({
+      id: it.id,
+      descriptionShort: it.descriptionShort,
+      ncmCode: it.ncmCode,
+      resolvedNcm: selectedNcm[it.id] || customNcm[it.id] || it.ncmCode,
+    }));
+  }, [request?.items, selectedNcm, customNcm]);
+
+  const ncmErrorIndexes = useMemo(() => {
+    if (!ncmNotFoundItems.length) return [];
+    const failed = new Set(ncmNotFoundItems.map((x) => x.id));
+    return items
+      .map((it, idx) => (failed.has(it.id) ? idx : -1))
+      .filter((idx) => idx >= 0);
+  }, [items, ncmNotFoundItems]);
+
+  const ncmErrorIdSet = useMemo(
+    () => new Set(ncmNotFoundItems.map((x) => x.id)),
+    [ncmNotFoundItems],
+  );
+
+  const currentItemNcmError = item ? ncmErrorIdSet.has(item.id) : false;
 
   const isDraft =
     canActSolicitante &&
@@ -278,35 +319,37 @@ export function DetalhesSolicitacaoPage() {
     (!presenceLocked && isApprover && Boolean(request?.classificationInvalidated));
 
   useEffect(() => {
-    // Em edição (rascunho/retorno ou reclassificação), lista todas as famílias —
-    // a troca UC ↔ AF deve atualizar o formulário. Em só leitura, filtra pelo kind atual.
+    // Em edição (rascunho/retorno ou reclassificação), lista todos os subgrupos.
+    // Em só leitura, filtra pelo kind atual.
     if (isDraft || classificationEditable) {
       void catalogApi
-        .families({ pageSize: 500 })
-        .then((r) => setFamilies(r.data))
+        .subgroups({ pageSize: 500 })
+        .then((r) => setSubgroups(r.data))
         .catch(console.error);
       return;
     }
     const kind = editFixedAsset ? 'FIXED_ASSET' : 'CONSUMPTION';
     void catalogApi
-      .families({ pageSize: 500, itemKind: kind })
+      .subgroups({ pageSize: 500, itemKind: kind })
       .then((r) => {
-        setFamilies(r.data);
-        setEditFamilyId((prev) => (prev && r.data.some((f) => f.id === prev) ? prev : ''));
+        setSubgroups(r.data);
+        setEditSubgroupId((prev) =>
+          prev && r.data.some((sg) => sg.id === prev) ? prev : '',
+        );
       })
       .catch(console.error);
   }, [editFixedAsset, isDraft, classificationEditable]);
 
   /**
-   * Troca de família atualiza o modo UC/AF do formulário (campos UM × patrimoniais).
-   * Antes só rodava em rascunho — no retorno/aprovador o form ficava “preso” no kind antigo.
+   * Troca de subgrupo atualiza o modo UC/AF do formulário (campos UM × patrimoniais).
    */
   useEffect(() => {
-    if (!editFamilyId || families.length === 0) return;
+    if (!editSubgroupId || subgroups.length === 0) return;
     if (!isDraft && !classificationEditable && !fieldsEditable) return;
-    const selected = families.find((f) => f.id === editFamilyId);
-    if (!selected?.itemKind) return;
-    const nextAf = selected.itemKind === 'FIXED_ASSET';
+    const selected = findSubgroupById(subgroups, editSubgroupId);
+    const kind = selected?.itemKind ?? selected?.family?.itemKind;
+    if (!kind) return;
+    const nextAf = kind === 'FIXED_ASSET';
     setEditFixedAsset((prev) => {
       if (prev === nextAf) return prev;
       setItems((itemsPrev) =>
@@ -335,7 +378,7 @@ export function DetalhesSolicitacaoPage() {
       );
       return nextAf;
     });
-  }, [editFamilyId, families, isDraft, classificationEditable, fieldsEditable]);
+  }, [editSubgroupId, subgroups, isDraft, classificationEditable, fieldsEditable]);
 
   useEffect(() => {
     const productId = requestItem?.productId;
@@ -353,6 +396,16 @@ export function DetalhesSolicitacaoPage() {
 
   function markDirty() {
     if (draftEditable || isApprover || isImobilizado) setDirty(true);
+  }
+
+  /** Remove destaque de erro NCM quando o usuário altera o código daquele item. */
+  function clearNcmErrorForItem(itemId: string) {
+    setNcmNotFoundItems((prev) => prev.filter((x) => x.id !== itemId));
+  }
+
+  function selectItemNcm(itemId: string, ncm: string) {
+    clearNcmErrorForItem(itemId);
+    setSelectedNcm((prev) => ({ ...prev, [itemId]: ncm }));
   }
 
   function patchCurrentItem(patch: Partial<ViewItem>) {
@@ -420,7 +473,9 @@ export function DetalhesSolicitacaoPage() {
       throw new Error(
         field === 'requestDescription'
           ? 'A descrição da solicitação não pode ficar vazia.'
-          : 'A observação da solicitação não pode ficar vazia.',
+          : isBlockRequestType(request.type)
+            ? 'Informe o motivo do bloqueio.'
+            : 'A observação da solicitação não pode ficar vazia.',
       );
     }
 
@@ -466,8 +521,8 @@ export function DetalhesSolicitacaoPage() {
     setBusy(true);
     try {
       await requestsApi.update(request.id, {
-        ...(request.classificationInvalidated && editFamilyId
-          ? { familyId: editFamilyId, fixedAsset: editFixedAsset }
+        ...(request.classificationInvalidated && editSubgroupId
+          ? { subgroupId: editSubgroupId, fixedAsset: editFixedAsset }
           : {}),
         editNote: editNote.trim() || 'Aprovador - Administrativo alterou campos da solicitação.',
         items: buildItemsPayload(),
@@ -483,23 +538,23 @@ export function DetalhesSolicitacaoPage() {
     }
   }
 
-  /** Imobilizado grava família AF + grupos dos itens (limpa classificationInvalidated se válido). */
+  /** Imobilizado grava subgrupo AF + grupos dos itens (limpa classificationInvalidated se válido). */
   async function saveImobilizadoChanges() {
     if (!request) return;
-    if (!editFamilyId) {
-      alert('Selecione a família de Ativo Fixo.');
+    if (!editSubgroupId) {
+      alert('Selecione o subgrupo de Ativo Fixo.');
       return;
     }
     for (const it of items) {
-      if (!it.groupId || !it.subgroupId) {
-        alert('Informe grupo e subgrupo de todos os itens na árvore de Ativo Fixo.');
+      if (!it.groupId || !(it.subgroupId || editSubgroupId)) {
+        alert('Informe o grupo de itens de todos os itens na árvore de Ativo Fixo.');
         return;
       }
     }
     setBusy(true);
     try {
       await requestsApi.update(request.id, {
-        familyId: editFamilyId,
+        subgroupId: editSubgroupId,
         fixedAsset: true,
         editNote:
           editNote.trim() ||
@@ -524,8 +579,8 @@ export function DetalhesSolicitacaoPage() {
       alert('Selecione ao menos uma unidade (hotel).');
       return false;
     }
-    if (!editFamilyId) {
-      alert('Selecione a família da solicitação.');
+    if (!editSubgroupId) {
+      alert('Selecione o subgrupo da solicitação.');
       return false;
     }
     for (const it of items) {
@@ -533,8 +588,8 @@ export function DetalhesSolicitacaoPage() {
         alert('Preencha a descrição de todos os itens.');
         return false;
       }
-      if (!it.groupId || !it.subgroupId) {
-        alert('Informe grupo e subgrupo de todos os itens.');
+      if (!it.groupId || !(it.subgroupId || editSubgroupId)) {
+        alert('Informe o grupo de itens de todos os itens.');
         return false;
       }
       if ((!editFixedAsset && !it.measureUnitId) || !it.costCenterId) {
@@ -551,7 +606,7 @@ export function DetalhesSolicitacaoPage() {
     try {
       await requestsApi.update(request.id, {
         hotelIds: editHotelIds,
-        familyId: editFamilyId,
+        subgroupId: editSubgroupId,
         fixedAsset: editFixedAsset,
         items: buildItemsPayload(),
         targetStage: 'SOLICITANTE',
@@ -585,6 +640,13 @@ export function DetalhesSolicitacaoPage() {
 
   async function doSendToApprover() {
     if (!request) return;
+    if (
+      isBlockRequestType(request.type) &&
+      !(request.observation ?? '').trim()
+    ) {
+      alert('Informe o motivo do bloqueio.');
+      return;
+    }
     if (!stageComment.trim()) {
       alert('Escreva um comentário sobre a conclusão desta etapa antes de prosseguir.');
       return;
@@ -644,7 +706,7 @@ export function DetalhesSolicitacaoPage() {
     }
     if (!request.fixedAsset) {
       alert(
-        'Esta solicitação não está em família de ativo fixo. Encaminhe ao Administrativo selecionando a família de uso e consumo.',
+        'Esta solicitação não está em família de ativo fixo. Encaminhe ao Administrativo selecionando o subgrupo de uso e consumo.',
       );
       return;
     }
@@ -654,14 +716,14 @@ export function DetalhesSolicitacaoPage() {
     }
     if (request.classificationInvalidated) {
       alert(
-        'Classificação invalidada: escolha a família e os grupos de Ativo Fixo e salve antes de registrar na base.',
+        'Classificação invalidada: escolha o subgrupo e os grupos de Ativo Fixo e salve antes de registrar na base.',
       );
       return;
     }
 
     for (const it of items) {
-      if (!it.groupId || !it.subgroupId) {
-        alert('Informe grupo e subgrupo de todos os itens na árvore de Ativo Fixo antes de registrar.');
+      if (!it.groupId || !(it.subgroupId || editSubgroupId)) {
+        alert('Informe o grupo de itens de todos os itens na árvore de Ativo Fixo antes de registrar.');
         return;
       }
     }
@@ -680,8 +742,19 @@ export function DetalhesSolicitacaoPage() {
     try {
       await requestsApi.sendFromImobilizado(request.id, stageComment.trim(), itemNcms);
       alert('Item(ns) registrados na base de ativos fixos. Solicitação encerrada.');
+      setNcmNotFoundItems([]);
       navigate('/produtos/base');
     } catch (e) {
+      if (isNcmNotFoundError(e)) {
+        const failed = e.body.items ?? [];
+        setNcmNotFoundItems(failed);
+        const firstId = failed[0]?.id;
+        if (firstId) {
+          const idx = items.findIndex((it) => it.id === firstId);
+          if (idx >= 0) setCurrentItem(idx);
+        }
+        return;
+      }
       alert(e instanceof Error ? e.message : 'Falha ao registrar na base de ativos fixos.');
       await reloadRequest();
     } finally {
@@ -692,8 +765,7 @@ export function DetalhesSolicitacaoPage() {
   async function confirmReclassify(payload: {
     justification: string;
     itemIds: string[];
-    targetFamilyId: string;
-    returnToApprover?: boolean;
+    targetSubgroupId: string;
   }) {
     if (!request) return;
     setBusy(true);
@@ -704,14 +776,13 @@ export function DetalhesSolicitacaoPage() {
         updated = await requestsApi.reclassifyFixedAsset(request.id, {
           justification: payload.justification,
           itemIds: payload.itemIds,
-          returnToApprover: payload.returnToApprover,
-          targetFamilyId: payload.targetFamilyId,
+          targetSubgroupId: payload.targetSubgroupId,
         });
       } else {
         updated = await requestsApi.reclassifyConsumption(request.id, {
           justification: payload.justification,
           itemIds: payload.itemIds,
-          targetFamilyId: payload.targetFamilyId,
+          targetSubgroupId: payload.targetSubgroupId,
         });
       }
       setReclassifyOpen(false);
@@ -799,17 +870,19 @@ export function DetalhesSolicitacaoPage() {
         : request.items.map((it) => it.id);
 
     const itemNcms: { itemId: string; ncm: string }[] = [];
-    for (const id of idsToApprove) {
-      const it = request.items.find((x) => x.id === id);
-      if (!it) continue;
-      const ncm = selectedNcm[it.id] || customNcm[it.id] || it.ncmCode;
-      if (!ncm) {
-        alert(
-          `ITM-09: confirme o NCM do item "${it.descriptionShort}" antes de finalizar.`,
-        );
-        return;
+    if (!isBlockRequestType(request.type)) {
+      for (const id of idsToApprove) {
+        const it = request.items.find((x) => x.id === id);
+        if (!it) continue;
+        const ncm = selectedNcm[it.id] || customNcm[it.id] || it.ncmCode;
+        if (!ncm) {
+          alert(
+            `ITM-09: confirme o NCM do item "${it.descriptionShort}" antes de finalizar.`,
+          );
+          return;
+        }
+        itemNcms.push({ itemId: it.id, ncm });
       }
-      itemNcms.push({ itemId: it.id, ncm });
     }
 
     const isPartial = idsToApprove.length < request.items.length;
@@ -837,11 +910,24 @@ export function DetalhesSolicitacaoPage() {
         );
       } else {
         alert(
-          'Aprovação total. Os itens foram cadastrados na Base de Produtos. Solicitação encerrada.',
+          isBlockRequestType(request.type)
+            ? 'Bloqueio aprovado. O produto foi atualizado na base. Solicitação encerrada.'
+            : 'Aprovação total. Os itens foram cadastrados na Base de Produtos. Solicitação encerrada.',
         );
       }
+      setNcmNotFoundItems([]);
       navigate('/produtos/base');
     } catch (e) {
+      if (isNcmNotFoundError(e)) {
+        const failed = e.body.items ?? [];
+        setNcmNotFoundItems(failed);
+        const firstId = failed[0]?.id;
+        if (firstId) {
+          const idx = items.findIndex((it) => it.id === firstId);
+          if (idx >= 0) setCurrentItem(idx);
+        }
+        return;
+      }
       alert(e instanceof Error ? e.message : 'Falha ao finalizar solicitação.');
     } finally {
       setBusy(false);
@@ -985,13 +1071,21 @@ export function DetalhesSolicitacaoPage() {
             />
           </div>
           <div className="solicitacao-resumo-cell">
-            <p className="solicitacao-resumo-label">Observação da solicitação</p>
+            <p className="solicitacao-resumo-label">
+              {isBlockRequestType(request.type)
+                ? 'Motivo do bloqueio'
+                : 'Observação da solicitação'}
+            </p>
             <RequestDescriptionBlock
               value={request.observation ?? ''}
               readOnly={!draftEditable}
               uppercase={false}
               multiline
-              emptyPlaceholder="Motivo da inclusão ou atualização deste produto"
+              emptyPlaceholder={
+                isBlockRequestType(request.type)
+                  ? 'Informe o motivo do bloqueio'
+                  : 'Motivo da inclusão ou atualização deste produto'
+              }
               editAriaLabel="Alterar observação da solicitação"
               confirmTitle="Alterar observação da solicitação"
               confirmMessage="Deseja alterar a observação? Em rascunho, a mudança será registrada na timeline ao salvar."
@@ -1010,61 +1104,66 @@ export function DetalhesSolicitacaoPage() {
 
       <SolicitacaoPreForm
         hotels={hotels}
-        families={families}
+        subgroups={subgroups}
         hotelIds={editHotelIds}
-        familyId={editFamilyId}
+        subgroupId={editSubgroupId}
         fixedAsset={editFixedAsset}
         hideKind
         readOnly={!draftEditable && !classificationEditable}
         kindReadOnly={!draftEditable}
         hotelsReadOnly={!draftEditable}
-        familyLocked={draftEditable && items.length > 0}
+        subgroupLocked={draftEditable && items.length > 0}
         onHotelChange={(ids) => {
           markDirty();
           setEditHotelIds(ids);
         }}
-        onFamilyChange={(nextId) => {
+        onSubgroupChange={(nextId) => {
           markDirty();
-          const selected = families.find((f) => f.id === nextId);
-          const nextAf = selected?.itemKind === 'FIXED_ASSET';
-          const kindChanged =
-            selected?.itemKind != null && nextAf !== editFixedAsset;
+          const selected = findSubgroupById(subgroups, nextId);
+          const kind = selected?.itemKind ?? selected?.family?.itemKind;
+          const nextAf = kind === 'FIXED_ASSET';
+          const kindChanged = kind != null && nextAf !== editFixedAsset;
           if (kindChanged) {
             setEditFixedAsset(nextAf);
           }
-          setEditFamilyId(nextId);
+          setEditSubgroupId(nextId);
+          const defaults = classificationFromSubgroup(nextId, groups);
           setItems((prev) =>
-            prev.map((it) => ({
-              ...it,
-              groupId: '',
-              subgroupId: '',
-              ...(kindChanged
-                ? nextAf
-                  ? {
-                      measureUnitId: '',
-                      purchaseQtyTotal: '',
-                      law116: '',
-                      unitQuantity: it.unitQuantity?.trim() ? it.unitQuantity : '1',
-                    }
-                  : {
-                      physicalLocation: '',
-                      assetTag: '',
-                      acquisitionValue: '',
-                      acquisitionDate: '',
-                      usefulLifeMonths: '',
-                      depreciationRate: '',
-                      supplierDocument: '',
-                      invoiceNumber: '',
-                      unitQuantity: '1',
-                    }
-                : {}),
-            })),
+            prev.map((it) => {
+              const under = filterGroupsForSubgroup(groups, nextId);
+              const keepGroup = under.some((g) => g.id === it.groupId);
+              return {
+                ...it,
+                subgroupId: nextId,
+                groupId: keepGroup ? it.groupId : defaults.groupId,
+                ...(kindChanged
+                  ? nextAf
+                    ? {
+                        measureUnitId: '',
+                        purchaseQtyTotal: '',
+                        law116: '',
+                        unitQuantity: it.unitQuantity?.trim() ? it.unitQuantity : '1',
+                      }
+                    : {
+                        physicalLocation: '',
+                        assetTag: '',
+                        acquisitionValue: '',
+                        acquisitionDate: '',
+                        usefulLifeMonths: '',
+                        depreciationRate: '',
+                        supplierDocument: '',
+                        invoiceNumber: '',
+                        unitQuantity: '1',
+                      }
+                  : {}),
+              };
+            }),
           );
         }}
         onFixedAssetChange={(v) => {
           markDirty();
           setEditFixedAsset(v);
-          setEditFamilyId('');
+          setEditSubgroupId('');
         }}
       />
 
@@ -1085,12 +1184,34 @@ export function DetalhesSolicitacaoPage() {
         onRemove={() => undefined}
         allowAdd={false}
         allowRemove={false}
+        errorIndexes={ncmErrorIndexes}
         addLockedLabel={
           draftEditable
             ? 'Para incluir ou remover itens, use “Editar itens do lote”'
             : 'Visualização — use as pastas para navegar entre itens'
         }
       />
+
+      {ncmNotFoundItems.length ? (
+        <p className="ncm-not-found-banner" role="alert">
+          NCM não localizado na base de NCMs do portal em{' '}
+          <strong>
+            {ncmNotFoundItems.length} item
+            {ncmNotFoundItems.length === 1 ? '' : 's'}
+          </strong>
+          . Corrija o(s) NCM destacado(s) e tente finalizar de novo.
+          {ncmNotFoundItems.length <= 5 ? (
+            <>
+              {' '}
+              (
+              {ncmNotFoundItems
+                .map((x) => `${x.description} → ${x.ncm}`)
+                .join('; ')}
+              )
+            </>
+          ) : null}
+        </p>
+      ) : null}
 
       {showCompare && requestItem ? (
         <RequestItemCompareTable
@@ -1166,14 +1287,13 @@ export function DetalhesSolicitacaoPage() {
             <ItemClassificationFields
               hideTitle
               readOnly={!fieldsEditable}
-              familyContext={selectedFamily}
+              lotSubgroupId={lotSubgroupId}
               value={{
                 groupId: item.groupId,
-                subgroupId: item.subgroupId,
+                subgroupId: item.subgroupId || lotSubgroupId,
                 source: item.source,
               }}
               groups={groups}
-              subgroups={subgroups}
               onChange={fieldsEditable ? (patch) => patchCurrentItem(patch) : undefined}
             />
           </div>
@@ -1208,84 +1328,124 @@ export function DetalhesSolicitacaoPage() {
           />
 
           {isApprover || (isImobilizado && request.fixedAsset) ? (
-            <div className="solicitacao-form-section detalhes-ncm-block">
-              <p className="form-section-title">NCM — candidatos do histórico</p>
-              <div className="ncm-warning">
-                Nenhum NCM é gravado sem você confirmar. (ITM-09)
-              </div>
-              {item.ncmConfirmed && item.ncmCode ? (
-                <p className="info-banner form-success">
-                  NCM confirmado: <strong>{formatNcmDisplay(item.ncmCode)}</strong>
+            isBlockRequestType(request.type) ? (
+              <div className="solicitacao-form-section detalhes-ncm-block">
+                <p className="form-section-title">NCM do cadastro</p>
+                <p className="info-banner">
+                  {baseLoading ? (
+                    'Carregando NCM do produto…'
+                  ) : (
+                    <>
+                      NCM cadastrado na base (somente leitura)
+                      {baseProduct?.ncmCode || item.ncmCode ? (
+                        <>
+                          :{' '}
+                          <strong>
+                            {formatNcmDisplay(
+                              baseProduct?.ncmCode || item.ncmCode || null,
+                            )}
+                          </strong>
+                        </>
+                      ) : (
+                        <>
+                          : <strong>não informado no cadastro</strong>
+                        </>
+                      )}
+                      . Em bloqueio o aprovador não confirma nem altera NCM.
+                    </>
+                  )}
                 </p>
-              ) : (
-                <div className="ncm-list">
-                  {(item.ncmSuggestions ?? []).map((s) => {
-                    const pct = Math.round(Number(s.score) * 100);
-                    const sample = s.sampleDescription?.trim();
-                    return (
-                      <label
-                        key={s.id}
-                        className={`ncm-option ${selectedNcm[item.id] === s.ncm ? 'selected' : ''}${presenceLocked ? ' ncm-option--readonly' : ''}`}
-                      >
-                        <input
-                          type="radio"
-                          name={`ncm-${item.id}`}
-                          checked={selectedNcm[item.id] === s.ncm}
-                          disabled={presenceLocked}
-                          onChange={() =>
-                            setSelectedNcm((prev) => ({ ...prev, [item.id]: s.ncm }))
-                          }
-                        />
-                        <span>
-                          {sample ? (
-                            <>
-                              <strong>{sample}</strong> ({formatNcmDisplay(s.ncm)})
-                            </>
-                          ) : (
-                            <strong>{formatNcmDisplay(s.ncm)}</strong>
-                          )}{' '}
-                          — usado {s.usageCount} {s.usageCount === 1 ? 'vez' : 'vezes'} (similaridade{' '}
-                          {pct}%)
-                        </span>
-                      </label>
-                    );
-                  })}
-                  <label className={`ncm-option${presenceLocked ? ' ncm-option--readonly' : ''}`}>
-                    <input
-                      type="radio"
-                      name={`ncm-${item.id}`}
-                      disabled={presenceLocked}
-                      onChange={() =>
-                        setSelectedNcm((prev) => ({
-                          ...prev,
-                          [item.id]: customNcm[item.id] ?? '',
-                        }))
-                      }
-                    />
-                    <span>Outro: </span>
-                    <input
-                      value={customNcm[item.id] ?? ''}
-                      inputMode="numeric"
-                      autoComplete="off"
-                      maxLength={10}
-                      disabled={presenceLocked}
-                      onChange={(e) => {
-                        const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
-                        const display =
-                          digits.length <= 4
-                            ? digits
-                            : digits.length <= 6
-                              ? `${digits.slice(0, 4)}.${digits.slice(4)}`
-                              : `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`;
-                        setCustomNcm((prev) => ({ ...prev, [item.id]: display }));
-                        setSelectedNcm((prev) => ({ ...prev, [item.id]: digits }));
-                      }}
-                      placeholder="9999.99.99"
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div
+                className={`solicitacao-form-section detalhes-ncm-block${currentItemNcmError ? ' detalhes-ncm-block--error' : ''}`}
+              >
+                <p className="form-section-title">NCM — candidatos do histórico</p>
+                {currentItemNcmError ? (
+                  <div className="ncm-warning ncm-warning--error" role="alert">
+                    NCM não localizado na base de NCMs do portal
+                    {ncmNotFoundItems.find((x) => x.id === item.id)?.ncm
+                      ? ` (${ncmNotFoundItems.find((x) => x.id === item.id)?.ncm})`
+                      : ''}
+                    . Escolha outro código cadastrado ou corrija o valor.
+                  </div>
+                ) : (
+                  <div className="ncm-warning">
+                    Nenhum NCM é gravado sem você confirmar. (ITM-09)
+                  </div>
+                )}
+                {item.ncmConfirmed && item.ncmCode ? (
+                  <p className="info-banner form-success">
+                    NCM confirmado: <strong>{formatNcmDisplay(item.ncmCode)}</strong>
+                  </p>
+                ) : (
+                  <div className="ncm-list">
+                    {(item.ncmSuggestions ?? []).map((s) => {
+                      const pct = Math.round(Number(s.score) * 100);
+                      const sample = s.sampleDescription?.trim();
+                      return (
+                        <label
+                          key={s.id}
+                          className={`ncm-option ${selectedNcm[item.id] === s.ncm ? 'selected' : ''}${presenceLocked ? ' ncm-option--readonly' : ''}`}
+                        >
+                          <input
+                            type="radio"
+                            name={`ncm-${item.id}`}
+                            checked={selectedNcm[item.id] === s.ncm}
+                            disabled={presenceLocked}
+                            onChange={() => selectItemNcm(item.id, s.ncm)}
+                          />
+                          <span>
+                            {sample ? (
+                              <>
+                                <strong>{sample}</strong> ({formatNcmDisplay(s.ncm)})
+                              </>
+                            ) : (
+                              <strong>{formatNcmDisplay(s.ncm)}</strong>
+                            )}{' '}
+                            — usado {s.usageCount} {s.usageCount === 1 ? 'vez' : 'vezes'}{' '}
+                            (similaridade {pct}%)
+                          </span>
+                        </label>
+                      );
+                    })}
+                    <label
+                      className={`ncm-option${presenceLocked ? ' ncm-option--readonly' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        name={`ncm-${item.id}`}
+                        disabled={presenceLocked}
+                        onChange={() =>
+                          selectItemNcm(item.id, customNcm[item.id] ?? '')
+                        }
+                      />
+                      <span>Outro: </span>
+                      <input
+                        value={customNcm[item.id] ?? ''}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        maxLength={10}
+                        disabled={presenceLocked}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
+                          const display =
+                            digits.length <= 4
+                              ? digits
+                              : digits.length <= 6
+                                ? `${digits.slice(0, 4)}.${digits.slice(4)}`
+                                : `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}`;
+                          clearNcmErrorForItem(item.id);
+                          setCustomNcm((prev) => ({ ...prev, [item.id]: display }));
+                          setSelectedNcm((prev) => ({ ...prev, [item.id]: digits }));
+                        }}
+                        placeholder="9999.99.99"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )
           ) : item.ncmCode ? (
             <p className="info-banner" style={{ marginTop: 16 }}>
               NCM: <strong>{formatNcmDisplay(item.ncmCode)}</strong>
@@ -1605,7 +1765,7 @@ export function DetalhesSolicitacaoPage() {
         open={reclassifyOpen}
         direction={reclassifyDirection}
         items={request.items}
-        families={reclassifyDirection === 'fixed-asset' ? afFamilies : ucFamilies}
+        subgroups={reclassifyDirection === 'fixed-asset' ? afSubgroups : ucSubgroups}
         busy={busy}
         onClose={() => setReclassifyOpen(false)}
         onConfirm={(payload) => void confirmReclassify(payload)}
@@ -1623,12 +1783,9 @@ export function DetalhesSolicitacaoPage() {
         open={approveOpen}
         busy={busy}
         stageComment={stageComment}
-        items={request.items.map((it) => ({
-          id: it.id,
-          descriptionShort: it.descriptionShort,
-          ncmCode: it.ncmCode,
-          resolvedNcm: selectedNcm[it.id] || customNcm[it.id] || it.ncmCode,
-        }))}
+        items={approveDialogItems}
+        skipNcmConfirmation={isBlockRequestType(request.type)}
+        ncmErrorItems={ncmNotFoundItems}
         onClose={() => setApproveOpen(false)}
         onConfirm={({ approvedItemIds, returnRejectedItemIds }) =>
           void finalize(approvedItemIds, returnRejectedItemIds)

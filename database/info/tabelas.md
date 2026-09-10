@@ -9,8 +9,8 @@ Domínio em **inglês**. Campos: [`docs/projeto/mapa-entidades.md`](../../docs/p
 | `groups`, `subgroups`, `families` | Hierarquia PDM |
 | `products` | Itens cadastrados |
 | `product_hotels` | Produto × hotel |
-| `product_attributes`, `product_attribute_values` | Atributos PDM |
-| `requests`, `request_items` | Solicitações de cadastro |
+| `product_attributes`, `product_attribute_values` | Atributos PDM (por **subgrupo**) |
+| `requests`, `request_items` | Solicitações; `requests.subgroup_id` = eixo do lote (ITM-11); `family_id` derivado |
 | `request_stages` | Timeline / SLA |
 | `request_viewers` | Presença (usuário com a solicitação aberta; `joined_at` define quem edita; sem audit — efêmero) |
 | `ncm_codes` | TIPI/NCM (8 dígitos); FK de products/request_items |

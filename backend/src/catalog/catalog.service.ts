@@ -107,7 +107,7 @@ export class CatalogService {
       this.prisma.family.findMany({
         where,
         include: {
-          _count: { select: { productAttributes: true, subgroups: true } },
+          _count: { select: { subgroups: true } },
         },
         orderBy: [{ itemKind: 'asc' }, { name: 'asc' }, { code: 'asc' }],
         skip,
@@ -138,7 +138,6 @@ export class CatalogService {
         name: f.name,
         active: f.active,
         itemKind: f.itemKind,
-        attributesCount: f._count.productAttributes,
         subgroupsCount: f._count.subgroups,
         productsCount: countMap.get(f.id) ?? 0,
         anomalies: familyAnomalies(f.code, f.name),
@@ -148,9 +147,9 @@ export class CatalogService {
     );
   }
 
-  familyAttributes(familyId: string) {
+  subgroupAttributes(subgroupId: string) {
     return this.prisma.productAttribute.findMany({
-      where: { familyId, active: true },
+      where: { subgroupId, active: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -294,7 +293,7 @@ export class CatalogService {
           family: {
             select: { id: true, code: true, name: true, itemKind: true },
           },
-          _count: { select: { groups: true } },
+          _count: { select: { groups: true, productAttributes: true } },
         },
         orderBy: [{ name: 'asc' }, { code: 'asc' }],
         skip,
@@ -327,6 +326,7 @@ export class CatalogService {
         itemKind: sg.family.itemKind,
         family: sg.family,
         groupsCount: sg._count.groups,
+        attributesCount: sg._count.productAttributes,
         productsCount: countMap.get(sg.id) ?? 0,
         anomalies: subgroupAnomalies(sg.name),
       })),

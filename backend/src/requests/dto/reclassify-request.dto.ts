@@ -33,11 +33,8 @@ export class ReclassifyRequestDto {
   returnToApprover?: boolean;
 
   /**
-   * Família sugerida no destino:
-   * - → AF: família de ativo fixo
-   * - → UC: família de uso e consumo
-   * O setor receptor pode alterar depois.
+   * Subgrupo do destino (ITM-11 / FLX-01). Família é derivada e gravada no banco.
    */
   @IsUUID('4')
-  targetFamilyId!: string;
+  targetSubgroupId!: string;
 }

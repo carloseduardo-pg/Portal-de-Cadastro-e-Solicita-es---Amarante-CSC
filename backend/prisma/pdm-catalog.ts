@@ -1,13 +1,11 @@
 /**
  * Atributos PDM de **demonstração** (pendência P3).
  *
- * A base SAP B1 oficial NÃO traz atributos por família. Este catálogo existe só para
- * exercitar o formulário até a Amarante entregar a lista real.
- *
- * Chave = nome exato da família SAP (reconciliação por nome). Famílias sem entrada
- * usam FALLBACK_ATTRS.
+ * A base SAP B1 oficial NÃO traz atributos por subgrupo. Este catálogo existe só para
+ * exercitar o formulário até a Amarante entregar a lista real por subgrupo.
  *
  * Hierarquia e produtos: `npm run import:sap` — não semear aqui.
+ * Seed: apaga e recria `product_attributes` por subgrupo (não duplica família → todos os filhos).
  */
 export type PdmAttributeDef = {
   name: string;
@@ -31,7 +29,6 @@ const ATTR = {
     required: true,
     examples: ['PCT', 'CX', 'BDJ', 'GALAO', 'FARDO'],
   },
-  /** Demo BEBIDAS — embalagens típicas de bebida (não reutilizar ATTR.embalagem genérico). */
   embalagemBebida: {
     name: 'EMBALAGEM',
     required: true,
@@ -49,43 +46,42 @@ const ATTR = {
   },
 } as const satisfies Record<string, PdmAttributeDef>;
 
-/**
- * DEMO / P3 — atributos por nome de família SAP.
- * Substituir pela lista oficial Amarante quando disponível.
- */
-export const PDM_ATTRS_BY_FAMILY: Record<string, PdmAttributeDef[]> = {
-  ALIMENTOS: [
-    { name: 'TIPO', required: true, examples: ['IN NATURA', 'PROCESSADO', 'CONGELADO'] },
-    ATTR.conservacao,
-    ATTR.embalagem,
-    ATTR.pesoVol,
-    ATTR.marca,
-  ],
-  BEBIDAS: [
-    { name: 'TIPO', required: true, examples: ['AGUA', 'REFRIGERANTE', 'SUCO', 'CERVEJA'] },
-    { name: 'COM GAS', required: false, examples: ['SIM', 'NAO'] },
-    ATTR.embalagemBebida,
-    ATTR.pesoVol,
-    ATTR.marca,
-  ],
-  UNIFORMES: [
-    { name: 'PECA', required: true, examples: ['CAMISA', 'CALCA', 'AVENTAL', 'BONE'] },
-    { name: 'TAMANHO', required: true, examples: ['P', 'M', 'G', 'GG', 'XG'] },
-    { name: 'COR', required: true, examples: ['BRANCO', 'PRETO', 'AZUL'] },
-    ATTR.marca,
-  ],
-  'MATERIAL DE LIMPEZA': [
-    { name: 'TIPO', required: true, examples: ['DETERGENTE', 'DESINFETANTE', 'SABAO'] },
-    ATTR.embalagem,
-    ATTR.pesoVol,
-    ATTR.marca,
-  ],
-  'MATERIAL DE ESCRITORIO': [
-    { name: 'TIPO', required: true, examples: ['BLOCO', 'CANETA', 'PASTA', 'ENVELOPE'] },
-    { name: 'FORMATO', required: false, examples: ['A4', 'A5', 'OFICIO'] },
-    ATTR.marca,
-  ],
-};
+/** Templates reutilizáveis (demo). */
+const TEMPLATE_ALIMENTOS: PdmAttributeDef[] = [
+  { name: 'TIPO', required: true, examples: ['IN NATURA', 'PROCESSADO', 'CONGELADO'] },
+  ATTR.conservacao,
+  ATTR.embalagem,
+  ATTR.pesoVol,
+  ATTR.marca,
+];
+
+const TEMPLATE_BEBIDAS: PdmAttributeDef[] = [
+  { name: 'TIPO', required: true, examples: ['AGUA', 'REFRIGERANTE', 'SUCO', 'CERVEJA'] },
+  { name: 'COM GAS', required: false, examples: ['SIM', 'NAO'] },
+  ATTR.embalagemBebida,
+  ATTR.pesoVol,
+  ATTR.marca,
+];
+
+const TEMPLATE_UNIFORMES: PdmAttributeDef[] = [
+  { name: 'PECA', required: true, examples: ['CAMISA', 'CALCA', 'AVENTAL', 'BONE'] },
+  { name: 'TAMANHO', required: true, examples: ['P', 'M', 'G', 'GG', 'XG'] },
+  { name: 'COR', required: true, examples: ['BRANCO', 'PRETO', 'AZUL'] },
+  ATTR.marca,
+];
+
+const TEMPLATE_LIMPEZA: PdmAttributeDef[] = [
+  { name: 'TIPO', required: true, examples: ['DETERGENTE', 'DESINFETANTE', 'SABAO'] },
+  ATTR.embalagem,
+  ATTR.pesoVol,
+  ATTR.marca,
+];
+
+const TEMPLATE_ESCRITORIO: PdmAttributeDef[] = [
+  { name: 'TIPO', required: true, examples: ['BLOCO', 'CANETA', 'PASTA', 'ENVELOPE'] },
+  { name: 'FORMATO', required: false, examples: ['A4', 'A5', 'OFICIO'] },
+  ATTR.marca,
+];
 
 const FALLBACK_ATTRS: PdmAttributeDef[] = [
   { name: 'TIPO', required: true, examples: ['PADRAO', 'ESPECIAL'] },
@@ -95,10 +91,37 @@ const FALLBACK_ATTRS: PdmAttributeDef[] = [
 ];
 
 /**
- * Atributos de protótipo para uma família SAP (por nome).
- * Pendência P3 — não é dado oficial.
+ * Overrides explícitos por nome de subgrupo (demo / P3).
+ * Subgrupos sem entrada usam rotação de templates (garante listas distintas na mesma família).
  */
-export function pdmAttributesForFamily(familyName: string): PdmAttributeDef[] {
-  const key = familyName.trim().toUpperCase();
-  return PDM_ATTRS_BY_FAMILY[key] ?? FALLBACK_ATTRS;
+export const PDM_ATTRS_BY_SUBGROUP: Record<string, PdmAttributeDef[]> = {
+  ALIMENTOS: TEMPLATE_ALIMENTOS,
+  BEBIDAS: TEMPLATE_BEBIDAS,
+  UNIFORMES: TEMPLATE_UNIFORMES,
+  'MATERIAL DE LIMPEZA': TEMPLATE_LIMPEZA,
+  'MATERIAL DE ESCRITORIO': TEMPLATE_ESCRITORIO,
+};
+
+const DEMO_TEMPLATES: PdmAttributeDef[][] = [
+  TEMPLATE_ALIMENTOS,
+  TEMPLATE_BEBIDAS,
+  TEMPLATE_UNIFORMES,
+  TEMPLATE_LIMPEZA,
+  TEMPLATE_ESCRITORIO,
+  FALLBACK_ATTRS,
+];
+
+/**
+ * Atributos de protótipo para um subgrupo (por nome).
+ * `siblingIndex` — posição entre irmãos da mesma família (seed) para listas distintas.
+ * Pendência P3 — não é dado oficial. Lista oficial Amarante substituirá isto.
+ */
+export function pdmAttributesForSubgroup(
+  subgroupName: string,
+  _familyName?: string,
+  siblingIndex = 0,
+): PdmAttributeDef[] {
+  const key = subgroupName.trim().toUpperCase();
+  if (PDM_ATTRS_BY_SUBGROUP[key]) return PDM_ATTRS_BY_SUBGROUP[key];
+  return DEMO_TEMPLATES[siblingIndex % DEMO_TEMPLATES.length] ?? FALLBACK_ATTRS;
 }
