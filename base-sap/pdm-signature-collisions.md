@@ -1,6 +1,8 @@
 # Colisões `UNIQUE(family_id, pdm_signature)` — CONSUMPTION ativos
 
-Detectadas **antes** de criar a constraint (migration `products_pdm_signature_consumption_unique`).
+**Planilha:** `base-sap/itens/Base de itens SAP B1.xlsx` (aba Uso e consumo) foi desambiguada: nas duplicatas PDM o **primeiro** `sap_code` manteve a descrição; os demais receberam o código SAP no final (ex.: `AZEITE OLIVA EXTRA VIRGEM 500ML UC000497`). Script: `base-sap/itens/dedupe_pdm_xlsx.py`. Reaplicar se a Amarante enviar uma planilha nova.
+
+Abaixo: colisões **originais** do SAP (antes do ajuste), detectadas na migration `products_pdm_signature_consumption_unique`.
 São as **41 duplicatas reais** do gargalo 1 — a normalização não inventa colisões novas.
 
 A unique **não foi aplicada** enquanto estas linhas existirem; a migration grava o relatório e segue sem falhar.
