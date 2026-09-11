@@ -4,7 +4,7 @@
  * Uso: `npm run import:sap` (idempotente — upsert por sap_code / nome natural).
  * Relatório: `base-sap/relatorio-importacao.md`
  */
-import { ItemKind, PrismaClient, ProductSource } from '@prisma/client';
+import { ItemKind, Prisma, PrismaClient, ProductSource } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
@@ -469,6 +469,15 @@ function mdEscape(s: string): string {
   return s.replace(/\|/g, '\\|');
 }
 
+/** Unique/trigger PDM (família + assinatura) — não aborta o lote. */
+function isPdmUniqueConflict(err: unknown): boolean {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return /pdm_signature|Duplicidade CONSUMPTION|unique constraint failed/i.test(msg);
+}
+
 function buildReport(opts: {
   ucRead: number;
   afRead: number;
@@ -865,6 +874,8 @@ async function main() {
 
   let created = 0;
   let updated = 0;
+  let skippedPdm = 0;
+  const skippedSamples: string[] = [];
   const ncmAt = new Date();
 
   // Bootstrap ncm_codes com NCMs em uso (FK obrigatória antes do upsert de products)
@@ -904,12 +915,22 @@ async function main() {
       ncmConfirmedAt: r.ncmCode ? ncmAt : null,
       active: r.active,
     };
-    if (existing) {
-      await prisma.product.update({ where: { id: existing.id }, data });
-      updated += 1;
-    } else {
-      await prisma.product.create({ data });
-      created += 1;
+    try {
+      if (existing) {
+        await prisma.product.update({ where: { id: existing.id }, data });
+        updated += 1;
+      } else {
+        await prisma.product.create({ data });
+        created += 1;
+      }
+    } catch (err) {
+      if (!isPdmUniqueConflict(err)) throw err;
+      skippedPdm += 1;
+      if (skippedSamples.length < 30) {
+        skippedSamples.push(
+          `${r.sapCode} | ${r.familyResolved} | ${r.description}`,
+        );
+      }
     }
   }
 
@@ -996,7 +1017,13 @@ async function main() {
     data: { active: false },
   });
 
-  console.log(`OK  criados=${created} atualizados=${updated} produtos_com_sap_code=${sapCount}`);
+  console.log(
+    `OK  criados=${created} atualizados=${updated} pulados_pdm=${skippedPdm} produtos_com_sap_code=${sapCount}`,
+  );
+  if (skippedSamples.length) {
+    console.log('    Amostra pulada (SAP | família | descrição):');
+    for (const line of skippedSamples) console.log(`      ${line}`);
+  }
   console.log(`    Relatório: ${REPORT_PATH}`);
 }
 
