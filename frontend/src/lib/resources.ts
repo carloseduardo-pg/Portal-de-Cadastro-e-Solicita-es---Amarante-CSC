@@ -169,6 +169,8 @@ export const requestsApi = {
     search?: string;
     type?: string;
     familyIds?: string[];
+    subgroupIds?: string[];
+    groupIds?: string[];
     hotelIds?: string[];
     requesterIds?: string[];
   }) =>
@@ -177,6 +179,8 @@ export const requestsApi = {
         search: opts?.search,
         type: opts?.type,
         family_ids: opts?.familyIds,
+        subgroup_ids: opts?.subgroupIds,
+        group_ids: opts?.groupIds,
         hotel_ids: opts?.hotelIds,
         requester_ids: opts?.requesterIds,
       })}`,
@@ -186,6 +190,8 @@ export const requestsApi = {
     mine?: boolean;
     type?: string;
     familyIds?: string[];
+    subgroupIds?: string[];
+    groupIds?: string[];
     hotelIds?: string[];
     requesterIds?: string[];
   }) =>
@@ -195,6 +201,8 @@ export const requestsApi = {
         mine: opts?.mine ? 'true' : undefined,
         type: opts?.type,
         family_ids: opts?.familyIds,
+        subgroup_ids: opts?.subgroupIds,
+        group_ids: opts?.groupIds,
         hotel_ids: opts?.hotelIds,
         requester_ids: opts?.requesterIds,
       })}`,

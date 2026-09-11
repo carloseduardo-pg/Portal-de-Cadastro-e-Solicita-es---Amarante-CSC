@@ -154,6 +154,19 @@ function typeLabel(type: string) {
   return requestTypeLabel(type);
 }
 
+/** Modificador CSS do badge de tipo (inclusão / alteração / bloqueio). */
+function typeBadgeModifier(type: string) {
+  if (type === 'ALTERACAO') return 'alteracao';
+  if (
+    type === 'BLOQUEIO' ||
+    type === 'BLOQUEIO_PARCIAL' ||
+    type === 'BLOQUEIO_TOTAL'
+  ) {
+    return 'bloqueio';
+  }
+  return 'inclusao';
+}
+
 function formatStageDate(r: Request) {
   const d = openStageStartedAt(r);
   return new Date(d).toLocaleDateString('pt-BR', {
@@ -249,7 +262,9 @@ export function RequestInboxCard({
           {r.code ? <span className="request-code">{r.code}</span> : null}
           <strong>{requestTitle(r)}</strong>
         </div>
-        <span className="kanban-card-type">{typeLabel(r.type)}</span>
+        <span className={`kanban-card-type kanban-card-type--${typeBadgeModifier(r.type)}`}>
+          {typeLabel(r.type)}
+        </span>
       </div>
       {showStageBadge && col ? (
         <span className="kanban-card-stage" style={{ borderColor: col.color, color: col.color }}>
@@ -261,8 +276,14 @@ export function RequestInboxCard({
       ) : null}
       <dl className="kanban-card-facts">
         <div>
-          <dt>Família</dt>
-          <dd>{r.family ? `${r.family.code} — ${r.family.name}` : '—'}</dd>
+          <dt>Subgrupo</dt>
+          <dd>
+            {r.subgroup
+              ? `${r.subgroup.code} — ${r.subgroup.name}`
+              : r.family
+                ? `${r.family.code} — ${r.family.name}`
+                : '—'}
+          </dd>
         </div>
         <div>
           <dt>Hotel</dt>

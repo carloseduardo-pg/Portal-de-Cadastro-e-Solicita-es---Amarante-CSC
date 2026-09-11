@@ -19,7 +19,7 @@ export type ItemClassificationErrors = {
 type Props = {
   value: ItemClassificationValue;
   groups: CatalogGroup[];
-  /** Subgrupo do lote (ITM-11) — o item só escolhe o grupo dentro deste subgrupo. */
+  /** Subgrupo do lote (ITM-11) — o item escolhe o grupo dentro deste subgrupo. */
   lotSubgroupId: string;
   errors?: ItemClassificationErrors;
   hideTitle?: boolean;
@@ -34,7 +34,7 @@ const SOURCE_OPTIONS: { value: ItemClassificationValue['source']; label: string 
 ];
 
 /**
- * Classificação SAP por item — só Grupo (folha), com subgrupo do lote fixo no cabeçalho.
+ * Primeiros campos obrigatórios do item: fonte + grupo (filtrado pelo subgrupo do lote).
  */
 export function ItemClassificationFields({
   value,
@@ -58,13 +58,22 @@ export function ItemClassificationFields({
     );
   }, [groups, lotSubgroupId]);
 
-  /** Se o subgrupo do lote tiver um único grupo, pré-seleciona. */
+  /** Se o subgrupo tiver um único grupo, pré-seleciona; senão só amarra o subgroupId. */
   useEffect(() => {
     if (readOnly || !lotSubgroupId || !onChangeRef.current) return;
-    if (visibleGroups.length !== 1) return;
-    const only = visibleGroups[0];
-    if (value.groupId === only.id && value.subgroupId === lotSubgroupId) return;
-    onChangeRef.current({ groupId: only.id, subgroupId: lotSubgroupId });
+    if (visibleGroups.length === 1) {
+      const only = visibleGroups[0];
+      if (value.groupId === only.id && value.subgroupId === lotSubgroupId) return;
+      onChangeRef.current({ groupId: only.id, subgroupId: lotSubgroupId });
+      return;
+    }
+    if (value.subgroupId !== lotSubgroupId) {
+      const keep =
+        value.groupId && visibleGroups.some((g) => g.id === value.groupId)
+          ? value.groupId
+          : '';
+      onChangeRef.current({ subgroupId: lotSubgroupId, groupId: keep });
+    }
   }, [lotSubgroupId, visibleGroups, value.groupId, value.subgroupId, readOnly]);
 
   const groupOptions = useMemo(
@@ -111,7 +120,7 @@ export function ItemClassificationFields({
         className="pdm-span-8"
         hint={
           lotSubgroupId
-            ? undefined
+            ? 'Grupos disponíveis neste subgrupo da solicitação.'
             : 'Selecione o subgrupo da solicitação no pré-formulário.'
         }
       >
@@ -149,7 +158,7 @@ export function ItemClassificationFields({
     <div className="pdm-classification-grid">{gridContent}</div>
   ) : (
     <div className="pdm-classification">
-      <p className="form-section-title">Classificação do item</p>
+      <p className="form-section-title">Classificação SAP do item</p>
       <div className="pdm-classification-grid">{gridContent}</div>
     </div>
   );

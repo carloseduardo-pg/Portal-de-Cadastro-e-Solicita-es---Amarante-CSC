@@ -82,12 +82,16 @@ export class RequestsController {
     @Query('search') search?: string,
     @Query('type') type?: string,
     @Query('family_ids') familyIds?: string,
+    @Query('subgroup_ids') subgroupIds?: string,
+    @Query('group_ids') groupIds?: string,
     @Query('hotel_ids') hotelIds?: string,
     @Query('requester_ids') requesterIds?: string,
     @Req() req?: Request & { user?: { id: string; role?: UserRole } },
   ) {
     const filters = this.requests.parseKanbanFilters({
       family_ids: familyIds,
+      subgroup_ids: subgroupIds,
+      group_ids: groupIds,
       hotel_ids: hotelIds,
       requester_ids: requesterIds,
       type,
@@ -106,12 +110,16 @@ export class RequestsController {
     @Query('search') search?: string,
     @Query('type') type?: string,
     @Query('family_ids') familyIds?: string,
+    @Query('subgroup_ids') subgroupIds?: string,
+    @Query('group_ids') groupIds?: string,
     @Query('hotel_ids') hotelIds?: string,
     @Query('requester_ids') requesterIds?: string,
     @Req() req?: Request & { user?: { id: string } },
   ) {
     const filters = this.requests.parseKanbanFilters({
       family_ids: familyIds,
+      subgroup_ids: subgroupIds,
+      group_ids: groupIds,
       hotel_ids: hotelIds,
       requester_ids: requesterIds,
       type,

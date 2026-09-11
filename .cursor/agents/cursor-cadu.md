@@ -18,6 +18,7 @@
 
 ## Entregas recentes
 
+- **Caixa de entrada — filtros PDM + badge tipo:** filtros **Subgrupo** e **Grupo de itens** (cascata com Família) na mesma linha; card exibe **Subgrupo** (não Família); badges Inclusão verde / Alteração roxa / Bloqueio vermelho. API inbox/kanban aceita `subgroup_ids` e `group_ids`.
 - **Backfill + API subgroup obrigatório:** script `prisma/backfill-request-subgroup-id.ts`; legados de teste apagados; migration `20260910200000_request_subgroup_id_not_null`. Create/update/reclassify sem `familyId` no payload — família só derivada. E2E criar→devolver→reclassificar AF→encerrar OK.
 - **ITM-11 por subgrupo (UI):** pré-formulário pede **subgrupo** (`/catalog/subgroups`); família fica só leitura/derivada. `DadosDoItemPage` / `DetalhesSolicitacaoPage` gravam `subgroupId`; classificação do item lista só **grupos** do lote; auto-select se houver grupo único. Payload create/update aceita `subgroupId`.
 - **Atributos PDM por subgrupo:** `product_attributes.subgroup_id` (migration apaga/recarrega); API `GET /catalog/subgroups/:id/attributes`; formulário e Parametrizações por subgrupo. Persistência dos valores preenchidos continua fora de escopo.

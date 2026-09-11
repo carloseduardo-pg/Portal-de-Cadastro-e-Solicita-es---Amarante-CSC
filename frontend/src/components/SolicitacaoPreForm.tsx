@@ -50,8 +50,8 @@ function kindBadge(
 }
 
 /**
- * Pré-formulário da solicitação — unidades + subgrupo do lote (ITM-11).
- * Família é exibida como informação derivada (somente leitura).
+ * Pré-formulário — unidades + subgrupo do lote (ITM-11).
+ * Família é só leitura/derivada. Cada item escolhe o próprio grupo dentro do subgrupo.
  */
 export function SolicitacaoPreForm({
   hotels,
@@ -138,17 +138,11 @@ export function SolicitacaoPreForm({
             <>
               <strong>ITM-11:</strong> unidades e subgrupo desta solicitação (somente visualização).
             </>
-          ) : hideKind ? (
-            <>
-              <strong>ITM-11:</strong> selecione as unidades e o subgrupo. Só será possível pedir
-              itens deste subgrupo nesta solicitação. O destino do fluxo (Administrativo ou
-              Imobilizado) segue o tipo da família do subgrupo.
-            </>
           ) : (
             <>
-              <strong>ITM-11:</strong> selecione as unidades e o subgrupo desta solicitação. Só será
-              possível pedir itens deste subgrupo nesta solicitação. Cada item terá seu próprio
-              grupo na etapa seguinte.
+              <strong>ITM-11:</strong> selecione as unidades e o subgrupo. Só será possível pedir
+              itens deste subgrupo nesta solicitação. A família é derivada do subgrupo; cada item
+              escolhe o próprio grupo na etapa seguinte.
             </>
           )}
         </p>

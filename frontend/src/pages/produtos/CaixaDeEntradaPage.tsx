@@ -10,7 +10,13 @@ import {
   stageTint,
 } from '../../components/requests/RequestStageViews';
 import { catalogApi, requestsApi, usersApi } from '../../lib/resources';
-import type { Family, Hotel, InboxBoardResult } from '../../lib/types';
+import type {
+  CatalogGroup,
+  CatalogSubgroup,
+  Family,
+  Hotel,
+  InboxBoardResult,
+} from '../../lib/types';
 import './produtos.css';
 
 type ViewMode = 'board' | 'list';
@@ -43,11 +49,15 @@ export function CaixaDeEntradaPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [familyIds, setFamilyIds] = useState<string[]>([]);
+  const [subgroupIds, setSubgroupIds] = useState<string[]>([]);
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [hotelIds, setHotelIds] = useState<string[]>([]);
   const [requesterIds, setRequesterIds] = useState<string[]>([]);
   const [board, setBoard] = useState<InboxBoardResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [families, setFamilies] = useState<Family[]>([]);
+  const [subgroups, setSubgroups] = useState<CatalogSubgroup[]>([]);
+  const [groups, setGroups] = useState<CatalogGroup[]>([]);
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [requesters, setRequesters] = useState<{ id: string; name: string }[]>([]);
   const [expandedBuckets, setExpandedBuckets] = useState<Set<string>>(() => new Set());
@@ -59,9 +69,29 @@ export function CaixaDeEntradaPage() {
   );
   const showStageBadge = stageColumns.length > 1 || effectiveRole === 'ADMIN';
 
+  const subgroupOptions = useMemo(() => {
+    if (!familyIds.length) return subgroups;
+    const allowed = new Set(familyIds);
+    return subgroups.filter((sg) => allowed.has(sg.familyId ?? sg.family?.id ?? ''));
+  }, [subgroups, familyIds]);
+
+  const groupOptions = useMemo(() => {
+    if (subgroupIds.length) {
+      const allowed = new Set(subgroupIds);
+      return groups.filter((g) => allowed.has(g.subgroupId ?? ''));
+    }
+    if (familyIds.length) {
+      const sgAllowed = new Set(subgroupOptions.map((sg) => sg.id));
+      return groups.filter((g) => sgAllowed.has(g.subgroupId ?? ''));
+    }
+    return groups;
+  }, [groups, subgroupIds, familyIds, subgroupOptions]);
+
   useEffect(() => {
     void Promise.all([
       catalogApi.families({ pageSize: 200 }).then((r) => setFamilies(r.data)),
+      catalogApi.subgroups({ pageSize: 500, status: 'active' }).then((r) => setSubgroups(r.data)),
+      catalogApi.groups({ pageSize: 500, status: 'active' }).then((r) => setGroups(r.data)),
       catalogApi.hotels().then(setHotels),
       usersApi.list({ pageSize: 100 }).then((r) => setRequesters(r.data.map((u) => ({ id: u.id, name: u.name })))),
     ]).catch(console.error);
@@ -75,10 +105,28 @@ export function CaixaDeEntradaPage() {
   }, [view]);
 
   useEffect(() => {
+    const allowedSg = new Set(subgroupOptions.map((sg) => sg.id));
+    setSubgroupIds((prev) => {
+      const next = prev.filter((id) => allowedSg.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [subgroupOptions]);
+
+  useEffect(() => {
+    const allowedG = new Set(groupOptions.map((g) => g.id));
+    setGroupIds((prev) => {
+      const next = prev.filter((id) => allowedG.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [groupOptions]);
+
+  useEffect(() => {
     const filters = {
       search: search || undefined,
       type: typeFilter || undefined,
       familyIds: familyIds.length ? familyIds : undefined,
+      subgroupIds: subgroupIds.length ? subgroupIds : undefined,
+      groupIds: groupIds.length ? groupIds : undefined,
       hotelIds: hotelIds.length ? hotelIds : undefined,
       requesterIds: requesterIds.length ? requesterIds : undefined,
     };
@@ -100,7 +148,7 @@ export function CaixaDeEntradaPage() {
       clearTimeout(timer);
       window.clearInterval(poll);
     };
-  }, [search, typeFilter, familyIds, hotelIds, requesterIds]);
+  }, [search, typeFilter, familyIds, subgroupIds, groupIds, hotelIds, requesterIds]);
 
   const rows = board?.data ?? EMPTY_REQUESTS;
 
@@ -116,7 +164,12 @@ export function CaixaDeEntradaPage() {
   }, [grouped, hideEmpty]);
 
   const activeFilters =
-    familyIds.length + hotelIds.length + requesterIds.length + (typeFilter ? 1 : 0);
+    familyIds.length +
+    subgroupIds.length +
+    groupIds.length +
+    hotelIds.length +
+    requesterIds.length +
+    (typeFilter ? 1 : 0);
 
   useEffect(() => {
     if (view !== 'list') return;
@@ -129,6 +182,8 @@ export function CaixaDeEntradaPage() {
 
   function clearFilters() {
     setFamilyIds([]);
+    setSubgroupIds([]);
+    setGroupIds([]);
     setHotelIds([]);
     setRequesterIds([]);
     setTypeFilter('');
@@ -179,13 +234,13 @@ export function CaixaDeEntradaPage() {
 
       {flash ? <p className="info-banner form-success">{flash}</p> : null}
 
-      <div className="solicitacoes-filters">
+      <div className="solicitacoes-filters solicitacoes-filters--inbox">
         <label className="solicitacoes-search">
           <span>Buscar</span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-          placeholder="ID da solicitação, descrição, família, hotel ou solicitante..."
+            placeholder="ID, descrição, subgrupo, família, hotel…"
           />
         </label>
 
@@ -204,6 +259,24 @@ export function CaixaDeEntradaPage() {
           options={families.map((f) => ({ id: f.id, label: `${f.code} — ${f.name}` }))}
           selected={familyIds}
           onChange={setFamilyIds}
+        />
+        <MultiFilter
+          label="Subgrupo"
+          options={subgroupOptions.map((sg) => ({
+            id: sg.id,
+            label: `${sg.code} — ${sg.name}`,
+          }))}
+          selected={subgroupIds}
+          onChange={setSubgroupIds}
+        />
+        <MultiFilter
+          label="Grupo de itens"
+          options={groupOptions.map((g) => ({
+            id: g.id,
+            label: `${g.code} — ${g.name}`,
+          }))}
+          selected={groupIds}
+          onChange={setGroupIds}
         />
         <MultiFilter
           label="Hotel"

@@ -504,8 +504,8 @@ export function DadosDoItemPage() {
 
   function patchClassification(patch: Partial<ItemDraft>) {
     if (
-      patch.subgroupId !== undefined &&
-      patch.subgroupId !== item.subgroupId
+      (patch.subgroupId !== undefined && patch.subgroupId !== item.subgroupId) ||
+      (patch.groupId !== undefined && patch.groupId !== item.groupId)
     ) {
       patch = { ...patch, attributeValues: {} };
     }
@@ -969,116 +969,7 @@ export function DadosDoItemPage() {
 
             <div className="solicitacao-form-body">
               <div className="pdm-classification">
-                <p className="form-section-title">Classificação do item</p>
-                <ItemPrimaryFields
-                  value={{
-                    descriptionShort: item.descriptionShort,
-                    costCenterId: item.costCenterId,
-                    measureUnitId: item.measureUnitId,
-                    itemValue: item.itemValue,
-                    purchaseQtyTotal: item.purchaseQtyTotal,
-                    unifiedCode: item.unifiedCode,
-                    legacyCode: item.legacyCode,
-                    law116: item.law116,
-                    unitQuantity: item.unitQuantity,
-                    physicalLocation: item.physicalLocation,
-                    assetTag: item.assetTag,
-                    acquisitionValue: item.acquisitionValue,
-                    acquisitionDate: item.acquisitionDate,
-                    usefulLifeMonths: item.usefulLifeMonths,
-                    depreciationRate: item.depreciationRate,
-                    supplierDocument: item.supplierDocument,
-                    invoiceNumber: item.invoiceNumber,
-                  }}
-                  costCenters={costCenters}
-                  measureUnits={measureUnits}
-                  hideMeasureUnit={fixedAsset}
-                  errors={{
-                    descriptionShort: fieldErrors.descriptionShort,
-                    costCenterId: fieldErrors.costCenterId,
-                    measureUnitId: fieldErrors.measureUnitId,
-                    unitQuantity: fieldErrors.unitQuantity,
-                    physicalLocation: fieldErrors.physicalLocation,
-                    duplicate: fieldErrors.duplicate,
-                  }}
-                  similarPanel={
-                    isInclusionItem && item.descriptionShort.trim().length >= 3 ? (
-                      <>
-                        {showAfExactOffer ? (
-                          <div className="af-exact-banner" role="status">
-                            <p>
-                              Já existem{' '}
-                              <strong>{afExactCount > 0 ? afExactCount : 1}</strong> unidade
-                              {(afExactCount > 0 ? afExactCount : 1) === 1 ? '' : 's'} deste bem
-                              cadastradas.
-                            </p>
-                            <div className="af-exact-banner__actions">
-                              <button
-                                type="button"
-                                className={`btn ${afExactChoice === 'more' ? 'btn-primary' : 'btn-outline'}`}
-                                onClick={() => {
-                                  setAfExactChoice('more');
-                                  clearFieldError('duplicate');
-                                  if (afSampleId) {
-                                    void productsApi.get(afSampleId).then((p) => {
-                                      patchCurrent({
-                                        descriptionLong: p.descriptionLong ?? item.descriptionLong,
-                                        physicalLocation:
-                                          p.physicalLocation ?? item.physicalLocation,
-                                        acquisitionValue:
-                                          p.acquisitionValue != null
-                                            ? String(p.acquisitionValue)
-                                            : item.acquisitionValue,
-                                        acquisitionDate: p.acquisitionDate
-                                          ? String(p.acquisitionDate).slice(0, 10)
-                                          : item.acquisitionDate,
-                                        usefulLifeMonths:
-                                          p.usefulLifeMonths != null
-                                            ? String(p.usefulLifeMonths)
-                                            : item.usefulLifeMonths,
-                                        depreciationRate:
-                                          p.depreciationRate != null
-                                            ? String(p.depreciationRate)
-                                            : item.depreciationRate,
-                                        supplierDocument:
-                                          p.supplierDocument ?? item.supplierDocument,
-                                      });
-                                    });
-                                  }
-                                }}
-                              >
-                                Cadastrar mais unidades deste bem
-                              </button>
-                              <button
-                                type="button"
-                                className={`btn ${afExactChoice === 'different' ? 'btn-primary' : 'btn-outline'}`}
-                                onClick={() => {
-                                  setAfExactChoice('different');
-                                  clearFieldError('duplicate');
-                                }}
-                              >
-                                É um bem diferente
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
-                        <SimilarProductsPanel
-                          results={similarResults}
-                          loading={similarLoading}
-                          searched={similarSearched}
-                          query={item.descriptionShort}
-                          advisory
-                          showHotelLegend
-                        />
-                      </>
-                    ) : null
-                  }
-                  onChange={onPrimaryChange}
-                  onClearError={(key) => clearFieldError(key)}
-                />
-
-                <hr className="pdm-classification-divider" />
-
+                <p className="form-section-title">Classificação SAP do item</p>
                 <ItemClassificationFields
                   hideTitle
                   lotSubgroupId={subgroupId}
@@ -1094,9 +985,9 @@ export function DadosDoItemPage() {
                   }}
                   onClearError={(key) => clearFieldError(key)}
                 />
-      </div>
+              </div>
 
-              {item.groupId && (item.subgroupId || subgroupId) ? (
+              {item.groupId ? (
                 <>
                   {!fixedAsset && attributes.length > 0 ? (
                     <div className="solicitacao-form-section">
@@ -1119,6 +1010,117 @@ export function DadosDoItemPage() {
                     </p>
                   ) : null}
 
+                  <div className="pdm-classification">
+                    <p className="form-section-title">Classificação do item</p>
+                    <ItemPrimaryFields
+                      value={{
+                        descriptionShort: item.descriptionShort,
+                        costCenterId: item.costCenterId,
+                        measureUnitId: item.measureUnitId,
+                        itemValue: item.itemValue,
+                        purchaseQtyTotal: item.purchaseQtyTotal,
+                        unifiedCode: item.unifiedCode,
+                        legacyCode: item.legacyCode,
+                        law116: item.law116,
+                        unitQuantity: item.unitQuantity,
+                        physicalLocation: item.physicalLocation,
+                        assetTag: item.assetTag,
+                        acquisitionValue: item.acquisitionValue,
+                        acquisitionDate: item.acquisitionDate,
+                        usefulLifeMonths: item.usefulLifeMonths,
+                        depreciationRate: item.depreciationRate,
+                        supplierDocument: item.supplierDocument,
+                        invoiceNumber: item.invoiceNumber,
+                      }}
+                      costCenters={costCenters}
+                      measureUnits={measureUnits}
+                      hideMeasureUnit={fixedAsset}
+                      errors={{
+                        descriptionShort: fieldErrors.descriptionShort,
+                        costCenterId: fieldErrors.costCenterId,
+                        measureUnitId: fieldErrors.measureUnitId,
+                        unitQuantity: fieldErrors.unitQuantity,
+                        physicalLocation: fieldErrors.physicalLocation,
+                        duplicate: fieldErrors.duplicate,
+                      }}
+                      similarPanel={
+                        isInclusionItem && item.descriptionShort.trim().length >= 3 ? (
+                          <>
+                            {showAfExactOffer ? (
+                              <div className="af-exact-banner" role="status">
+                                <p>
+                                  Já existem{' '}
+                                  <strong>{afExactCount > 0 ? afExactCount : 1}</strong> unidade
+                                  {(afExactCount > 0 ? afExactCount : 1) === 1 ? '' : 's'} deste bem
+                                  cadastradas.
+                                </p>
+                                <div className="af-exact-banner__actions">
+                                  <button
+                                    type="button"
+                                    className={`btn ${afExactChoice === 'more' ? 'btn-primary' : 'btn-outline'}`}
+                                    onClick={() => {
+                                      setAfExactChoice('more');
+                                      clearFieldError('duplicate');
+                                      if (afSampleId) {
+                                        void productsApi.get(afSampleId).then((p) => {
+                                          patchCurrent({
+                                            descriptionLong:
+                                              p.descriptionLong ?? item.descriptionLong,
+                                            physicalLocation:
+                                              p.physicalLocation ?? item.physicalLocation,
+                                            acquisitionValue:
+                                              p.acquisitionValue != null
+                                                ? String(p.acquisitionValue)
+                                                : item.acquisitionValue,
+                                            acquisitionDate: p.acquisitionDate
+                                              ? String(p.acquisitionDate).slice(0, 10)
+                                              : item.acquisitionDate,
+                                            usefulLifeMonths:
+                                              p.usefulLifeMonths != null
+                                                ? String(p.usefulLifeMonths)
+                                                : item.usefulLifeMonths,
+                                            depreciationRate:
+                                              p.depreciationRate != null
+                                                ? String(p.depreciationRate)
+                                                : item.depreciationRate,
+                                            supplierDocument:
+                                              p.supplierDocument ?? item.supplierDocument,
+                                          });
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    Cadastrar mais unidades deste bem
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`btn ${afExactChoice === 'different' ? 'btn-primary' : 'btn-outline'}`}
+                                    onClick={() => {
+                                      setAfExactChoice('different');
+                                      clearFieldError('duplicate');
+                                    }}
+                                  >
+                                    É um bem diferente
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                            <SimilarProductsPanel
+                              results={similarResults}
+                              loading={similarLoading}
+                              searched={similarSearched}
+                              query={item.descriptionShort}
+                              advisory
+                              showHotelLegend
+                            />
+                          </>
+                        ) : null
+                      }
+                      onChange={onPrimaryChange}
+                      onClearError={(key) => clearFieldError(key)}
+                    />
+                  </div>
+
                   <ItemCompletionSection
                     value={{
                       productLink: item.productLink,
@@ -1138,10 +1140,10 @@ export function DadosDoItemPage() {
                 </>
               ) : (
                 <p className="info-banner">
-                  Selecione grupo e subgrupo deste item para continuar o cadastro.
+                  Informe a fonte e o grupo de itens para continuar o cadastro deste item.
                 </p>
               )}
-      </div>
+            </div>
           </article>
 
           <div className="search-actions">

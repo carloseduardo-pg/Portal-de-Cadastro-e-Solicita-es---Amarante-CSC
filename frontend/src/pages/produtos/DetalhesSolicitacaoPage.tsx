@@ -1233,6 +1233,22 @@ export function DetalhesSolicitacaoPage() {
 
         <div className="solicitacao-form-body">
           <div className="pdm-classification">
+            <p className="form-section-title">Classificação SAP do item</p>
+            <ItemClassificationFields
+              hideTitle
+              readOnly={!fieldsEditable}
+              lotSubgroupId={lotSubgroupId}
+              value={{
+                groupId: item.groupId,
+                subgroupId: item.subgroupId || lotSubgroupId,
+                source: item.source,
+              }}
+              groups={groups}
+              onChange={fieldsEditable ? (patch) => patchCurrentItem(patch) : undefined}
+            />
+          </div>
+
+          <div className="pdm-classification">
             <p className="form-section-title">Classificação do item</p>
             <ItemPrimaryFields
               readOnly={!fieldsEditable}
@@ -1280,21 +1296,6 @@ export function DetalhesSolicitacaoPage() {
                     }
                   : undefined
               }
-            />
-
-            <hr className="pdm-classification-divider" />
-
-            <ItemClassificationFields
-              hideTitle
-              readOnly={!fieldsEditable}
-              lotSubgroupId={lotSubgroupId}
-              value={{
-                groupId: item.groupId,
-                subgroupId: item.subgroupId || lotSubgroupId,
-                source: item.source,
-              }}
-              groups={groups}
-              onChange={fieldsEditable ? (patch) => patchCurrentItem(patch) : undefined}
             />
           </div>
 

@@ -634,6 +634,8 @@ export class RequestsService {
     search?: string;
     type?: string;
     familyIds?: string[];
+    subgroupIds?: string[];
+    groupIds?: string[];
     hotelIds?: string[];
     requesterIds?: string[];
   }) {
@@ -692,6 +694,8 @@ export class RequestsService {
     search?: string;
     type?: string;
     familyIds?: string[];
+    subgroupIds?: string[];
+    groupIds?: string[];
     hotelIds?: string[];
     requesterIds?: string[];
   }) {
@@ -716,12 +720,16 @@ export class RequestsService {
 
   parseKanbanFilters(query: {
     family_ids?: string;
+    subgroup_ids?: string;
+    group_ids?: string;
     hotel_ids?: string;
     requester_ids?: string;
     type?: string;
   }) {
     return {
       familyIds: this.parseIdList(query.family_ids),
+      subgroupIds: this.parseIdList(query.subgroup_ids),
+      groupIds: this.parseIdList(query.group_ids),
       hotelIds: this.parseIdList(query.hotel_ids),
       requesterIds: this.parseIdList(query.requester_ids),
       type: query.type?.trim() || undefined,
@@ -965,6 +973,8 @@ export class RequestsService {
     search?: string;
     type?: string;
     familyIds?: string[];
+    subgroupIds?: string[];
+    groupIds?: string[];
     hotelIds?: string[];
     requesterIds?: string[];
   }): Prisma.RequestWhereInput {
@@ -985,6 +995,12 @@ export class RequestsService {
     if (params.mine === 'true' && params.userId)
       where.requesterId = params.userId;
     if (params.familyIds?.length) where.familyId = { in: params.familyIds };
+    if (params.subgroupIds?.length) {
+      where.subgroupId = { in: params.subgroupIds };
+    }
+    if (params.groupIds?.length) {
+      where.items = { some: { groupId: { in: params.groupIds } } };
+    }
     if (params.hotelIds?.length) {
       where.OR = [
         { hotelId: { in: params.hotelIds } },
@@ -1011,6 +1027,8 @@ export class RequestsService {
         },
         { family: { name: { contains: q, mode: 'insensitive' } } },
         { family: { code: { contains: q, mode: 'insensitive' } } },
+        { subgroup: { name: { contains: q, mode: 'insensitive' } } },
+        { subgroup: { code: { contains: q, mode: 'insensitive' } } },
         { hotel: { code: { contains: q, mode: 'insensitive' } } },
         { hotel: { name: { contains: q, mode: 'insensitive' } } },
         { requester: { name: { contains: q, mode: 'insensitive' } } },
@@ -3347,6 +3365,7 @@ export class RequestsService {
       requester: { select: { id: true, name: true } },
       hotel: { select: { id: true, code: true, name: true } },
       family: { select: { id: true, code: true, name: true, itemKind: true } },
+      subgroup: { select: { id: true, code: true, name: true, familyId: true } },
       hotels: {
         include: { hotel: { select: { id: true, code: true, name: true } } },
       },
